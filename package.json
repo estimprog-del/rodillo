@@ -1,0 +1,23 @@
+{
+  "name": "rodilloint-web",
+  "version": "1.6.0",
+  "description": "Rodillo Interactivo Training Lab para Navegador Web",
+  "main": "index.html",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "cycling",
+    "smart-trainer",
+    "ftms",
+    "web-bluetooth",
+    "gpx"
+  ],
+  "author": "RodilloInt Team",
+  "license": "MIT",
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
