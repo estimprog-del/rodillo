@@ -676,66 +676,70 @@ function onStatusChanged(type, status) {
 
 // --- TELEMETRY RX & CALCULATIONS ---
 function onPowerReceived(power) {
-  state.currentPower = power;
-  setElText("metrics-power", power);
+  try {
+    state.currentPower = power;
+    setElText("metrics-power", power);
 
-  // Power Buffer 3s rolling average
-  state.powerBuffer.push(power);
-  if (state.powerBuffer.length > 3) state.powerBuffer.shift();
-  state.power3s = Math.round(
-    state.powerBuffer.reduce((a, b) => a + b, 0) / state.powerBuffer.length,
-  );
-
-  const ftp = state.currentUser ? state.currentUser.ftp : 200;
-  let zoneColor = "#10b981";
-  let activeZoneIndex = 0;
-
-  if (power < ftp * 0.55) {
-    zoneColor = "#6b7280";
-    activeZoneIndex = 0;
-  } else if (power < ftp * 0.75) {
-    zoneColor = "#3b82f6";
-    activeZoneIndex = 1;
-  } else if (power < ftp * 0.9) {
-    zoneColor = "#10b981";
-    activeZoneIndex = 2;
-  } else if (power < ftp * 1.05) {
-    zoneColor = "#f59e0b";
-    activeZoneIndex = 3;
-  } else if (power < ftp * 1.2) {
-    zoneColor = "#f97316";
-    activeZoneIndex = 4;
-  } else {
-    zoneColor = "#ef4444";
-    activeZoneIndex = 5;
-  }
-
-  const powerEl = document.getElementById("metrics-power");
-  if (powerEl) powerEl.style.color = zoneColor;
-
-  if (state.isSessionActive && !state.isPaused) {
-    state.timeInPowerZones[activeZoneIndex]++;
-    state.powerHistory.push(power);
-    updateSessionAverages();
-  }
-
-  // Reanudar automáticamente en modo ROUTE si se empieza a pedalear
-  if (
-    state.currentMode === "ROUTE" &&
-    state.isSessionActive &&
-    state.isAutoPaused &&
-    power > 15
-  ) {
-    const userWeight = state.currentUser ? state.currentUser.weight : 75.0;
-    const vSpeed = BleManager.calculateVirtualSpeed(
-      power,
-      state.currentSlope,
-      userWeight,
+    // Power Buffer 3s rolling average
+    state.powerBuffer.push(power);
+    if (state.powerBuffer.length > 3) state.powerBuffer.shift();
+    state.power3s = Math.round(
+      state.powerBuffer.reduce((a, b) => a + b, 0) / state.powerBuffer.length,
     );
-    if (vSpeed > 0.5) {
-      state.isAutoPaused = false;
-      resumeTimer();
+
+    const ftp = state.currentUser ? state.currentUser.ftp : 200;
+    let zoneColor = "#10b981";
+    let activeZoneIndex = 0;
+
+    if (power < ftp * 0.55) {
+      zoneColor = "#6b7280";
+      activeZoneIndex = 0;
+    } else if (power < ftp * 0.75) {
+      zoneColor = "#3b82f6";
+      activeZoneIndex = 1;
+    } else if (power < ftp * 0.9) {
+      zoneColor = "#10b981";
+      activeZoneIndex = 2;
+    } else if (power < ftp * 1.05) {
+      zoneColor = "#f59e0b";
+      activeZoneIndex = 3;
+    } else if (power < ftp * 1.2) {
+      zoneColor = "#f97316";
+      activeZoneIndex = 4;
+    } else {
+      zoneColor = "#ef4444";
+      activeZoneIndex = 5;
     }
+
+    const powerEl = document.getElementById("metrics-power");
+    if (powerEl) powerEl.style.color = zoneColor;
+
+    if (state.isSessionActive && !state.isPaused) {
+      state.timeInPowerZones[activeZoneIndex]++;
+      state.powerHistory.push(power);
+      updateSessionAverages();
+    }
+
+    // Reanudar automáticamente en modo ROUTE si se empieza a pedalear
+    if (
+      state.currentMode === "ROUTE" &&
+      state.isSessionActive &&
+      state.isAutoPaused &&
+      power > 15
+    ) {
+      const userWeight = state.currentUser ? state.currentUser.weight : 75.0;
+      const vSpeed = BleManager.calculateVirtualSpeed(
+        power,
+        state.currentSlope,
+        userWeight,
+      );
+      if (vSpeed > 0.5) {
+        state.isAutoPaused = false;
+        resumeTimer();
+      }
+    }
+  } catch (err) {
+    console.error("Error en onPowerReceived:", err);
   }
 }
 
