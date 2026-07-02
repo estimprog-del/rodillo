@@ -115,8 +115,9 @@ export function bindEvents(handlers) {
             BleManager.startSimulator(weight);
             btn.textContent = "Desactivar Rodillo Virtual";
             btn.className = "btn btn-danger";
+            // No mostrar el panel aquí, se mostrará en enterWorkoutScreen
             document.getElementById("virtual-trainer-panel").style.display =
-              "block";
+              "none";
           }
         }
       }
@@ -196,7 +197,10 @@ export function bindEvents(handlers) {
   }
 
   document.querySelectorAll(".btn-font-scale").forEach((btn) => {
-    btn.onclick = (e) =>
-      setWorkoutFontScale(e.target.getAttribute("data-scale"));
+    const scaleType = btn.getAttribute("data-scale");
+    btn.onclick = (e) => {
+      const inc = scaleType === "lg" ? 0.25 : -0.25;
+      setWorkoutFontScale(inc);
+    };
   });
 }

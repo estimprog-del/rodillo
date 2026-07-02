@@ -1322,31 +1322,24 @@ h4 {
     overflow: hidden;
     background: var(--bg-primary);
     --workout-text-multiplier: 1;
-}
-
-/* Font Scaling system for HUD */
-.workout-viewport.text-scale-sm {
-    --workout-text-multiplier: 0.85;
-}
-.workout-viewport.text-scale-md {
-    --workout-text-multiplier: 1;
-}
-.workout-viewport.text-scale-lg {
-    --workout-text-multiplier: 1.25;
-}
-.workout-viewport.text-scale-xl {
-    --workout-text-multiplier: 1.5;
+    font-size: calc(1rem * var(--workout-text-multiplier));
 }
 
 /* Apply multiplier to HUD metrics and clocks */
 .workout-viewport .metric-value {
     font-size: calc(28px * var(--workout-text-multiplier)) !important;
 }
+.workout-viewport .metric-avg {
+    font-size: calc(13px * var(--workout-text-multiplier)) !important;
+}
 .workout-viewport #workout-timer {
-    font-size: calc(16px * var(--workout-text-multiplier)) !important;
+    font-size: calc(20px * var(--workout-text-multiplier)) !important;
 }
 .workout-viewport #clock {
-    font-size: calc(16px * var(--workout-text-multiplier)) !important;
+    font-size: calc(20px * var(--workout-text-multiplier)) !important;
+}
+.workout-viewport .clock-label {
+    font-size: calc(10px * var(--workout-text-multiplier)) !important;
 }
 .btn-font-scale.active {
     background-color: var(--accent-green) !important;
@@ -1377,13 +1370,41 @@ h4 {
         rgba(0, 0, 0, 0) 100%
     );
     display: flex;
-    flex-direction: row;
-    align-items: center;
     justify-content: space-between;
+    align-items: center;
     gap: 16px;
     padding: 10px 16px;
     backdrop-filter: blur(2px);
     pointer-events: auto;
+    flex-wrap: wrap;
+}
+
+.hud-left-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.clock-session.clock-horizontal {
+    display: flex !important;
+    align-items: center !important;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.hud-sensor-bar {
+    display: flex;
+    gap: 4px;
+    flex-wrap: nowrap;
+    align-items: center;
+}
+
+.hud-right-group {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
 }
 
 .hud-top-bar .hud-sensor-bar {
@@ -1486,12 +1507,13 @@ h4 {
     display: flex !important;
     flex-direction: row !important;
     align-items: center !important;
-    justify-content: center !important;
+    justify-content: flex-start !important;
     gap: 8px !important;
-    text-align: center !important;
+    text-align: left !important;
     padding: 5px 10px !important;
     background: rgba(255, 255, 255, 0.1);
     border-radius: 8px;
+    width: auto;
 }
 
 #clock,
@@ -1938,13 +1960,18 @@ h4 {
     color: #ffffff; /* Texto en blanco */
 }
 #elevation-chart-cursor {
-    position: absolute;
-    top: 15px;
-    bottom: 30px;
-    width: 2px;
-    background-color: #fff;
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
-    z-index: 10;
-    pointer-events: none;
+    position: absolute !important;
+    top: 50% !important;
+    bottom: auto !important; /* Anulamos el bottom que estiraba la línea */
+    margin-top: -6px !important;
+    margin-left: -6px !important;
+    width: 12px !important;
+    height: 12px !important;
+    background-color: #3b82f6 !important;
+    border: 2px solid white !important;
+    border-radius: 50% !important;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.5) !important;
+    z-index: 10 !important;
+    pointer-events: none !important;
     display: none;
 }

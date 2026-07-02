@@ -257,27 +257,25 @@ function navigateTo(screenId) {
   }
 }
 
-function setWorkoutFontScale(scale) {
+function setWorkoutFontScale(increment) {
   const viewport = document.querySelector(".workout-viewport");
   if (!viewport) return;
 
-  viewport.classList.remove(
-    "text-scale-sm",
-    "text-scale-md",
-    "text-scale-lg",
-    "text-scale-xl",
+  // Obtener valor actual o default 1.0
+  let currentScale = parseFloat(
+    getComputedStyle(viewport).getPropertyValue("--workout-text-multiplier") ||
+      1.0,
   );
-  viewport.classList.add(`text-scale-${scale}`);
 
-  document.querySelectorAll(".btn-font-scale").forEach((btn) => {
-    if (btn.getAttribute("data-scale") === scale) {
-      btn.classList.add("active");
-    } else {
-      btn.classList.remove("active");
-    }
-  });
+  // Calcular nuevo valor: incrementar o decrementar
+  let newScale = currentScale + increment;
 
-  localStorage.setItem("rodilloint_fontSize", scale);
+  // Límite: entre 0.5 y 2.5
+  newScale = Math.min(Math.max(newScale, 0.5), 2.5);
+
+  // Aplicar
+  viewport.style.setProperty("--workout-text-multiplier", newScale);
+  localStorage.setItem("rodilloint_fontSize", newScale);
 }
 
 // --- Funciones UI movidas a modules/ui.js ---
@@ -1492,7 +1490,14 @@ function updateRouteSimulation(currentDistKm) {
   // 2. Sync elevation chart cursor (always for smooth movement)
   const totalDistKm =
     state.routeDistances[state.routeDistances.length - 1] || 0.1;
-  ChartsManager.setElevationCursor(currentDistKm, totalDistKm);
+  const currentEle = state.routeElevations[state.currentRouteIndex] || 0;
+
+  if (
+    window.ChartsManager &&
+    typeof window.ChartsManager.updateElevationMarker === "function"
+  ) {
+    window.ChartsManager.updateElevationMarker(currentDistKm, currentEle);
+  }
 
   // Pendiente objetivo: media de los próximos 20 m desde la posición actual
   setRouteTargetSlope(currentDistKm);

@@ -402,15 +402,20 @@ function initElevationChart(
       offsetY: -2,
     },
     annotations: {
-      points: elevationPeaks,
-      xaxis: [
+      points: [
         {
           x: 0,
-          borderColor: "#ffffff",
-          strokeDashArray: 0,
-          borderWidth: 2,
+          y: 0,
+          marker: {
+            size: 6,
+            fillColor: "#3b82f6",
+            strokeColor: "#ffffff",
+            strokeWidth: 2,
+            radius: 6,
+          },
           label: { show: false },
         },
+        ...elevationPeaks,
       ],
     },
   };
@@ -428,32 +433,64 @@ function initElevationChart(
 }
 
 /**
- * Sincroniza la marca vertical del ciclista sobre el perfil de elevación
+ * Compatible con llamadas antiguas que aún esperan esta función
  */
-function setElevationCursor(distanceKm, totalDistanceKm) {
+function setElevationCursor(distanceKm, totalDistanceKm, currentElevation) {
+  if (typeof updateElevationMarker === "function") {
+    updateElevationMarker(distanceKm, currentElevation);
+  }
+}
+
+/**
+ * Compatible con llamadas antiguas que aún esperan esta función
+ */
+function setElevationCursor(distanceKm, totalDistanceKm, currentElevation) {
+  if (typeof updateElevationMarker === "function") {
+    updateElevationMarker(distanceKm, currentElevation);
+  }
+}
+
+/**
+ * Actualiza la posición del marcador de posición en el perfil de elevación
+ */
+function updateElevationMarker(distanceKm, currentElevation) {
   if (!elevationChart) return;
 
-  const cursor = document.getElementById("elevation-chart-cursor");
-  const chartEl = document.getElementById("elevation-chart");
-  if (!cursor || !chartEl || !totalDistanceKm || totalDistanceKm <= 0) return;
+  // Forzamos a redondear a 3 decimales para coincidir con la escala del eje
+  const targetX = parseFloat(distanceKm.toFixed(3));
 
-  const gridBg = chartEl.querySelector(".apexcharts-grid-bg");
-  if (!gridBg) {
-    // Si la rejilla interna no se ha renderizado aún
-    return;
-  }
-
-  // Obtener la posición X inicial y el ancho de la rejilla interna SVG
-  const xAttr = parseFloat(gridBg.getAttribute("x")) || 0;
-  const widthAttr = parseFloat(gridBg.getAttribute("width")) || 0;
-
-  // Calcular porcentaje completado y aplicarlo al ancho de la rejilla
-  const pct = Math.min(1.0, Math.max(0.0, distanceKm / totalDistanceKm));
-  const leftPx = xAttr + pct * widthAttr;
-
-  cursor.style.left = `${leftPx}px`;
-  cursor.style.display = "block";
+  elevationChart.updateOptions(
+    {
+      annotations: {
+        points: [
+          {
+            x: targetX,
+            y: currentElevation,
+            marker: {
+              size: 8,
+              fillColor: "#3b82f6",
+              strokeColor: "#ffffff",
+              strokeWidth: 2,
+            },
+            label: { show: false },
+          },
+        ],
+      },
+    },
+    false,
+    true,
+  );
 }
+
+// Aseguramos que ChartsManager esté expuesto globalmente
+window.ChartsManager = window.ChartsManager || {};
+Object.assign(window.ChartsManager, {
+  updateElevationMarker,
+  setElevationCursor,
+  updateUpcomingChart,
+  initUpcomingChart,
+  initElevationChart,
+});
 
 /**
  * Initializes the summary bar chart showing training stress in power zones
