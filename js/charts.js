@@ -625,10 +625,17 @@ function initUpcomingChart(containerId) {
   }
 }
 
+let lastChartUpdate = 0;
+
 /**
  * Actualiza el minigráfico predictivo y cambia su color dinámicamente según la pendiente
  */
 function updateUpcomingChart(distances, elevations, avgSlope) {
+  const now = Date.now();
+  // Solo actualizar si han pasado al menos 200ms
+  if (now - lastChartUpdate < 200) return;
+  lastChartUpdate = now;
+
   if (!upcomingChart) return;
 
   const dataPoints = distances.map((d, idx) => ({
@@ -649,6 +656,27 @@ function updateUpcomingChart(distances, elevations, avgSlope) {
   upcomingChart.updateOptions(
     {
       colors: [color],
+      yaxis: {
+        min: minEle - padding,
+        max: maxEle + padding,
+      },
+      annotations: {
+        points: [
+          {
+            x: distances[0],
+            y: elevations[0],
+            marker: {
+              size: 6,
+              fillColor: "#3b82f6",
+              strokeColor: "#ffffff",
+              strokeWidth: 3,
+              radius: 4,
+            },
+            label: { show: false },
+          },
+        ],
+        xaxis: [],
+      },
     },
     false,
     true,
