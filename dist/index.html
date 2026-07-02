@@ -1,0 +1,1575 @@
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        />
+        <title>RodilloInt - Training Lab</title>
+
+        <!-- CSS Stylesheets -->
+
+        <!-- Leaflet Maps CSS via CDN -->
+        <link
+            rel="stylesheet"
+            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+            integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+            crossorigin=""
+        />
+      <script type="module" crossorigin src="/rodillo/assets/index-X6XujUGU.js"></script>
+      <link rel="stylesheet" crossorigin href="/rodillo/assets/index-CBZ0vOsW.css">
+    </head>
+    <body>
+        <!-- 1. SCREEN: USER SELECTION -->
+        <div id="screen-user-select" class="screen active">
+            <div class="user-select-layout">
+                <h1 class="logo-title">RODILLO INT</h1>
+                <p class="logo-subtitle">TRAINING LAB</p>
+
+                <div class="users-grid" id="users-grid-container">
+                    <!-- populated dynamically via app.js -->
+                    <div
+                        class="glass-card user-card"
+                        style="grid-column: span 100%; cursor: default"
+                    >
+                        <p style="color: var(--text-secondary)">
+                            Cargando perfiles...
+                        </p>
+                    </div>
+                </div>
+
+                <div class="user-action-buttons">
+                    <button class="btn btn-primary" id="btn-show-add-user">
+                        Nuevo Usuario
+                    </button>
+                    <button class="btn btn-dark" id="btn-show-import-user">
+                        Importar Perfil
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. SCREEN: DASHBOARD -->
+        <div id="screen-dashboard" class="screen">
+            <div class="dashboard-header glass-card">
+                <div class="active-profile-info" id="active-profile-header">
+                    <div class="avatar-small">U</div>
+                    <div class="active-profile-details">
+                        <span class="active-profile-greeting">Hola,</span>
+                        <span
+                            class="active-profile-name"
+                            id="dashboard-user-name"
+                            >Usuario</span
+                        >
+                    </div>
+                </div>
+                <button
+                    class="btn btn-dark"
+                    id="btn-dashboard-settings"
+                    style="padding: 10px 14px"
+                >
+                    ⚙️ Ajustes
+                </button>
+            </div>
+
+            <h2 style="font-size: 24px; margin-bottom: 20px">Entrenamientos</h2>
+            <div class="dashboard-modes">
+                <!-- Route training -->
+                <div class="glass-card mode-card route" id="mode-route">
+                    <div>
+                        <div class="mode-icon">🗺️</div>
+                        <h3 class="mode-title">NUEVA SESIÓN</h3>
+                        <p class="mode-desc">
+                            Entrenamiento con simulador de ruta. Carga un
+                            archivo GPX/TCX y el rodillo cambiará la resistencia
+                            automáticamente.
+                        </p>
+                    </div>
+                    <span
+                        style="
+                            color: var(--accent-green);
+                            font-size: 13px;
+                            font-weight: 600;
+                            margin-top: 16px;
+                        "
+                        >Iniciar ➔</span
+                    >
+                </div>
+
+                <!-- Manual training -->
+                <div class="glass-card mode-card manual" id="mode-manual">
+                    <div>
+                        <div class="mode-icon">🎛️</div>
+                        <h3 class="mode-title">SESIÓN MANUAL</h3>
+                        <p class="mode-desc">
+                            Controla la resistencia de tu rodillo inteligente de
+                            manera manual usando botones de pendiente.
+                        </p>
+                    </div>
+                    <span
+                        style="
+                            color: var(--accent-blue);
+                            font-size: 13px;
+                            font-weight: 600;
+                            margin-top: 16px;
+                        "
+                        >Iniciar ➔</span
+                    >
+                </div>
+
+                <!-- Traditional training -->
+                <div
+                    class="glass-card mode-card traditional"
+                    id="mode-traditional"
+                >
+                    <div>
+                        <div class="mode-icon">🚲</div>
+                        <h3 class="mode-title">RODILLO TRADICIONAL</h3>
+                        <p class="mode-desc">
+                            Para rodillo no inteligente. Lee y registra la
+                            información de tus sensores externos (Vel/Cad/Pot)
+                            en tiempo real.
+                        </p>
+                    </div>
+                    <span
+                        style="
+                            color: var(--accent-purple);
+                            font-size: 13px;
+                            font-weight: 600;
+                            margin-top: 16px;
+                        "
+                        >Iniciar ➔</span
+                    >
+                </div>
+            </div>
+
+            <h2 style="font-size: 20px; margin-bottom: 16px; margin-top: 12px">
+                Estadísticas e Historial
+            </h2>
+            <div class="dashboard-shortcuts">
+                <button
+                    class="btn btn-dark glass-card"
+                    id="btn-go-history"
+                    style="flex-direction: column; gap: 8px; padding: 20px 10px"
+                >
+                    <span style="font-size: 24px">📋</span>
+                    <span style="font-weight: 700">Historial</span>
+                </button>
+                <button
+                    class="btn btn-dark glass-card"
+                    id="btn-go-progress"
+                    style="flex-direction: column; gap: 8px; padding: 20px 10px"
+                >
+                    <span style="font-size: 24px">📈</span>
+                    <span style="font-weight: 700">Progreso</span>
+                </button>
+            </div>
+
+            <button
+                class="btn btn-dark"
+                id="btn-dashboard-connections"
+                style="width: 100%; height: 52px; margin-bottom: 24px"
+            >
+                🔗 Conexiones Bluetooth
+            </button>
+            <button
+                class="btn btn-dark"
+                id="btn-logout"
+                style="
+                    width: 100%;
+                    height: 48px;
+                    border-color: rgba(239, 68, 68, 0.2);
+                    color: var(--accent-red);
+                    margin-bottom: 40px;
+                "
+            >
+                Cerrar Sesión Perfil
+            </button>
+        </div>
+
+        <!-- 3. SCREEN: CONNECTIONS -->
+        <div id="screen-connections" class="screen">
+            <h2 style="font-size: 28px; margin-bottom: 6px">
+                Conexiones Bluetooth
+            </h2>
+            <p style="color: var(--text-secondary); margin-bottom: 24px">
+                Empareja tus sensores de ciclismo mediante Web Bluetooth.
+            </p>
+
+            <div
+                id="bluetooth-support-warning"
+                class="glass-card"
+                style="
+                    display: none;
+                    border-color: var(--accent-red);
+                    background: var(--accent-red-glow);
+                    margin-bottom: 20px;
+                    padding: 16px;
+                "
+            >
+                <h3
+                    style="
+                        color: var(--accent-red);
+                        margin-bottom: 6px;
+                        font-size: 16px;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                    "
+                >
+                    ⚠️ Web Bluetooth No Disponible
+                </h3>
+                <p
+                    style="
+                        font-size: 13px;
+                        color: var(--text-primary);
+                        line-height: 1.4;
+                    "
+                >
+                    Esta aplicación requiere <b>HTTPS</b> o <b>localhost</b>, y
+                    un navegador compatible (como Google Chrome, Microsoft Edge
+                    u Opera) para conectarse a los sensores físicos. Puedes usar
+                    el <b>Rodillo Virtual</b> para probar la aplicación.
+                </p>
+            </div>
+
+            <div class="connection-flow">
+                <div class="sensor-list">
+                    <!-- Trainer -->
+                    <div
+                        class="glass-card sensor-card disconnected"
+                        id="sensor-TRAINER"
+                    >
+                        <div class="sensor-info">
+                            <div class="sensor-type-icon">⚡</div>
+                            <div>
+                                <div class="sensor-name">
+                                    Rodillo Controlable
+                                </div>
+                                <div
+                                    class="sensor-status-label"
+                                    id="status-label-TRAINER"
+                                >
+                                    Desconectado
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            class="btn btn-dark btn-sm"
+                            id="btn-connect-TRAINER"
+                        >
+                            Conectar
+                        </button>
+                    </div>
+
+                    <!-- Heart Rate Monitor -->
+                    <div
+                        class="glass-card sensor-card disconnected"
+                        id="sensor-HRM"
+                    >
+                        <div class="sensor-info">
+                            <div class="sensor-type-icon">❤️</div>
+                            <div>
+                                <div class="sensor-name">Pulsómetro (BPM)</div>
+                                <div
+                                    class="sensor-status-label"
+                                    id="status-label-HRM"
+                                >
+                                    Desconectado
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            class="btn btn-dark btn-sm"
+                            id="btn-connect-HRM"
+                        >
+                            Conectar
+                        </button>
+                    </div>
+
+                    <!-- Power Meter -->
+                    <div
+                        class="glass-card sensor-card disconnected"
+                        id="sensor-POWER"
+                    >
+                        <div class="sensor-info">
+                            <div class="sensor-type-icon">🔋</div>
+                            <div>
+                                <div class="sensor-name">
+                                    Potenciómetro (Watts)
+                                </div>
+                                <div
+                                    class="sensor-status-label"
+                                    id="status-label-POWER"
+                                >
+                                    Desconectado
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            class="btn btn-dark btn-sm"
+                            id="btn-connect-POWER"
+                        >
+                            Conectar
+                        </button>
+                    </div>
+
+                    <!-- Speed & Cadence -->
+                    <div
+                        class="glass-card sensor-card disconnected"
+                        id="sensor-CSC"
+                    >
+                        <div class="sensor-info">
+                            <div class="sensor-type-icon">🔄</div>
+                            <div>
+                                <div class="sensor-name">
+                                    Velocidad / Cadencia
+                                </div>
+                                <div
+                                    class="sensor-status-label"
+                                    id="status-label-CSC"
+                                >
+                                    Desconectado
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            class="btn btn-dark btn-sm"
+                            id="btn-connect-CSC"
+                        >
+                            Conectar
+                        </button>
+                    </div>
+                </div>
+
+                <div class="glass-card" style="margin-top: 10px">
+                    <h3 style="font-size: 16px; margin-bottom: 8px">
+                        ℹ️ Modo Simulación Virtual
+                    </h3>
+                    <p
+                        style="
+                            font-size: 13px;
+                            color: var(--text-secondary);
+                            line-height: 1.4;
+                            margin-bottom: 16px;
+                        "
+                    >
+                        ¿No tienes sensores Bluetooth cerca? Activa el
+                        entrenamiento virtual para simular potencia, cadencia y
+                        ritmo cardíaco en tiempo real mediante deslizadores en
+                        pantalla o física de pedaleo.
+                    </p>
+                    <button
+                        class="btn btn-secondary"
+                        id="btn-toggle-sim"
+                        style="width: 100%"
+                    >
+                        Activar Rodillo Virtual
+                    </button>
+                </div>
+
+                <div style="display: flex; gap: 16px; margin-top: 20px">
+                    <button
+                        class="btn btn-dark"
+                        id="btn-connections-back"
+                        style="flex: 1"
+                    >
+                        Volver
+                    </button>
+                    <button
+                        class="btn btn-primary"
+                        id="btn-connections-continue"
+                        style="flex: 1"
+                    >
+                        Continuar Sesión
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. SCREEN: CYCLING WORKOUT (HUD sobre mapa) -->
+        <div id="screen-workout" class="screen">
+            <div class="workout-viewport">
+                <div id="workout-map" class="workout-map-fullscreen"></div>
+
+                <!-- HUD superpuesto -->
+                <div class="workout-hud-overlay">
+                    <!-- HUD progreso (esquina inferior izquierda) -->
+                    <div class="hud-bottom-left glass-card" id="hud-progress">
+                        <div class="mini-profile-title">PROGRESO RUTA</div>
+                        <div class="progress-item">
+                            <span class="progress-label">Recorrido</span>
+                            <span id="submetrics-distance">0.00 km</span>
+                        </div>
+                        <div class="progress-item">
+                            <span class="progress-label accent">Restante</span>
+                            <span id="submetrics-remaining">--</span>
+                        </div>
+                        <div class="progress-item progress-item-spaced">
+                            <span class="progress-label">Desnivel +</span>
+                            <span id="submetrics-ascent">0 m</span>
+                        </div>
+                        <div class="progress-item">
+                            <span class="progress-label warn">Faltan</span>
+                            <span id="submetrics-remaining-ascent">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Grupo HUD derecha inferior -->
+                    <div class="hud-bottom-right-group">
+                        <button
+                            class="btn-control btn-pause"
+                            id="btn-workout-pause"
+                            style="
+                                margin-bottom: 5px;
+                                width: fit-content;
+                                padding: 5px 15px;
+                            "
+                        >
+                            ▶ Reanudar
+                        </button>
+                        <button
+                            class="btn-control btn-stop"
+                            id="btn-workout-stop"
+                            style="
+                                margin-bottom: 5px;
+                                width: fit-content;
+                                padding: 5px 15px;
+                            "
+                        >
+                            ⏹ Finalizar
+                        </button>
+                        <div class="slope-box glass-card" id="metrics-slope">
+                            ⛰️ 0.0%
+                        </div>
+                        <div
+                            id="upcoming-profile-chart"
+                            class="upcoming-profile-chart glass-card"
+                            style="display: flex; flex-direction: column"
+                        >
+                            <div
+                                style="
+                                    color: #ffffff;
+                                    font-size: 14px;
+                                    font-weight: 700;
+                                    padding: 5px;
+                                    margin-top: 2px;
+                                "
+                            >
+                                Prox 500m
+                            </div>
+                            <div
+                                id="upcoming-chart-inner"
+                                style="flex-grow: 1"
+                            ></div>
+                        </div>
+                    </div>
+
+                    <!-- Perfil de Elevación Inferior -->
+                    <div
+                        class="hud-elevation-footer glass-card"
+                        id="hud-elevation-footer"
+                        style="display: none"
+                    >
+                        <div id="elevation-chart"></div>
+                        <div id="elevation-chart-cursor"></div>
+                    </div>
+                </div>
+
+                <!-- HUD superior (Global) -->
+                <div class="hud-top-bar" id="hud-top-bar">
+                    <div class="hud-left-group">
+                        <div class="clock-session clock-horizontal" style="display: flex; flex-direction: column; align-items: center; padding: 2px 10px; gap: 0; margin-right: 70px;">
+                            <div class="clock-label" style="font-size: 8px;">HORA</div>
+                            <div id="clock" style="font-weight: bold; font-size: 1.1em;">00:00</div>
+                        </div>
+
+                        <div class="hud-sensor-bar">
+                            <div class="indicator-icon" id="indicator-PWR" title="Potencia">PWR</div>
+                            <div class="indicator-icon" id="indicator-HR" title="Pulso">HR</div>
+                            <div class="indicator-icon" id="indicator-CAD" title="Cadencia">CAD</div>
+                            <div class="indicator-icon" id="indicator-SPD" title="Velocidad">SPD</div>
+                        </div>
+                    </div>
+
+                    <div class="hud-right-group">
+                        <div class="hud-font-selector clock-session" style="pointer-events: auto; display: flex; gap: 4px; align-items: center;">
+                            <span style="font-size: 9px; font-weight: 700; color: var(--text-secondary); margin-right: 2px;">TEXTO</span>
+                            <button class="btn-font-scale" data-scale="sm" style="background: none; border: 1px solid var(--glass-border); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; cursor: pointer; transition: all 0.2s;">A-</button>
+                            <button class="btn-font-scale active" data-scale="md" style="background: none; border: 1px solid var(--glass-border); color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; cursor: pointer; transition: all 0.2s;">A</button>
+                            <button class="btn-font-scale" data-scale="lg" style="background: none; border: 1px solid var(--glass-border); color: white; padding: 2px 6px; border-radius: 4px; font-size: 14px; cursor: pointer; transition: all 0.2s;">A+</button>
+                        </div>
+
+                        <div class="metric-group">
+                            <div class="metric-main">
+                                <span class="metric-value" id="metrics-power">0</span>
+                                <span class="metric-label">W</span>
+                            </div>
+                            <div class="metric-avg" id="metrics-power-avg">0 Ø</div>
+                        </div>
+                        <div class="metric-main">
+                            <span class="metric-value" id="metrics-cadence">0</span>
+                            <span class="metric-label">RPM</span>
+                        </div>
+                        <div class="metric-group">
+                            <div class="metric-main">
+                                <span class="metric-value speed-main" id="metrics-speed">0.0</span>
+                                <span class="metric-label">km/h</span>
+                            </div>
+                            <div class="metric-avg" id="metrics-speed-avg">0.0 Ø</div>
+                        </div>
+                        <div class="metric-group">
+                            <div class="metric-main">
+                                <span class="metric-value" id="metrics-hr" style="color: #ff6666">0</span>
+                                <span class="metric-label">BPM</span>
+                            </div>
+                            <div class="metric-avg" id="metrics-hr-avg">0 Ø</div>
+                        </div>
+
+                        <div class="clock-session clock-horizontal clock-session-time">
+                            <div class="clock-label accent">TIEMPO</div>
+                            <div id="workout-timer">00:00:00</div>
+                        </div>
+                    </div>
+                </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                        CA                        </div>
+                        <div
+                            class="indicator-icon"
+                            id="indicator-SPD"
+                            title="Velocidad"
+                        >
+                            SPD
+                        </div>
+                    </div>
+
+                    <div
+                        class="hud-font-selector clock-session"
+                        style="
+                            pointer-events: auto;
+                            display: flex;
+                            gap: 4px;
+                            align-items: center;
+                        "
+                    >
+                        <span
+                            style="
+
+
+                                font-size: 9px;
+                                font-weight: 700;
+                                color: var(--text-secondary);
+                                margin-right: 2px;
+                            "
+                            >TEXTO</span
+                        >
+                        <button
+
+
+                                                                                          class="btn-font-scale"
+                            data-scale="sm"
+                            style="
+                                background: none;
+
+
+                                                                                              border: 1px solid var(--glass-border);
+                                color: white;
+                                padding: 2px 6px;
+
+
+                                                                                              border-radius: 4px;
+                                font-size: 10px;
+                                cursor: pointer;
+                                transition: all 0.2s;
+
+
+                            "
+                        >
+                            <span
+                                style="
+                                    font-size: 9px;
+                                    font-weight: 700;
+                                    color: var(--text-secondary);
+                                    margin-right: 2px;
+                                "
+                                >TEXTO</span
+                            >
+                            <button
+                                class="btn-font-scale"
+                                data-scale="sm"
+                                style="
+                                    background: none;
+                                    border: 1px solid var(--glass-border);
+                                    color: white;
+                                    padding: 2px 6px;
+                                    border-radius: 4px;
+                                    font-size: 10px;
+                                    cursor: pointer;
+                                    transition: all 0.2s;
+                                "
+                            >
+                                A-
+                            </button>
+                            <button
+                                class="btn-font-scale active"
+                                data-scale="md"
+                                style="
+                                    background: none;
+                                    border: 1px solid var(--glass-border);
+                                    color: white;
+                                    padding: 2px 6px;
+                                    border-radius: 4px;
+                                    font-size: 12px;
+                                    cursor: pointer;
+                                    transition: all 0.2s;
+                                "
+                            >
+                                A
+                            </button>
+                            <button
+                                class="btn-font-scale"
+                                data-scale="lg"
+                                style="
+                                    background: none;
+                                    border: 1px solid var(--glass-border);
+                                    color: white;
+                                    padding: 2px 6px;
+                                    border-radius: 4px;
+                                    font-size: 14px;
+                                    cursor: pointer;
+                                    transition: all 0.2s;
+                                "
+                            >
+                                A+
+                            </button>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                            A
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                <button
+                            class="btn-font-scale"
+                            data-scale="xl"
+                            style="
+                                background: none;
+                                border: 1px solid var(--glass-border);
+                                color: white;
+                                padding: 2px 6px;
+                                border-radius: 4px;
+                                font-size: 16px;
+                                cursor: pointer;
+                                transition: all 0.2s;
+                            "
+                        >
+                            A++
+                        </button>
+                    </div>
+
+                    <div class="metric-group">
+                        <div class="metric-main">
+                            <span class="metric-value" id="metrics-power"
+
+
+
+
+                                >0</span
+                            >
+                            <span class="metric-label">W</span>
+                        </div>
+                        <div class="metric-avg" id="metrics-power-avg">
+
+                                0 Ø
+
+                            </div>
+                    </div>
+                    <div class="metric-main">
+                        <span class="metric-value" id="metrics-cadence"
+
+                                >0</span
+
+                            >
+                        <span class="metric-label">RPM</span>
+                    </div>
+                    <div class="metric-group">
+                        <div class="metric-main">
+                            <span
+
+
+                                                                                                      class="metric-value speed-main"
+
+
+                                                                                                      id="metrics-speed"
+
+
+
+
+                                >0.0</span
+                            >
+                            <span class="metric-label">km/h</span>
+                        </div>
+
+
+
+
+                        <div class="metric-avg" id="metrics-speed-avg">
+                            0.0 Ø
+                        </div>
+                    </div>
+                    <div class="metric-group">
+                        <div class="metric-main">
+                            <span
+
+
+                                                                                                      class="metric-value"
+
+
+                                                                                                      id="metrics-hr"
+
+
+                                                                                                      style="color: #ff6666"
+
+
+
+
+                                >0</span
+                            >
+                            <span class="metric-label">BPM</span>
+                        </div>
+                        <div class="metric-avg" id="metrics-hr-avg">
+
+                                0 Ø
+
+                            </div>
+                    </div>
+
+                    <div
+
+
+                                                                              class="clock-session clock-horizontal clock-session-time"
+
+
+                    >
+                        <div class="clock-label accent">TIEMPO</div>
+                        <div id="workout-timer">00:00:00</div>
+                    </div>
+                </div>
+
+                <div
+                    id="workout-autopause-label"
+                    class="hud-autopause-label"
+                    style="display: none"
+                >
+                    ⏸️ AUTO-PAUSA
+                </div>
+            </div>
+
+            <!-- Ghost rival -->
+            <div class="ghost-banner hud-ghost" id="ghost-banner">
+                <span>👻 RIVAL GHOST:</span>
+                <span class="ghost-value ahead" id="ghost-time-gap">-0:00</span>
+            </div>
+
+            <!-- Panel modo manual -->
+            <div
+                class="hud-manual-overlay"
+                id="manual-mode-panel"
+                style="display: none"
+            >
+                <div class="glass-card manual-slope-adjuster">
+                    <div class="slope-dial">
+                        <span class="slope-dial-value" id="manual-slope-label"
+                            >0.0%</span
+                        >
+                        <span class="slope-dial-label">Pendiente</span>
+                    </div>
+                    <div class="slope-buttons">
+                        <button class="slope-btn" id="btn-slope-minus">
+                            -
+                        </button>
+                        <button class="slope-btn" id="btn-slope-plus">+</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Consola rodillo virtual -->
+            <div
+                class="hud-sim-panel glass-card simulator-control-panel"
+                id="virtual-trainer-panel"
+                style="display: none"
+            >
+                <h3 class="hud-sim-title">🎛️ Consola del Rodillo Virtual</h3>
+                <div class="sim-slider-group">
+                    <div class="sim-slider-label">
+                        <span>Pedaleo Virtual: Potencia</span>
+                        <strong id="sim-power-val">150 W</strong>
+                    </div>
+                    <input
+                        type="range"
+                        class="sim-slider"
+                        id="sim-power-slider"
+                        min="50"
+                        max="600"
+                        value="150"
+                        step="5"
+                    />
+                </div>
+                <div class="sim-slider-group">
+                    <div class="sim-slider-label">
+                        <span>Pedaleo Virtual: Cadencia</span>
+                        <strong id="sim-cadence-val">85 rpm</strong>
+                    </div>
+                    <input
+                        type="range"
+                        class="sim-slider"
+                        id="sim-cadence-slider"
+                        min="40"
+                        max="130"
+                        value="85"
+                        step="1"
+                    />
+                </div>
+                <div class="sim-slider-group">
+                    <div class="sim-slider-label">
+                        <span>Ritmo Cardíaco Ficticio</span>
+                        <strong id="sim-hr-val">120 bpm</strong>
+                    </div>
+                    <input
+                        type="range"
+                        class="sim-slider"
+                        id="sim-hr-slider"
+                        min="60"
+                        max="190"
+                        value="120"
+                        step="1"
+                    />
+                </div>
+            </div>
+
+            <!-- Modal de carga de ruta -->
+            <div class="route-modal-overlay" id="route-modal">
+                <div class="route-modal-content">
+                    <div class="route-modal-title">Configurar Nueva Sesión</div>
+                    <div class="route-modal-section">
+                        <div class="route-modal-section-title">
+                            Cargar Nueva Ruta
+                        </div>
+                        <div class="gpx-load-area-modal">
+                            <span
+                                class="gpx-filename-label-modal"
+                                id="gpx-filename-label"
+                                >Ningún archivo seleccionado.</span
+                            >
+                            <input
+                                type="file"
+                                id="gpx-file-input"
+                                accept=".gpx,.xml,.tcx"
+                                style="display: none"
+                            />
+                            <button
+                                class="btn-gpx-pick-modal"
+                                id="btn-trigger-gpx-pick"
+                            >
+                                Seleccionar Archivo GPX
+                            </button>
+                        </div>
+                    </div>
+                    <div class="route-modal-actions">
+                        <button class="btn-modal-cancel" id="btn-modal-cancel">
+                            Cancelar
+                        </button>
+                        <button
+                            class="btn-modal-confirm"
+                            id="btn-modal-confirm"
+                        >
+                            ¡Empezar Sesión!
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. SCREEN: SUMMARY CARD -->
+        <div id="screen-summary" class="screen">
+            <h2 style="font-size: 28px; margin-bottom: 6px">
+                ¡Entrenamiento Completado!
+            </h2>
+            <p style="color: var(--text-secondary); margin-bottom: 24px">
+                Gran trabajo. Aquí tienes el resumen y las analíticas de tu
+                sesión.
+            </p>
+
+            <div class="summary-grid">
+                <!-- Metrics summaries -->
+                <div class="glass-card summary-big-numbers">
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">Tiempo Total</div>
+                        <div class="summary-num-value" id="summary-duration">
+                            00:00:00
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">Distancia Recorrida</div>
+                        <div
+                            class="summary-num-value blue"
+                            id="summary-distance"
+                        >
+                            0.0 km
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">
+                            Potencia Normalizada
+                        </div>
+                        <div class="summary-num-value green" id="summary-np">
+                            0 W
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">TSS</div>
+                        <div class="summary-num-value" id="summary-tss">0</div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">
+                            Factor de Intensidad
+                        </div>
+                        <div class="summary-num-value" id="summary-if">
+                            0.00
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">Calorías Totales</div>
+                        <div class="summary-num-value" id="summary-calories">
+                            0 kcal
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">
+                            Potencia Media / Máx
+                        </div>
+                        <div
+                            class="summary-num-value"
+                            id="summary-power-stats"
+                            style="font-size: 20px; padding-top: 8px"
+                        >
+                            0 / 0 W
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">
+                            Velocidad Media / Máx
+                        </div>
+                        <div
+                            class="summary-num-value"
+                            id="summary-speed-stats"
+                            style="font-size: 20px; padding-top: 8px"
+                        >
+                            0 / 0 km/h
+                        </div>
+                    </div>
+                    <div class="summary-num-card" style="grid-column: span 2">
+                        <div class="summary-num-title">
+                            Pulso Medio / Máximo
+                        </div>
+                        <div
+                            class="summary-num-value"
+                            id="summary-hr-stats"
+                            style="
+                                font-size: 24px;
+                                padding-top: 4px;
+                                color: var(--accent-red);
+                            "
+                        >
+                            0 / 0 bpm
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Power zones charts -->
+                <div class="glass-card summary-charts">
+                    <h3
+                        style="
+                            font-size: 16px;
+                            margin-bottom: 8px;
+                            color: white;
+                        "
+                    >
+                        Minutos por Zona de Potencia
+                    </h3>
+                    <div
+                        class="chart-container"
+                        id="summary-zones-chart"
+                        style="height: 250px"
+                    ></div>
+                </div>
+            </div>
+
+            <div
+                class="glass-card"
+                style="
+                    margin-bottom: 24px;
+                    padding: 16px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                "
+            >
+                <div>
+                    <h4 style="color: white; font-size: 14px">
+                        Descargar archivo GPX
+                    </h4>
+                    <p style="font-size: 12px; color: var(--text-secondary)">
+                        Descarga el archivo con telemetría completa para subirlo
+                        a Strava o Garmin Connect.
+                    </p>
+                </div>
+                <button class="btn btn-secondary" id="btn-export-gpx">
+                    Exportar GPX
+                </button>
+            </div>
+
+            <button
+                class="btn btn-primary"
+                id="btn-summary-close"
+                style="width: 100%; height: 50px; margin-bottom: 40px"
+            >
+                Cerrar y Volver
+            </button>
+        </div>
+
+        <!-- 6. SCREEN: HISTORY -->
+        <div id="screen-history" class="screen">
+            <h2 style="font-size: 28px; margin-bottom: 6px">
+                Historial de Entrenamientos
+            </h2>
+            <p style="color: var(--text-secondary); margin-bottom: 20px">
+                Revisa las sesiones de rodillo registradas con tu perfil.
+            </p>
+
+            <div class="history-list" id="history-items-container">
+                <!-- Populated dynamically -->
+                <div
+                    class="glass-card"
+                    style="
+                        text-align: center;
+                        padding: 40px;
+                        color: var(--text-secondary);
+                    "
+                >
+                    No se han encontrado sesiones en tu historial.
+                </div>
+            </div>
+
+            <button
+                class="btn btn-dark"
+                id="btn-history-back"
+                style="
+                    width: 100%;
+                    height: 50px;
+                    margin-top: 30px;
+                    margin-bottom: 40px;
+                "
+            >
+                Volver al Inicio
+            </button>
+        </div>
+
+        <!-- 7. SCREEN: STATS -->
+        <div id="screen-stats" class="screen">
+            <h2 style="font-size: 28px; margin-bottom: 6px">
+                Progreso de Entrenamiento
+            </h2>
+            <p style="color: var(--text-secondary); margin-bottom: 24px">
+                Analíticas consolidadas de rendimiento del usuario.
+            </p>
+
+            <div
+                style="
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 16px;
+                    margin-bottom: 24px;
+                "
+            >
+                <div class="glass-card" style="text-align: center">
+                    <span
+                        style="
+                            font-size: 11px;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                        "
+                        >Sesiones Totales</span
+                    >
+                    <h1
+                        style="font-size: 36px; color: white; margin-top: 6px"
+                        id="stats-total-sessions"
+                    >
+                        0
+                    </h1>
+                </div>
+                <div class="glass-card" style="text-align: center">
+                    <span
+                        style="
+                            font-size: 11px;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                        "
+                        >Distancia Acumulada</span
+                    >
+                    <h1
+                        style="
+                            font-size: 36px;
+                            color: var(--accent-blue);
+                            margin-top: 6px;
+                        "
+                        id="stats-total-distance"
+                    >
+                        0.0 km
+                    </h1>
+                </div>
+                <div class="glass-card" style="text-align: center">
+                    <span
+                        style="
+                            font-size: 11px;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                        "
+                        >Tiempo Acumulado</span
+                    >
+                    <h1
+                        style="font-size: 30px; color: white; margin-top: 6px"
+                        id="stats-total-time"
+                    >
+                        0h 0m
+                    </h1>
+                </div>
+                <div class="glass-card" style="text-align: center">
+                    <span
+                        style="
+                            font-size: 11px;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                        "
+                        >Potencia Máxima Histórica</span
+                    >
+                    <h1
+                        style="
+                            font-size: 30px;
+                            color: var(--accent-green);
+                            margin-top: 6px;
+                        "
+                        id="stats-max-power"
+                    >
+                        0 W
+                    </h1>
+                </div>
+            </div>
+
+            <div class="glass-card" style="margin-bottom: 24px">
+                <h3 style="font-size: 16px; margin-bottom: 12px; color: white">
+                    Progreso de Rendimiento
+                </h3>
+                <p
+                    style="
+                        font-size: 13px;
+                        color: var(--text-secondary);
+                        line-height: 1.4;
+                    "
+                >
+                    Tus métricas de entrenamiento (TSS e Intensidad) se calculan
+                    en base a tu umbral FTP. ¡Asegúrate de tener actualizado tu
+                    FTP en ajustes para que los datos sean 100% fiables!
+                </p>
+            </div>
+
+            <button
+                class="btn btn-dark"
+                id="btn-stats-back"
+                style="width: 100%; height: 50px; margin-bottom: 40px"
+            >
+                Volver al Inicio
+            </button>
+        </div>
+
+        <!-- --- OVERLAYS & MODALS SYSTEM --- -->
+
+        <!-- Add User Modal -->
+        <div class="modal-overlay" id="modal-add-user">
+            <div class="glass-card modal-content">
+                <div class="modal-header">
+                    <h3 style="font-size: 20px; color: white">
+                        Crear Perfil Ciclista
+                    </h3>
+                    <button class="modal-close" id="btn-close-add-user">
+                        &times;
+                    </button>
+                </div>
+                <form id="form-add-user">
+                    <div class="input-group">
+                        <label for="new-user-name">Nombre</label>
+                        <input
+                            type="text"
+                            class="input-field"
+                            id="new-user-name"
+                            required
+                            placeholder="Ej: Nombre de usuario"
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="new-user-weight">Peso (kg)</label>
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="new-user-weight"
+                            required
+                            value="75"
+                            step="0.1"
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="new-user-ftp"
+                            >FTP (Watts) - Umbral Funcional de Potencia</label
+                        >
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="new-user-ftp"
+                            required
+                            value="200"
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="new-user-maxhr"
+                            >Frecuencia Cardíaca Máxima (BPM)</label
+                        >
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="new-user-maxhr"
+                            required
+                            value="190"
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="new-user-age">Edad</label>
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="new-user-age"
+                            required
+                            value="30"
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="new-user-height">Altura (cm)</label>
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="new-user-height"
+                            required
+                            value="175"
+                        />
+                    </div>
+                    <button
+                        type="submit"
+                        class="btn btn-primary"
+                        style="width: 100%; margin-top: 10px"
+                    >
+                        Crear Perfil
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Import Profile Modal -->
+        <div class="modal-overlay" id="modal-import-user">
+            <div class="glass-card modal-content">
+                <div class="modal-header">
+                    <h3 style="font-size: 20px; color: white">
+                        Importar Perfil Ciclista
+                    </h3>
+                    <button class="modal-close" id="btn-close-import-user">
+                        &times;
+                    </button>
+                </div>
+                <div class="input-group">
+                    <label for="import-json-data"
+                        >Introduce el código JSON del Perfil</label
+                    >
+                    <textarea
+                        class="input-field"
+                        id="import-json-data"
+                        rows="8"
+                        placeholder='Ej: {"uuid":"...","name":"...","weight":75,"ftp":200}'
+                        style="
+                            resize: vertical;
+                            font-family: monospace;
+                            font-size: 12px;
+                        "
+                    ></textarea>
+                </div>
+                <button
+                    class="btn btn-primary"
+                    id="btn-submit-import-user"
+                    style="width: 100%; margin-top: 10px"
+                >
+                    Importar Perfil
+                </button>
+            </div>
+        </div>
+
+        <!-- Edit User / Settings Modal -->
+        <div class="modal-overlay" id="modal-edit-user">
+            <div class="glass-card modal-content">
+                <div class="modal-header">
+                    <h3 style="font-size: 20px; color: white">
+                        Ajustes de Perfil
+                    </h3>
+                    <button class="modal-close" id="btn-close-edit-user">
+                        &times;
+                    </button>
+                </div>
+                <form id="form-edit-user">
+                    <div class="input-group">
+                        <label for="edit-user-name">Nombre</label>
+                        <input
+                            type="text"
+                            class="input-field"
+                            id="edit-user-name"
+                            required
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-user-weight">Peso (kg)</label>
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="edit-user-weight"
+                            required
+                            step="0.1"
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-user-ftp">FTP (Watts)</label>
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="edit-user-ftp"
+                            required
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-user-maxhr"
+                            >Frecuencia Cardíaca Máxima (BPM)</label
+                        >
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="edit-user-maxhr"
+                            required
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-user-age">Edad</label>
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="edit-user-age"
+                            required
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-user-height">Altura (cm)</label>
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="edit-user-height"
+                            required
+                        />
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 20px">
+                        <button
+                            type="button"
+                            class="btn btn-danger"
+                            id="btn-delete-profile"
+                            style="flex: 1; padding: 10px 0; font-size: 14px"
+                        >
+                            Eliminar
+                        </button>
+                        <button
+                            type="button"
+                            class="btn btn-dark"
+                            id="btn-export-profile"
+                            style="flex: 1; padding: 10px 0; font-size: 14px"
+                        >
+                            Exportar
+                        </button>
+                        <button
+                            type="submit"
+                            class="btn btn-primary"
+                            style="flex: 1.5; padding: 10px 0; font-size: 14px"
+                        >
+                            Guardar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Radar Scan Overlay -->
+        <div class="radar-overlay" id="radar-scan-overlay">
+            <div class="radar-ring">
+                <div class="radar-center">📡</div>
+            </div>
+            <h3 style="color: white; margin-bottom: 6px" id="radar-scan-title">
+                Buscando Sensor...
+            </h3>
+            <p style="color: var(--text-secondary); font-size: 13px">
+                Haz clic en tu dispositivo en el cuadro emergente del navegador.
+            </p>
+            <button
+                class="btn btn-dark"
+                id="btn-cancel-scan"
+                style="margin-top: 30px; padding: 8px 20px; font-size: 13px"
+            >
+                Cancelar
+            </button>
+        </div>
+
+        <!-- --- JAVASCRIPT SCRIPTS MODULES --- -->
+
+        <!-- Leaflet Map JS via CDN -->
+        <script
+            src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""
+        ></script>
+
+        <!-- ApexCharts JS via CDN -->
+        <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+        <!-- Custom modules -->
+        <script src="js/db.js"></script>
+        <script src="js/gpx.js"></script>
+        <script src="js/bluetooth.js"></script>
+        <script src="js/charts.js"></script>
+    </body>
+</html>
