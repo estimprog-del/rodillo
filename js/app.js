@@ -10,13 +10,17 @@ import {
   saveStateToLocalStorage,
   loadStateFromLocalStorage,
 } from "./modules/state.js";
+import { initNavigation } from "./ui/navigation.js";
+import { loadDashboardHeader } from "./ui/dashboard.js";
+import { updateClock, updatePauseButton } from "./ui/uiHelpers.js";
 import { bindEvents } from "./modules/events.js";
 
 const SLOPE_AVERAGE_METERS = 20;
 const SLOPE_PREVIEW_LONG_METERS = 500;
 const MAX_SLOPE_CHANGE_PER_SEC = 0.5;
 
-// Application state (importado desde ./modules/state.js)
+// Global Navigation function (injected)
+let navigateTo;
 
 // UI Elements references
 const UI = {
@@ -31,6 +35,24 @@ const UI = {
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("RodilloInt SPA initializing...");
 
+  // Initialize Navigation
+  const navigationCallbacks = {
+    dashboard: () => {
+      loadDashboardHeader(state);
+      setTimeout(() => {
+        if (typeof BleManager.autoReconnectSavedDevices === "function") {
+          BleManager.autoReconnectSavedDevices();
+        }
+      }, 600);
+    },
+    workout: () => enterWorkoutScreen(),
+    history: () => loadHistoryList(),
+    stats: () => loadProgressStats(),
+    connections: () => syncBluetoothScreenStatus(),
+  };
+
+  navigateTo = initNavigation(UI, state, navigationCallbacks);
+
   // Bind UI Elements
   cacheUiElements();
   bindEvents({
@@ -41,7 +63,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     handleExportProfile,
     handleLogout,
     startModeFlow,
-    navigateTo,
+    navigateTo, // <- This now uses the initialized version
     triggerBleConnection,
     togglePause,
     stopSessionFlow,
@@ -119,24 +141,6 @@ function cacheUiElements() {
 // NOTA: Las funciones showModal, hideModal, setElDisplay, setElText,
 // y safeSetText han sido eliminadas de este archivo.
 // Ahora se utilizan las versiones importadas.
-
-function updateClock() {
-  const now = new Date();
-  setElText(
-    "clock",
-    now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
-  );
-}
-
-function updatePauseButton(label, variant = "default") {
-  const btn = document.getElementById("btn-workout-pause");
-  if (!btn) return;
-  btn.textContent = label;
-  btn.className =
-    variant === "resume"
-      ? "btn-control btn-pause is-resume"
-      : "btn-control btn-pause";
-}
 
 function showRouteModal() {
   if (UI.routeModal) UI.routeModal.classList.add("active");
@@ -223,39 +227,6 @@ function configureWorkoutHudForMode() {
 */
 
 // --- NAVIGATION ENGINE ---
-function navigateTo(screenId) {
-  // Hide active screens
-  Object.keys(UI.screens).forEach((key) => {
-    UI.screens[key].className = "screen";
-  });
-
-  if (screenId !== "workout" && state.clockInterval) {
-    clearInterval(state.clockInterval);
-    state.clockInterval = null;
-  }
-
-  // Show target screen
-  UI.screens[screenId].className = "screen active";
-
-  // Screen entering callbacks
-  if (screenId === "dashboard") {
-    loadDashboardHeader();
-    // Autoconexión silenciosa de dispositivos guardados
-    setTimeout(() => {
-      if (typeof BleManager.autoReconnectSavedDevices === "function") {
-        BleManager.autoReconnectSavedDevices();
-      }
-    }, 600);
-  } else if (screenId === "workout") {
-    enterWorkoutScreen();
-  } else if (screenId === "history") {
-    loadHistoryList();
-  } else if (screenId === "stats") {
-    loadProgressStats();
-  } else if (screenId === "connections") {
-    syncBluetoothScreenStatus();
-  }
-}
 
 function setWorkoutFontScale(increment) {
   const viewport = document.querySelector(".workout-viewport");
@@ -491,22 +462,6 @@ function handleExportProfile() {
     .catch(() => {
       alert(`Copia este código:\n\n${jsonStr}`);
     });
-}
-
-function loadDashboardHeader() {
-  if (!state.currentUser) return;
-  document.getElementById("dashboard-user-name").textContent =
-    state.currentUser.name;
-
-  const initials = state.currentUser.name
-    .split(" ")
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-  document
-    .getElementById("active-profile-header")
-    .querySelector(".avatar-small").textContent = initials;
 }
 
 // --- WORKOUT LAUNCH MODAL/FLOW ---
@@ -961,12 +916,16 @@ async function handleGpxUpload(e) {
       state.routeElevations = routeData.elevations;
       state.routeDistances = routeData.distances;
       state.currentRouteIndex = 0;
+      console.log(
+        "DEBUG: routeData points count:",
+        routeData.points ? routeData.points.length : "null",
+      );
       state.routeTotalAscent = calculateTotalRouteAscent();
 
       initLeafletMap();
       drawRouteOnMap();
       refreshUpcomingPreview(0);
-      updateRouteProgressHud();
+      updateRouteProgressHud(state);
 
       // Inicializar perfil de elevación principal
       setElDisplay("hud-elevation-footer", "block");
@@ -1205,11 +1164,17 @@ function startTimerInterval() {
 
         if (state.currentMode === "ROUTE") {
           state.totalDistance += state.currentSpeed / 3600.0;
+          if (window.ChartsManager) {
+            window.ChartsManager.setElevationCursor(
+              state.totalDistance / 1000,
+              state.routeTotalDistance / 1000,
+            );
+          }
           setElText(
             "submetrics-distance",
             `${state.totalDistance.toFixed(2)} km`,
           );
-          updateRouteProgressHud();
+          updateRouteProgressHud(state);
           updateRouteSimulation(state.totalDistance);
         }
 

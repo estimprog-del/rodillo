@@ -1,1 +1,1 @@
-export default { base: '/rodillo/' }; 
+export default { base: "./" };

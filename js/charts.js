@@ -430,29 +430,29 @@ function initElevationChart(
 /**
  * Sincroniza la marca vertical del ciclista sobre el perfil de elevación
  */
-function setElevationCursor(distanceKm, totalDistanceKm) {
+// Función para actualizar la línea vertical usando anotaciones de ApexCharts
+export function setElevationCursor(distanceKm, totalDistanceKm) {
   if (!elevationChart) return;
 
-  const cursor = document.getElementById("elevation-chart-cursor");
-  const chartEl = document.getElementById("elevation-chart");
-  if (!cursor || !chartEl || !totalDistanceKm || totalDistanceKm <= 0) return;
-
-  const gridBg = chartEl.querySelector(".apexcharts-grid-bg");
-  if (!gridBg) {
-    // Si la rejilla interna no se ha renderizado aún
-    return;
-  }
-
-  // Obtener la posición X inicial y el ancho de la rejilla interna SVG
-  const xAttr = parseFloat(gridBg.getAttribute("x")) || 0;
-  const widthAttr = parseFloat(gridBg.getAttribute("width")) || 0;
-
-  // Calcular porcentaje completado y aplicarlo al ancho de la rejilla
-  const pct = Math.min(1.0, Math.max(0.0, distanceKm / totalDistanceKm));
-  const leftPx = xAttr + pct * widthAttr;
-
-  cursor.style.left = `${leftPx}px`;
-  cursor.style.display = "block";
+  // Usamos la API de ApexCharts para actualizar la anotación vertical
+  elevationChart.updateOptions(
+    {
+      annotations: {
+        xaxis: [
+          {
+            x: distanceKm,
+            borderColor: "#ffffff",
+            borderWidth: 2,
+            label: {
+              show: false,
+            },
+          },
+        ],
+      },
+    },
+    false,
+    false,
+  );
 }
 
 /**
