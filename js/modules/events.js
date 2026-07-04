@@ -31,7 +31,7 @@ export function bindEvents(handlers) {
 
   document.body.addEventListener("click", (e) => {
     const target = e.target.closest(
-      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-slope-minus, #btn-slope-plus, #btn-export-gpx, [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm",
+      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-slope-minus, #btn-slope-plus, #btn-export-gpx, [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back",
     );
 
     if (!target) return;
@@ -65,6 +65,7 @@ export function bindEvents(handlers) {
       if (id === "btn-go-progress") navigateTo("stats");
       if (id === "btn-logout") handleLogout();
       if (id === "btn-connections-back") navigateTo("dashboard");
+      if (id === "btn-stats-back") navigateTo("dashboard");
 
       // Modos
       if (id === "mode-route") {
