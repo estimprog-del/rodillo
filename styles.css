@@ -339,6 +339,11 @@ h4 {
     margin-bottom: 30px;
     width: 100%;
 }
+
+.dashboard-header-buttons {
+    display: flex;
+    gap: 12px; /* Ajusta este valor para más o menos espacio */
+}
 .active-profile-info {
     display: flex;
     align-items: center;

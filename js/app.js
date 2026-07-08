@@ -499,6 +499,15 @@ function syncBluetoothScreenStatus() {
     const label = document.getElementById(`status-label-${type}`);
     const btn = document.getElementById(`btn-connect-${type}`);
 
+    // Ocultar o deshabilitar el sensor TRAINER si estamos en modo TRADITIONAL
+    if (state.currentMode === "TRADITIONAL" && type === "TRAINER") {
+      if (card) card.style.display = "none"; // Ocultar toda la tarjeta del rodillo
+      // Alternativamente, podrías solo deshabilitarlo:
+      // if (btn) { btn.disabled = true; btn.textContent = 'No Aplica'; btn.style.opacity = '0.5'; }
+      // if (label) label.textContent = 'No Aplica';
+      return; // Salir del bucle para este tipo de sensor
+    }
+
     if (!hasBluetooth && btn) {
       btn.disabled = true;
       btn.textContent = "No Soportado";
@@ -1413,7 +1422,51 @@ async function stopSessionFlow() {
     // Initial zones chart rendering
     ChartsManager.initZonesChart("summary-zones-chart", state.timeInPowerZones);
 
+    // Ocultar elementos de la UI del entrenamiento
+    document
+      .getElementById("hud-top-bar")
+      ?.style.setProperty("display", "none");
+    document
+      .getElementById("hud-bottom-left")
+      ?.style.setProperty("display", "none");
+    document
+      .getElementById("hud-bottom-right-group")
+      ?.style.setProperty("display", "none");
+    document
+      .getElementById("manual-mode-panel")
+      ?.style.setProperty("display", "none");
+    document
+      .getElementById("virtual-trainer-panel")
+      ?.style.setProperty("display", "none");
+    document
+      .getElementById("elevation-chart-cursor")
+      ?.style.setProperty("display", "none");
+    document
+      .getElementById("ghost-banner")
+      ?.style.setProperty("display", "none");
     // Show summary screen
+    document
+      .getElementById("hud-top-bar")
+      ?.style.setProperty("display", "none");
+    document
+      .getElementById("hud-bottom-left")
+      ?.style.setProperty("display", "none");
+    document
+      .getElementById("hud-bottom-right-group")
+      ?.style.setProperty("display", "none");
+    document
+      .getElementById("manual-mode-panel")
+      ?.style.setProperty("display", "none");
+    document
+      .getElementById("virtual-trainer-panel")
+      ?.style.setProperty("display", "none");
+    document
+      .getElementById("elevation-chart-cursor")
+      ?.style.setProperty("display", "none");
+    document
+      .getElementById("ghost-banner")
+      ?.style.setProperty("display", "none");
+
     navigateTo("summary");
   } catch (e) {
     console.error("Failed to close session", e);
