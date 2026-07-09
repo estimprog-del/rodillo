@@ -17,7 +17,7 @@
             integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
             crossorigin=""
         />
-      <script type="module" crossorigin src="./assets/index-D5lrlV8J.js"></script>
+      <script type="module" crossorigin src="./assets/index--KQfFe_D.js"></script>
       <link rel="stylesheet" crossorigin href="./assets/index-DG1SFwLe.css">
     </head>
     <body>
@@ -771,6 +771,22 @@
                         step="1"
                     />
                 </div>
+
+                <div class="sim-slider-group">
+                    <div class="sim-slider-label">
+                        <span>Factor de Realismo de la Pendiente</span>
+                        <strong id="realism-value-session">100%</strong>
+                    </div>
+                    <input
+                        type="range"
+                        id="realism-slider-session"
+                        min="30"
+                        max="150"
+                        value="100"
+                        step="1"
+                        style="width: 100%; height: 8px; accent-color: var(--accent-blue); background: var(--bg-secondary); border: 1px solid var(--glass-border); border-radius: 4px;"
+                    />
+                </div>
             </div>
 
             <!-- Modal de carga de ruta -->
@@ -801,6 +817,26 @@
                             </button>
                         </div>
                     </div>
+
+                    <div class="route-modal-section">
+                        <div class="route-modal-section-title">
+                            Ajuste de Dureza
+                        </div>
+                        <div class="input-group">
+                            <label for="realism-slider" style="text-align: center;">Factor de Realismo de la Pendiente</label>
+                            <input
+                                type="range"
+                                id="realism-slider"
+                                min="30"
+                                max="150"
+                                value="100"
+                                step="1"
+                                style="width: 100%; height: 8px; accent-color: var(--accent-blue); background: var(--bg-secondary); border: 1px solid var(--glass-border); border-radius: 4px;"
+                            />
+                            <span id="realism-value" style="text-align: center; color: var(--text-primary); font-weight: bold; margin-top: 5px;">100%</span>
+                        </div>
+                    </div>
+
                     <div class="route-modal-actions">
                         <button class="btn-modal-cancel" id="btn-modal-cancel">
                             Cancelar
