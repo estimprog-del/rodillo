@@ -20,8 +20,8 @@
 
         <!-- MapLibre 3D CSS -->
         <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
-      <script type="module" crossorigin src="./assets/index-BLC2SiPu.js"></script>
-      <link rel="stylesheet" crossorigin href="./assets/index-DdaHiVdc.css">
+      <script type="module" crossorigin src="./assets/index-CS-dIEdW.js"></script>
+      <link rel="stylesheet" crossorigin href="./assets/index-DR-vdUpj.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -81,13 +81,6 @@
                         style="padding: 10px 14px"
                     >
                         ⚙️ Ajustes
-                    </button>
-                    <button
-                        class="btn btn-dark"
-                        id="btn-download-comms-log"
-                        style="padding: 10px 14px; margin: 0 8px;"
-                    >
-                        📡 Descargar Log
                     </button>
                     <button
                         class="btn btn-dark"
@@ -491,18 +484,6 @@
                             >
                                 🗺️ 3D
                             </button>
-                            <button
-                                class="btn-control btn-rotate"
-                                id="btn-toggle-rotate"
-                                style="
-                                    margin-bottom: 5px;
-                                    width: fit-content;
-                                    padding: 5px 15px;
-                                    background-color: #059669;
-                                "
-                            >
-                                🧭
-                            </button>
                             <div
                                 class="slope-box glass-card"
                                 id="metrics-slope"
@@ -558,7 +539,7 @@
                                     margin-right: 70px;
                                 "
                             >
-                                <div class="clock-label" style="font-size: 8px">
+                                <div class="clock-label" style="font-size: 8px; color: #ffffff">
                                     HORA
                                 </div>
                                 <div
@@ -615,7 +596,7 @@
                                     style="
                                         font-size: 9px;
                                         font-weight: 700;
-                                        color: var(--text-secondary);
+                                        color: #ffffff;
                                         margin-right: 2px;
                                     "
                                     >TEXTO</span
@@ -677,7 +658,7 @@
                                         id="metrics-power"
                                         >0</span
                                     >
-                                    <span class="metric-label">W</span>
+                                    <span class="metric-label" style="color: #ffffff">W</span>
                                 </div>
                                 <div class="metric-avg" id="metrics-power-avg">
                                     0 Ø
@@ -687,7 +668,7 @@
                                 <span class="metric-value" id="metrics-cadence"
                                     >0</span
                                 >
-                                <span class="metric-label">RPM</span>
+                                <span class="metric-label" style="color: #ffffff">RPM</span>
                             </div>
                             <div class="metric-group">
                                 <div class="metric-main">
@@ -696,7 +677,7 @@
                                         id="metrics-speed"
                                         >0.0</span
                                     >
-                                    <span class="metric-label">km/h</span>
+                                    <span class="metric-label" style="color: #ffffff">km/h</span>
                                 </div>
                                 <div class="metric-avg" id="metrics-speed-avg">
                                     0.0 Ø
@@ -710,7 +691,7 @@
                                         style="color: #ff6666"
                                         >0</span
                                     >
-                                    <span class="metric-label">BPM</span>
+                                    <span class="metric-label" style="color: #ffffff">BPM</span>
                                 </div>
                                 <div class="metric-avg" id="metrics-hr-avg">
                                     0 Ø
@@ -720,7 +701,7 @@
                             <div
                                 class="clock-session clock-horizontal clock-session-time"
                             >
-                                <div class="clock-label accent">TIEMPO</div>
+                                <div class="clock-label accent" style="color: #ffffff">TIEMPO</div>
                                 <div id="workout-timer">00:00:00</div>
                             </div>
                         </div>
@@ -1395,14 +1376,6 @@
                             required
                         />
                     </div>
-                    <div class="input-group">
-                        <label for="edit-user-autopause">Umbral de AutoPausa (km/h)</label>
-                        <select class="input-field" id="edit-user-autopause">
-                            <option value="0">0 km/h (Inmediata)</option>
-                            <option value="3">3 km/h (Suave)</option>
-                            <option value="5">5 km/h (Relajada)</option>
-                        </select>
-                    </div>
 
                     <div style="display: flex; gap: 10px; margin-top: 20px">
                         <button
@@ -1490,39 +1463,30 @@
               <input type="range" id="setting-font-scale" min="0.8" max="1.5" step="0.1" style="width: 100%;">
             </div>
             <div style="display: flex; flex-direction: column; gap: 8px;">
-              <label style="font-size: 0.9rem; opacity: 0.8;">Umbral AutoPausa (km/h):</label>
-              <select id="setting-autopause" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
-                <option value="0">0 km/h (Inmediata)</option>
-                <option value="3">3 km/h (Suave)</option>
-                <option value="5">5 km/h (Relajada)</option>
-              </select>
+              <label style="font-size: 0.9rem; opacity: 0.8;">Factor de Realismo (<span id="realism-val-display">100</span>%):</label>
+              <input type="range" id="setting-realism" min="10" max="150" step="5" style="width: 100%; cursor: pointer;">
             </div>
             <div style="display: flex; flex-direction: column; gap: 8px;">
               <label style="font-size: 0.9rem; opacity: 0.8;">Suavizado de Potencia:</label>
-              <div style="display: flex; gap: 8px;">
-                  <button class="btn btn-dark btn-smoothing" data-val="1000" style="flex:1;">1s</button>
-                  <button class="btn btn-dark btn-smoothing" data-val="3000" style="flex:1;">3s</button>
-                  <button class="btn btn-dark btn-smoothing" data-val="5000" style="flex:1;">5s</button>
+              <div id="btn-group-smoothing" style="display: flex; gap: 8px;">
+                <button type="button" class="btn-smoothing" data-val="1000" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #374151; background: #333; color: white; cursor: pointer;">1s</button>
+                <button type="button" class="btn-smoothing" data-val="3000" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #374151; background: #333; color: white; cursor: pointer;">3s</button>
+                <button type="button" class="btn-smoothing" data-val="5000" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #374151; background: #333; color: white; cursor: pointer;">5s</button>
               </div>
             </div>
             <div style="display: flex; flex-direction: column; gap: 8px;">
               <label style="font-size: 0.9rem; opacity: 0.8;">FTP (%) para Zonas:</label>
-              <input type="text" id="setting-power-zones" class="input-field" style="width: 100%;">
+              <input type="text" id="setting-power-zones" placeholder="55,75,88,95,106" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
             </div>
-            <button id="btn-backup-data" class="btn btn-secondary" style="width: 100%;">💾 Descargar Backup Completo</button>
-            <button id="btn-save-settings" class="btn btn-primary" style="width: 100%;">Guardar Cambios</button>
+            <div style="margin-top: 10px; border-top: 1px solid #374151; pt: 10px;">
+              <button id="btn-backup-data" class="btn" style="width: 100%; padding: 10px; background: #3b82f6; border: none; color: white; border-radius: 6px; cursor: pointer;">💾 Descargar Backup Completo</button>
+            </div>
+          </div>
+          <div class="modal-footer" style="margin-top: 24px; display: flex; justify-content: flex-end;">
+            <button id="btn-save-settings" class="btn btn-primary" style="padding: 10px 24px; border-radius: 8px; background: #10b981; border: none; color: white; font-weight: 600; cursor: pointer;">Guardar Cambios</button>
           </div>
         </div>
       </div>
   
-        <!-- Welcome/Login Screen -->
-        <div id="screen-welcome" class="screen">
-          <div class="glass-card" style="text-align: center; max-width: 400px; margin: 100px auto 0 auto;">
-            <h2 style="color: white; margin-bottom: 16px;">¡Hola de nuevo!</h2>
-            <p id="welcome-message" style="margin: 20px 0; color: var(--text-secondary);"></p>
-            <div style="display: flex; gap: 10px; justify-content: center;">
-              <button id="btn-welcome-enter" class="btn btn-primary">Entrar ahora</button>
-              <button id="btn-welcome-switch" class="btn btn-dark">Cambiar usuario</button>
-            </div>
-          </div>
-        </div>
+    </body>
+</html>
