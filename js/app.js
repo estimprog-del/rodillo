@@ -177,7 +177,7 @@ function showRouteModal() {
         const val = e.target.value;
         realismValue.textContent = `${val}%`;
         state.realismFactor = parseFloat(val) / 100;
-        
+
         // Guardar persistente
         localStorage.setItem("rodilloint_realism", state.realismFactor);
         saveStateToLocalStorage();
@@ -710,7 +710,7 @@ function onPowerReceived(power) {
   const ftp = state.currentUser ? state.currentUser.ftp : 200;
   // Usar zonas personalizadas del estado, divididas por 100 para obtener el factor
   const z = state.powerZones || [55, 75, 88, 95, 106];
-  
+
   let zoneColor = "#10b981";
   let activeZoneIndex = 0;
 
@@ -1175,7 +1175,7 @@ function drawRouteOnMap() {
               coordinates: state.routePoints.map(p => [p.lon, p.lat])
           }
       };
-      
+
       // Añadir o actualizar la ruta en MapLibre
       if (state.map.getSource('route')) {
           state.map.getSource('route').setData(geojson);
@@ -1189,7 +1189,7 @@ function drawRouteOnMap() {
               paint: { 'line-color': '#ff5722', 'line-width': 6 }
           });
       }
-      
+
       // Posicionar cámara en el primer punto
       state.map.jumpTo({ center: [firstPoint.lon, firstPoint.lat], zoom: 14 });
   } else {
@@ -1662,7 +1662,7 @@ function updateRouteSimulation(currentDistKm) {
 
       // 2. Actualizar el gráfico "Prox 500m" y el desnivel
       refreshUpcomingPreview(currentDistKm);
-        
+
       if (index < state.routePoints.length - 1) {
           const elevationDiffMeters = state.routeElevations[index + 1] - state.routeElevations[index];
           if (elevationDiffMeters > 0) {
@@ -1711,7 +1711,7 @@ function updateRouteSimulation(currentDistKm) {
         // Seguimiento suave de cámara y rotación según rumbo
         const center = [point.lon, point.lat];
         const options = { center, pitch: 60, essential: true };
-        
+
         if (state.isMapFollowingRoute) {
             // Calcular el rumbo (bearing) del movimiento actual
             const nextIdx = Math.min(state.currentRouteIndex + 5, state.routePoints.length - 1);
@@ -2018,7 +2018,7 @@ function updateGhostProgress() {
 function createOrientationToggleButton() {
     const mapContainer = document.getElementById("workout-map");
     if (!mapContainer) return;
-    
+
     // Eliminar botón previo si existe
     const existingBtn = document.getElementById("btn-orient-toggle");
     if (existingBtn) existingBtn.remove();
@@ -2040,12 +2040,12 @@ function createOrientationToggleButton() {
 
 window.toggleMapEngine = function(btn) {
     const container = document.getElementById("workout-map");
-    
+
     // Forzamos el tamaño antes de cargar el nuevo motor
     container.style.width = '100%';
     container.style.height = '100%';
     container.style.display = 'block';
-    
+
     // Destruir mapa actual
     if (state.map) {
         if (typeof state.map.remove === 'function') {
@@ -2068,7 +2068,7 @@ window.toggleMapEngine = function(btn) {
         try {
             state.map = new maplibregl.Map({
                 container: 'workout-map',
-                style: `https://api.maptiler.com/maps/streets-v2/style.json?key=eEyxGjEZ5Zh8LWXzYXcM`,
+                style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${import.meta.env.VITE_MAPTILER_API_KEY}`,
                 center: state.routePoints.length > 0 ? [state.routePoints[0].lon, state.routePoints[0].lat] : [-1.9297, 43.3178],
                 zoom: 14,
                 pitch: 60,
