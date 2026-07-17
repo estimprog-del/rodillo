@@ -2078,7 +2078,7 @@ window.toggleMapEngine = function(btn) {
             state.map.on("load", () => {
                 console.log("Mapa 3D cargado correctamente.");
                 state.map.resize();
-                ne();
+                drawRouteOnMap();
                 createOrientationToggleButton();
             });
 
