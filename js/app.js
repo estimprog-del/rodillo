@@ -2063,8 +2063,10 @@ window.toggleMapEngine = function(btn) {
             state.map.remove();
             state.map = null;
         }
-        btn.textContent = "🗺️ 2D";
-        
+        container.className = "workout-map-fullscreen";
+        container.style.height = "500px";
+        container.style.width = "100%";
+
         try {
             state.map = new maplibregl.Map({
                 container: 'workout-map',
