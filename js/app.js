@@ -2027,8 +2027,8 @@ function createOrientationToggleButton() {
     btn.id = "btn-orient-toggle";
     btn.className = "btn btn-dark";
     btn.style.position = "absolute";
-    btn.style.top = "10px";
-    btn.style.left = "10px";
+    btn.style.bottom = "80px";
+    btn.style.right = "10px";
     btn.style.zIndex = "1000";
     btn.textContent = state.isMapFollowingRoute ? "⬆️ Ruta" : "🗺️ Norte";
     btn.onclick = () => {
@@ -2064,7 +2064,7 @@ window.toggleMapEngine = function(btn) {
             state.map = null;
         }
         container.className = "workout-map-fullscreen";
-        container.style.height = "500px";
+        container.style.height = "100%";
         container.style.width = "100%";
 
         try {
