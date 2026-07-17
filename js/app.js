@@ -2068,7 +2068,7 @@ window.toggleMapEngine = function(btn) {
         try {
             state.map = new maplibregl.Map({
                 container: 'workout-map',
-                style: `https://api.maptiler.com/maps/streets-v2/style.json?key=9cAF6CwwwBZWsVKrGzFq`,
+                style: `https://api.maptiler.com/maps/streets-v2/style.json?key=UBHzQV2yOKcBPfo2g11x`,
                 center: state.routePoints.length > 0 ? [state.routePoints[0].lon, state.routePoints[0].lat] : [-1.9297, 43.3178],
                 zoom: 14,
                 pitch: 60,
