@@ -44,7 +44,7 @@ export function bindEvents(handlers) {
 
   document.body.addEventListener("click", (e) => {
     const target = e.target.closest(
-      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-slope-minus, #btn-slope-plus, #btn-export-gpx, [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-dashboard-settings, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings",
+      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-slope-minus, #btn-slope-plus, #btn-export-gpx, [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-dashboard-settings, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-toggle-3d",
     );
 
     if (!target) return;
@@ -144,6 +144,12 @@ export function bindEvents(handlers) {
       // Controles entrenamiento
       if (id === "btn-workout-pause") togglePause();
       if (id === "btn-workout-stop") stopSessionFlow();
+      if (id === "btn-toggle-3d") {
+        const btn = document.getElementById("btn-toggle-3d");
+        if (typeof window.toggleMapEngine === "function") {
+          window.toggleMapEngine(btn);
+        }
+      }
       // Control de fuentes
       if (e.target.classList.contains("btn-font-scale")) {
         const scale = e.target.getAttribute("data-scale");

@@ -2039,6 +2039,7 @@ function createOrientationToggleButton() {
 }
 
 window.toggleMapEngine = function(btn) {
+    console.log("¡Clic recibido en toggleMapEngine!");
     console.log("Toggle map engine. Current text:", btn.textContent);
     const container = document.getElementById("workout-map");
     
@@ -2067,7 +2068,7 @@ window.toggleMapEngine = function(btn) {
         try {
             state.map = new maplibregl.Map({
                 container: 'workout-map',
-                style: `https://api.maptiler.com/maps/streets-v2/style.json?key=eEyxGjEZ5Zh8LWXzYXcM`,
+                style: `https://api.maptiler.com/maps/streets-v2/style.json?key=9cAF6CwwwBZWsVKrGzFq`,
                 center: state.routePoints.length > 0 ? [state.routePoints[0].lon, state.routePoints[0].lat] : [-1.9297, 43.3178],
                 zoom: 14,
                 pitch: 60,
