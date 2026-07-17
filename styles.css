@@ -1359,7 +1359,7 @@ h4 {
 }
 
 .workout-map-fullscreen:not(.leaflet-container) {
-    background: linear-gradient(160deg, #0a0a0f 0%, #111119 50%, #0d1117 100%);
+    /* background: linear-gradient(160deg, #0a0a0f 0%, #111119 50%, #0d1117 100%); */
 }
 
 .hud-top-bar {
@@ -1974,4 +1974,66 @@ h4 {
     z-index: 10;
     pointer-events: none;
     display: none;
+}
+
+/* Workout Countdown Overlay Styles */
+.countdown-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 10, 15, 0.3);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+}
+
+.countdown-number {
+    font-family: "Outfit", sans-serif;
+    font-size: 150px;
+    font-weight: 800;
+    color: #ffffff;
+    text-shadow: 0 0 20px rgba(0, 0, 0, 0.8), 0 0 40px rgba(0, 0, 0, 0.5);
+    animation: countdown-pulse 1s ease-in-out infinite;
+    user-select: none;
+}
+
+@keyframes countdown-pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+}
+
+/* Alert Banner Styles */
+.hud-alert-banner {
+    position: absolute;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(245, 158, 11, 0.9);
+    color: white;
+    padding: 10px 25px;
+    border-radius: 50px;
+    font-weight: 700;
+    font-size: 18px;
+    z-index: 99;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    text-transform: uppercase;
+    animation: fade-in-out 3s ease-in-out;
+}
+
+@keyframes fade-in-out {
+    0%, 100% { opacity: 0; }
+    15%, 85% { opacity: 1; }
+}
+
+/* Ajuste fino para los controles de MapLibre en modo 3D */
+.maplibregl-ctrl-top-right {
+    top: 70px !important; 
+    right: 10px !important;
 }

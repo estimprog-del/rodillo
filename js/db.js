@@ -1,6 +1,6 @@
 /* db.js - IndexedDB Manager for RodilloInt Web */
 const DB_NAME = 'RodilloIntDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbInstance = null;
 
@@ -338,6 +338,57 @@ async function insertSensorDataBulk(pointsArray) {
   });
 }
 
+// --- EXPORT/IMPORT ---
+export async function exportAllData() {
+  const db = await initDb();
+  const stores = ['users', 'sessions', 'sensor_data'];
+  const exportData = {};
+
+  for (const storeName of stores) {
+    const transaction = db.transaction([storeName], 'readonly');
+    const store = transaction.objectStore(storeName);
+    exportData[storeName] = await new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `RodilloInt_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Restaurar desde un archivo JSON de Backup
+export async function importAllData(file) {
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      const db = await initDb();
+      
+      for (const storeName of ['users', 'sessions', 'sensor_data']) {
+        if (data[storeName]) {
+          const transaction = db.transaction([storeName], 'readwrite');
+          const store = transaction.objectStore(storeName);
+          for (const item of data[storeName]) {
+            store.put(item); // Usamos put para sobreescribir si ya existe
+          }
+        }
+      }
+      alert("Backup restaurado correctamente. Recargando...");
+      location.reload();
+    } catch (err) {
+      console.error("Error al restaurar backup:", err);
+      alert("Error al restaurar el archivo de backup.");
+    }
+  };
+  reader.readAsText(file);
+}
 // Export database functions globally
 window.DbManager = {
   initDb,
@@ -355,5 +406,7 @@ window.DbManager = {
   insertSensorData,
   insertSensorDataBulk,
   getSensorDataForSession,
-  deleteDataForSession
+  deleteDataForSession,
+  exportAllData,
+  importAllData
 };

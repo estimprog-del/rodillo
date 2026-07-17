@@ -4,6 +4,7 @@ export const state = {
   currentUser: null,
   currentSessionId: null,
   currentMode: "ROUTE", // 'ROUTE' | 'MANUAL' | 'TRADITIONAL'
+  isMapFollowingRoute: false,
   telemetryBuffer: [],
 
   isSessionActive: false,
@@ -41,13 +42,23 @@ export const state = {
   routeTotalAscent: 0,
   currentRouteIndex: 0,
   map: null,
-  clockInterval: null
+  clockInterval: null,
+  realismFactor: 1.0,
+  mapType: 'maplibre',
+  fontScale: 1.0,
+  sensorSmoothing: 500,
+  powerZones: [55, 75, 88, 95, 106],
 };
 
 export function saveStateToLocalStorage() {
   const persistableState = {
     currentUser: state.currentUser,
     currentMode: state.currentMode,
+    realismFactor: state.realismFactor,
+    mapType: state.mapType,
+    fontScale: state.fontScale,
+    sensorSmoothing: state.sensorSmoothing,
+    powerZones: state.powerZones,
   };
   localStorage.setItem("rodilloint_state", JSON.stringify(persistableState));
 }
@@ -58,5 +69,10 @@ export function loadStateFromLocalStorage() {
     const parsed = JSON.parse(saved);
     state.currentUser = parsed.currentUser;
     state.currentMode = parsed.currentMode;
+    state.realismFactor = parsed.realismFactor || 1.0;
+    state.mapType = parsed.mapType || 'maplibre';
+    state.fontScale = parsed.fontScale || 1.0;
+    state.sensorSmoothing = parsed.sensorSmoothing || 500;
+    state.powerZones = parsed.powerZones || [55, 75, 88, 95, 106];
   }
 }

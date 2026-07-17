@@ -18,6 +18,9 @@
             integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
             crossorigin=""
         />
+
+        <!-- MapLibre 3D CSS -->
+        <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -45,7 +48,11 @@
                     <button class="btn btn-dark" id="btn-show-import-user">
                         Importar Perfil
                     </button>
+                    <button class="btn btn-dark" id="btn-trigger-import-backup">
+                        Restaurar Backup Completo
+                    </button>
                 </div>
+                <input type="file" id="backup-file-input" style="display:none" accept=".json">
             </div>
         </div>
 
@@ -53,8 +60,9 @@
         <div id="screen-dashboard" class="screen">
             <div class="dashboard-header glass-card">
                 <div class="dashboard-header-left-group">
-                    <div class="active-profile-info" id="active-profile-header">
+                    <div class="active-profile-info" id="active-profile-header" style="cursor: pointer;" onclick="document.getElementById('btn-open-user-profile-trigger').click()">
                         <div class="avatar-small">U</div>
+                        <button id="btn-open-user-profile-trigger" style="display:none"></button>
                         <div class="active-profile-details">
                             <span class="active-profile-greeting">Hola,</span>
                             <span
@@ -406,6 +414,11 @@
                 <div class="workout-viewport">
                     <div id="workout-map" class="workout-map-fullscreen"></div>
 
+                    <!-- Capa de Superposición de Cuenta Atrás -->
+                    <div id="workout-countdown-overlay" class="countdown-overlay" style="display: none;">
+                        <div class="countdown-number" id="countdown-text">3</div>
+                    </div>
+
                     <!-- HUD superpuesto -->
                     <div class="workout-hud-overlay">
                         <!-- HUD progreso (esquina inferior izquierda) -->
@@ -458,6 +471,18 @@
                             >
                                 ⏹ Finalizar
                             </button>
+                            <button
+                                class="btn-control btn-3d"
+                                id="btn-toggle-3d"
+                                style="
+                                    margin-bottom: 5px;
+                                    width: fit-content;
+                                    padding: 5px 15px;
+                                    background-color: #4f46e5;
+                                "
+                            >
+                                🗺️ 3D
+                            </button>
                             <div
                                 class="slope-box glass-card"
                                 id="metrics-slope"
@@ -499,6 +524,7 @@
                     </div>
 
                     <!-- HUD superior (Global) -->
+                    <div id="route-alert-banner" class="hud-alert-banner" style="display: none;"></div>
                     <div class="hud-top-bar" id="hud-top-bar">
                         <div class="hud-left-group">
                             <div
@@ -512,7 +538,7 @@
                                     margin-right: 70px;
                                 "
                             >
-                                <div class="clock-label" style="font-size: 8px">
+                                <div class="clock-label" style="font-size: 8px; color: #ffffff">
                                     HORA
                                 </div>
                                 <div
@@ -569,7 +595,7 @@
                                     style="
                                         font-size: 9px;
                                         font-weight: 700;
-                                        color: var(--text-secondary);
+                                        color: #ffffff;
                                         margin-right: 2px;
                                     "
                                     >TEXTO</span
@@ -631,7 +657,7 @@
                                         id="metrics-power"
                                         >0</span
                                     >
-                                    <span class="metric-label">W</span>
+                                    <span class="metric-label" style="color: #ffffff">W</span>
                                 </div>
                                 <div class="metric-avg" id="metrics-power-avg">
                                     0 Ø
@@ -641,7 +667,7 @@
                                 <span class="metric-value" id="metrics-cadence"
                                     >0</span
                                 >
-                                <span class="metric-label">RPM</span>
+                                <span class="metric-label" style="color: #ffffff">RPM</span>
                             </div>
                             <div class="metric-group">
                                 <div class="metric-main">
@@ -650,7 +676,7 @@
                                         id="metrics-speed"
                                         >0.0</span
                                     >
-                                    <span class="metric-label">km/h</span>
+                                    <span class="metric-label" style="color: #ffffff">km/h</span>
                                 </div>
                                 <div class="metric-avg" id="metrics-speed-avg">
                                     0.0 Ø
@@ -664,7 +690,7 @@
                                         style="color: #ff6666"
                                         >0</span
                                     >
-                                    <span class="metric-label">BPM</span>
+                                    <span class="metric-label" style="color: #ffffff">BPM</span>
                                 </div>
                                 <div class="metric-avg" id="metrics-hr-avg">
                                     0 Ø
@@ -674,7 +700,7 @@
                             <div
                                 class="clock-session clock-horizontal clock-session-time"
                             >
-                                <div class="clock-label accent">TIEMPO</div>
+                                <div class="clock-label accent" style="color: #ffffff">TIEMPO</div>
                                 <div id="workout-timer">00:00:00</div>
                             </div>
                         </div>
@@ -770,6 +796,22 @@
                         step="1"
                     />
                 </div>
+
+                <div class="sim-slider-group">
+                    <div class="sim-slider-label">
+                        <span>Factor de Realismo de la Pendiente</span>
+                        <strong id="realism-value-session">100%</strong>
+                    </div>
+                    <input
+                        type="range"
+                        id="realism-slider-session"
+                        min="30"
+                        max="150"
+                        value="100"
+                        step="1"
+                        style="width: 100%; height: 8px; accent-color: var(--accent-blue); background: var(--bg-secondary); border: 1px solid var(--glass-border); border-radius: 4px;"
+                    />
+                </div>
             </div>
 
             <!-- Modal de carga de ruta -->
@@ -800,6 +842,26 @@
                             </button>
                         </div>
                     </div>
+
+                    <div class="route-modal-section">
+                        <div class="route-modal-section-title">
+                            Ajuste de Dureza
+                        </div>
+                        <div class="input-group">
+                            <label for="realism-slider" style="text-align: center;">Factor de Realismo de la Pendiente</label>
+                            <input
+                                type="range"
+                                id="realism-slider"
+                                min="30"
+                                max="150"
+                                value="100"
+                                step="1"
+                                style="width: 100%; height: 8px; accent-color: var(--accent-blue); background: var(--bg-secondary); border: 1px solid var(--glass-border); border-radius: 4px;"
+                            />
+                            <span id="realism-value" style="text-align: center; color: var(--text-primary); font-weight: bold; margin-top: 5px;">100%</span>
+                        </div>
+                    </div>
+
                     <div class="route-modal-actions">
                         <button class="btn-modal-cancel" id="btn-modal-cancel">
                             Cancelar
@@ -1375,11 +1437,60 @@
         <!-- ApexCharts JS via CDN -->
         <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 
+        <!-- Motor 3D MapLibre (cargado de forma diferida) -->
+        <script src="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.js" defer></script>
+        <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
+
         <!-- Custom modules -->
         <script type="module" src="js/db.js"></script>
         <script type="module" src="js/gpx.js"></script>
         <script type="module" src="js/bluetooth.js"></script>
         <script type="module" src="js/charts.js"></script>
         <script type="module" src="js/app.js"></script>
+      <!-- Modal Ajustes Generales -->
+      <div id="modal-settings" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-card" style="width: 400px; padding: 24px; color: white;">
+          <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="margin: 0; font-size: 1.25rem;">⚙️ Ajustes Generales</h3>
+            <button id="btn-close-settings" style="background: none; border: none; color: white; cursor: pointer; font-size: 1.5rem;">×</button>
+          </div>
+          <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="font-size: 0.9rem; opacity: 0.8;">Mapa por defecto:</label>
+              <select id="setting-map-type" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+                <option value="leaflet">Leaflet (2D)</option>
+                <option value="maplibre">MapLibre (3D)</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="font-size: 0.9rem; opacity: 0.8;">Tamaño de fuente HUD:</label>
+              <input type="range" id="setting-font-scale" min="0.8" max="1.5" step="0.1" style="width: 100%;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="font-size: 0.9rem; opacity: 0.8;">Factor de Realismo (<span id="realism-val-display">100</span>%):</label>
+              <input type="range" id="setting-realism" min="10" max="150" step="5" style="width: 100%; cursor: pointer;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="font-size: 0.9rem; opacity: 0.8;">Suavizado de Potencia:</label>
+              <div id="btn-group-smoothing" style="display: flex; gap: 8px;">
+                <button type="button" class="btn-smoothing" data-val="1000" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #374151; background: #333; color: white; cursor: pointer;">1s</button>
+                <button type="button" class="btn-smoothing" data-val="3000" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #374151; background: #333; color: white; cursor: pointer;">3s</button>
+                <button type="button" class="btn-smoothing" data-val="5000" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #374151; background: #333; color: white; cursor: pointer;">5s</button>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="font-size: 0.9rem; opacity: 0.8;">FTP (%) para Zonas:</label>
+              <input type="text" id="setting-power-zones" placeholder="55,75,88,95,106" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+            </div>
+            <div style="margin-top: 10px; border-top: 1px solid #374151; pt: 10px;">
+              <button id="btn-backup-data" class="btn" style="width: 100%; padding: 10px; background: #3b82f6; border: none; color: white; border-radius: 6px; cursor: pointer;">💾 Descargar Backup Completo</button>
+            </div>
+          </div>
+          <div class="modal-footer" style="margin-top: 24px; display: flex; justify-content: flex-end;">
+            <button id="btn-save-settings" class="btn btn-primary" style="padding: 10px 24px; border-radius: 8px; background: #10b981; border: none; color: white; font-weight: 600; cursor: pointer;">Guardar Cambios</button>
+          </div>
+        </div>
+      </div>
+  
     </body>
 </html>

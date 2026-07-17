@@ -2,12 +2,18 @@
 
 export function showModal(modalId) {
   const modal = document.getElementById(`modal-${modalId}`);
-  if (modal) modal.className = "modal-overlay active";
+  if (modal) {
+    modal.style.display = "flex"; // Forzamos visibilidad
+    modal.className = "modal-overlay active";
+  }
 }
 
 export function hideModal(modalId) {
   const modal = document.getElementById(`modal-${modalId}`);
-  if (modal) modal.className = "modal-overlay";
+  if (modal) {
+    modal.style.display = "none";
+    modal.className = "modal-overlay";
+  }
 }
 
 export function setElDisplay(id, display) {

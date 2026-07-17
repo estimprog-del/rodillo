@@ -1,4 +1,5 @@
 /* bluetooth.js - Web Bluetooth & Virtual Simulator Manager for RodilloInt */
+import { state } from "./modules/state.js";
 
 // Bluetooth UUIDs
 const SERVICES = {
@@ -763,8 +764,13 @@ async function disconnectAll() {
  * Inclination represented as short (sint16), unit is 0.1%
  */
 async function setTrainerSlope(slope) {
+  // Aplicar factor de realismo/dureza (del 30% al 150%)
+  const realismFactor =
+    state.realismFactor !== undefined ? state.realismFactor : 1.0;
+  const adjustedSlope = slope * realismFactor;
+
   if (simulator.isActive) {
-    simulator.slope = slope;
+    simulator.slope = adjustedSlope;
     return;
   }
 
@@ -778,7 +784,7 @@ async function setTrainerSlope(slope) {
     try {
       trainer.isWritingSlope = true;
       // Clamped to standard -15.0% to +20.0%
-      const clampedSlope = Math.max(-15.0, Math.min(20.0, slope));
+      const clampedSlope = Math.max(-15.0, Math.min(20.0, adjustedSlope));
 
       if (trainer.useSimulationParameters === undefined) {
         trainer.useSimulationParameters = true;

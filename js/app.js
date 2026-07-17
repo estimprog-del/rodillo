@@ -63,7 +63,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     handleExportProfile,
     handleLogout,
     startModeFlow,
-    navigateTo, // <- This now uses the initialized version
+    navigateTo,
     triggerBleConnection,
     togglePause,
     stopSessionFlow,
@@ -73,26 +73,40 @@ document.addEventListener("DOMContentLoaded", async () => {
     startSession,
   });
 
-  // Init Database
+  // Init Database and listeners
   try {
     await DbManager.initDb();
-    // Recuperar copia de seguridad de telemetría de una desconexión anterior si existe
     await recoverTelemetryBackup();
     await loadProfilesGrid();
+    await checkPendingSessions();
 
-    // Check if there is an active user from last session in localStorage
+    setInterval(() => {
+      if (state.isSessionActive && state.currentSessionId) {
+        localStorage.setItem("rodilloint_active_session", JSON.stringify({
+          sessionId: state.currentSessionId,
+          lastUpdated: Date.now(),
+          elapsedSeconds: state.elapsedSeconds,
+          totalDistance: state.totalDistance
+        }));
+        if (typeof flushTelemetryBuffer === 'function') flushTelemetryBuffer();
+      }
+    }, 15000);
+
+    window.addEventListener("beforeunload", async (e) => {
+      if (state.isSessionActive && typeof flushTelemetryBuffer === 'function') {
+        await flushTelemetryBuffer();
+      }
+    });
+
     const savedUserId = localStorage.getItem("rodilloint_userId");
     if (savedUserId) {
       const user = await DbManager.getUserById(savedUserId);
-      if (user) {
-        selectUser(user);
-      }
+      if (user) selectUser(user);
     }
   } catch (e) {
     console.error("Failed to init IndexedDB", e);
   }
 
-  // Setup Web Bluetooth Data Receivers
   BleManager.setBleListener({
     onPowerReceived,
     onHeartRateReceived,
@@ -143,7 +157,41 @@ function cacheUiElements() {
 // Ahora se utilizan las versiones importadas.
 
 function showRouteModal() {
-  if (UI.routeModal) UI.routeModal.classList.add("active");
+  if (UI.routeModal) {
+    UI.routeModal.classList.add("active");
+
+    // Recuperar valor guardado y actualizar estado
+    const savedRealism = localStorage.getItem("rodilloint_realism");
+    if (savedRealism) {
+      state.realismFactor = parseFloat(savedRealism);
+    }
+
+    // Inicializar slider de realismo al abrir el modal de ruta
+    const realismSlider = document.getElementById("realism-slider");
+    const realismValue = document.getElementById("realism-value");
+    if (realismSlider && realismValue) {
+      realismSlider.value = Math.round((state.realismFactor || 1.0) * 100);
+      realismValue.textContent = `${realismSlider.value}%`;
+
+      realismSlider.oninput = (e) => {
+        const val = e.target.value;
+        realismValue.textContent = `${val}%`;
+        state.realismFactor = parseFloat(val) / 100;
+        
+        // Guardar persistente
+        localStorage.setItem("rodilloint_realism", state.realismFactor);
+        saveStateToLocalStorage();
+
+        // Sincronizar también el slider de sesión en vivo por si está visible
+        const sessionSlider = document.getElementById("realism-slider-session");
+        const sessionValue = document.getElementById("realism-value-session");
+        if (sessionSlider && sessionValue) {
+          sessionSlider.value = val;
+          sessionValue.textContent = `${val}%`;
+        }
+      };
+    }
+  }
 }
 
 function hideRouteModal() {
@@ -267,10 +315,15 @@ async function loadProfilesGrid() {
     return;
   }
 
+  // Si hay usuarios, los mostramos
   users.forEach((u) => {
     const card = document.createElement("div");
     card.className = "glass-card user-card";
-    card.onclick = () => selectUser(u);
+    // Al hacer clic en la tarjeta de usuario, se selecciona y se navega al dashboard
+    card.onclick = () => {
+      selectUser(u);
+      navigateTo("dashboard"); // Asegurarse de que navega a dashboard
+    };
 
     // Initials for avatar
     const initials = u.name
@@ -289,7 +342,7 @@ async function loadProfilesGrid() {
 
     const deleteBtn = card.querySelector(".user-card-delete");
     deleteBtn.onclick = (e) => {
-      e.stopPropagation();
+      e.stopPropagation(); // Evita que se active el onclick de la tarjeta
       deleteProfileFromSelectScreen(u.id, u.name);
     };
 
@@ -314,7 +367,12 @@ async function deleteProfileFromSelectScreen(id, name) {
 function selectUser(user) {
   state.currentUser = user;
   localStorage.setItem("rodilloint_userId", user.id);
-  navigateTo("dashboard");
+  // Asegurarse de que navega a dashboard después de seleccionar usuario
+  if (navigateTo) {
+    navigateTo("dashboard");
+  } else {
+    console.warn("navigateTo no está definido, no se puede navegar a dashboard.");
+  }
 }
 
 function handleLogout() {
@@ -641,30 +699,34 @@ function onPowerReceived(power) {
   state.currentPower = power;
   setElText("metrics-power", power);
 
-  // Power Buffer 3s rolling average
+  // Power Buffer rolling average based on settings
+  const windowSize = Math.max(1, Math.round((state.sensorSmoothing || 1000) / 1000));
   state.powerBuffer.push(power);
-  if (state.powerBuffer.length > 3) state.powerBuffer.shift();
+  if (state.powerBuffer.length > windowSize) state.powerBuffer.shift();
   state.power3s = Math.round(
     state.powerBuffer.reduce((a, b) => a + b, 0) / state.powerBuffer.length,
   );
 
   const ftp = state.currentUser ? state.currentUser.ftp : 200;
+  // Usar zonas personalizadas del estado, divididas por 100 para obtener el factor
+  const z = state.powerZones || [55, 75, 88, 95, 106];
+  
   let zoneColor = "#10b981";
   let activeZoneIndex = 0;
 
-  if (power < ftp * 0.55) {
+  if (power < ftp * (z[0] / 100)) {
     zoneColor = "#6b7280";
     activeZoneIndex = 0;
-  } else if (power < ftp * 0.75) {
+  } else if (power < ftp * (z[1] / 100)) {
     zoneColor = "#3b82f6";
     activeZoneIndex = 1;
-  } else if (power < ftp * 0.9) {
+  } else if (power < ftp * (z[2] / 100)) {
     zoneColor = "#10b981";
     activeZoneIndex = 2;
-  } else if (power < ftp * 1.05) {
+  } else if (power < ftp * (z[3] / 100)) {
     zoneColor = "#f59e0b";
     activeZoneIndex = 3;
-  } else if (power < ftp * 1.2) {
+  } else if (power < ftp * (z[4] / 100)) {
     zoneColor = "#f97316";
     activeZoneIndex = 4;
   } else {
@@ -743,7 +805,11 @@ function onCadenceReceived(cad) {
 }
 
 function onSpeedReceived(speedKph) {
-  if (state.currentMode === "ROUTE") return;
+  // Ya no retornamos si el modo es ROUTE, permitimos que la velocidad del rodillo sea la principal
+
+  // Filtro simple: Si recibimos 0 km/h pero estábamos en movimiento,
+  // probablemente es un error de lectura o un pico. Suavizamos ignorándolo.
+  if (speedKph === 0 && state.currentSpeed > 0.5) return;
 
   state.currentSpeed = speedKph;
   setElText("metrics-speed", speedKph.toFixed(1));
@@ -814,6 +880,60 @@ function calculateNormalizedPower() {
   return Math.pow(avgPowers4, 0.25);
 }
 
+// --- Countdown Timer ---
+function startCountdown(onComplete) {
+  const countdownOverlay = document.getElementById("workout-countdown-overlay");
+  const countdownText = document.getElementById("countdown-text");
+
+  if (!countdownOverlay || !countdownText) {
+    if (onComplete) onComplete();
+    return;
+  }
+
+  let count = 3;
+  countdownOverlay.style.display = "flex";
+  countdownText.textContent = count;
+
+  // Crear contexto de audio tras la interacción (clic en botón)
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const startTime = audioCtx.currentTime + 0.8;
+
+  const playBeep = (time, freq = 880) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, time);
+    gain.gain.setValueAtTime(0.5, time);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.1);
+    osc.start(time);
+    osc.stop(time + 0.1);
+  };
+
+  // Programamos los 4 eventos de audio de forma absoluta e inamovible
+  playBeep(startTime, 880);         // Seg 0.8 (Número 3)
+  playBeep(startTime + 1, 880);     // Seg 1.8 (Número 2)
+  playBeep(startTime + 2, 880);     // Seg 2.8 (Número 1)
+  playBeep(startTime + 3, 1200);    // Seg 3.8 (¡Listo!)
+
+  // Intervalo solo para actualizar la UI
+  const timer = setInterval(() => {
+    count--;
+    if (count > 0) {
+      countdownText.textContent = count;
+    } else {
+      clearInterval(timer);
+      countdownText.textContent = "¡Listo!";
+      setTimeout(() => {
+        countdownOverlay.style.display = "none";
+        audioCtx.close(); // Cerrar contexto al terminar
+        if (onComplete) onComplete();
+      }, 1000);
+    }
+  }, 1000);
+}
+
 // --- WORKOUT SCREEN ACTIVATION ---
 function enterWorkoutScreen() {
   state.powerBuffer = [];
@@ -858,6 +978,22 @@ function enterWorkoutScreen() {
 
   if (BleManager.simulator.isActive) {
     setElDisplay("virtual-trainer-panel", "block");
+
+    // Lógica para el slider de realismo en sesión
+    const realismSliderSession = document.getElementById("realism-slider-session");
+    const realismValueSession = document.getElementById("realism-value-session");
+
+    if (realismSliderSession && realismValueSession) {
+      realismSliderSession.value = Math.round((state.realismFactor || 1.0) * 100);
+      realismValueSession.textContent = `${realismSliderSession.value}%`;
+
+      realismSliderSession.oninput = (e) => {
+        const value = e.target.value;
+        realismValueSession.textContent = `${value}%`;
+        state.realismFactor = parseFloat(value) / 100;
+        saveStateToLocalStorage();
+      };
+    }
   } else {
     setElDisplay("virtual-trainer-panel", "none");
   }
@@ -883,19 +1019,22 @@ function enterWorkoutScreen() {
     }
 
     setTimeout(() => {
-      if (state.map) state.map.invalidateSize();
+      if (state.map) {
+          if (typeof state.map.resize === 'function') {
+              state.map.resize();
+          } else if (typeof state.map.invalidateSize === 'function') {
+              state.map.invalidateSize();
+          }
+      }
+      // Botón para alternar modo mapa (Norte/Ruta)
+      createOrientationToggleButton();
+
       if (state.routePoints.length > 0) {
-        drawRouteOnMap();
-        refreshUpcomingPreview(0);
-        updateRouteProgressHud();
+          drawRouteOnMap();
+          refreshUpcomingPreview(0);
+          updateRouteProgressHud();
       }
     }, 150);
-
-    // Forzamos que siempre se muestre el modal de configuración de ruta al entrar al modo ruta
-    showRouteModal();
-  } else {
-    hideRouteModal();
-    setElDisplay("hud-elevation-footer", "none");
   }
 
   updatePauseButton("▶ Empezar");
@@ -906,6 +1045,13 @@ async function handleGpxUpload(e) {
   const file = e.target.files[0];
   if (!file) return;
 
+  // Validación de extensión
+  const fileName = file.name.toLowerCase();
+  if (!fileName.endsWith(".gpx") && !fileName.endsWith(".tcx")) {
+    alert("Por favor, selecciona un archivo válido (.gpx o .tcx).");
+    return;
+  }
+
   state.gpxFilename = file.name;
   const label = document.getElementById("gpx-filename-label");
   const btnPick = document.getElementById("btn-trigger-gpx-pick");
@@ -913,11 +1059,13 @@ async function handleGpxUpload(e) {
   if (label) label.textContent = `${file.name} (Procesando...)`;
   if (btnPick) {
     btnPick.disabled = true;
-    btnPick.textContent = "Procesando Ruta...";
+    btnPick.textContent = "Procesando...";
   }
 
   try {
     const text = await file.text();
+    if (!text || text.trim().length === 0) throw new Error("Archivo vacío");
+
     const routeData = await GpxManager.parseRouteAsync(text);
 
     if (routeData) {
@@ -925,10 +1073,6 @@ async function handleGpxUpload(e) {
       state.routeElevations = routeData.elevations;
       state.routeDistances = routeData.distances;
       state.currentRouteIndex = 0;
-      console.log(
-        "DEBUG: routeData points count:",
-        routeData.points ? routeData.points.length : "null",
-      );
       state.routeTotalAscent = calculateTotalRouteAscent();
 
       initLeafletMap();
@@ -936,7 +1080,6 @@ async function handleGpxUpload(e) {
       refreshUpcomingPreview(0);
       updateRouteProgressHud(state);
 
-      // Inicializar perfil de elevación principal
       setElDisplay("hud-elevation-footer", "block");
       ChartsManager.initElevationChart(
         "elevation-chart",
@@ -952,9 +1095,9 @@ async function handleGpxUpload(e) {
   } catch (err) {
     console.error("Error al procesar el archivo GPX:", err);
     alert(
-      "Error al importar la ruta. Comprueba que sea un archivo GPX o TCX válido.",
+      "Error: El archivo no es válido o está corrupto. Asegúrate de que contiene datos de ruta.",
     );
-    if (label) label.textContent = "Ningún archivo seleccionado.";
+    if (label) label.textContent = "Error al cargar archivo.";
   } finally {
     if (btnPick) {
       btnPick.disabled = false;
@@ -1019,34 +1162,63 @@ function initLeafletMap() {
 function drawRouteOnMap() {
   if (!state.map || state.routePoints.length === 0) return;
 
-  // Clear previous overlays
-  if (state.routePolyline) state.map.removeLayer(state.routePolyline);
-  if (state.userMarker) state.map.removeLayer(state.userMarker);
-  if (state.ghostMarker) state.map.removeLayer(state.ghostMarker);
+  // Verificación de seguridad de coordenadas
+  const firstPoint = state.routePoints[0];
+  if (!firstPoint || isNaN(firstPoint.lat) || isNaN(firstPoint.lon)) return;
 
-  const latLngs = state.routePoints.map((p) => [p.lat, p.lon]);
+  // Detectar motor: si existe addSource es MapLibre (3D)
+  if (state.map.addSource) {
+      const geojson = {
+          type: 'Feature',
+          geometry: {
+              type: 'LineString',
+              coordinates: state.routePoints.map(p => [p.lon, p.lat])
+          }
+      };
+      
+      // Añadir o actualizar la ruta en MapLibre
+      if (state.map.getSource('route')) {
+          state.map.getSource('route').setData(geojson);
+      } else {
+          state.map.addSource('route', { type: 'geojson', data: geojson });
+          state.map.addLayer({
+              id: 'route',
+              type: 'line',
+              source: 'route',
+              layout: { 'line-join': 'round', 'line-cap': 'round' },
+              paint: { 'line-color': '#ff5722', 'line-width': 6 }
+          });
+      }
+      
+      // Posicionar cámara en el primer punto
+      state.map.jumpTo({ center: [firstPoint.lon, firstPoint.lat], zoom: 14 });
+  } else {
+      // Lógica original para Leaflet (2D)
+      if (state.routePolyline) state.map.removeLayer(state.routePolyline);
+      if (state.userMarker) state.map.removeLayer(state.userMarker);
+      if (state.ghostMarker) state.map.removeLayer(state.ghostMarker);
 
-  // Plot Polyline orange neon
-  state.routePolyline = L.polyline(latLngs, {
-    color: "#ff5722",
-    weight: 6,
-    opacity: 0.85,
-  }).addTo(state.map);
+      const latLngs = state.routePoints.map((p) => [p.lat, p.lon]);
 
-  // Create cyclist marker with custom neon pulsing DivIcon
-  const userIcon = L.divIcon({
-    className: "custom-user-marker",
-    html: '<div class="user-marker-core"><div class="user-marker-pulse"></div></div>',
-    iconSize: [14, 14],
-  });
+      state.routePolyline = L.polyline(latLngs, {
+          color: "#ff5722",
+          weight: 6,
+          opacity: 0.85,
+      }).addTo(state.map);
 
-  state.userMarker = L.marker(latLngs[0], {
-    icon: userIcon,
-    title: "Tú",
-  }).addTo(state.map);
+      const userIcon = L.divIcon({
+          className: "custom-user-marker",
+          html: '<div class="user-marker-core"><div class="user-marker-pulse"></div></div>',
+          iconSize: [14, 14],
+      });
 
-  // Autozoom fits bounds
-  state.map.fitBounds(state.routePolyline.getBounds(), { padding: [20, 20] });
+      state.userMarker = L.marker(latLngs[0], {
+          icon: userIcon,
+          title: "Tú",
+      }).addTo(state.map);
+
+      state.map.fitBounds(state.routePolyline.getBounds(), { padding: [20, 20] });
+  }
 }
 
 // --- SESSION WORKFLOW CONTROL ---
@@ -1104,11 +1276,16 @@ async function startSession() {
       applyTrainerSlope(0);
     }
 
-    // Start timer interval loop
-    startTimerInterval();
+    // Iniciar cuenta atrás antes de arrancar el temporizador oficial
+    // Añadimos un pequeño retardo para que el mapa sea visible al usuario
+    setTimeout(() => {
+      startCountdown(() => {
+        startTimerInterval();
+        updatePauseButton("⏸ Pausa");
+        console.log(`Active training session started: ${sessId}`);
+      });
+    }, 800);
 
-    updatePauseButton("⏸ Pausa");
-    console.log(`Active training session started: ${sessId}`);
   } catch (e) {
     console.error(e);
     alert("No se pudo inicializar la base de datos de entrenamiento.");
@@ -1122,24 +1299,17 @@ function startTimerInterval() {
     if (state.isSessionActive) {
       const now = Date.now();
 
-      // 1. Cálculos de velocidad virtual y estado (Modo Ruta) - Ocurren siempre
+      // 1. Cálculos de velocidad virtual y estado (Modo Ruta)
+      // Ahora usamos la velocidad del rodillo (state.currentSpeed) en lugar de recalcular virtualSpeed
       if (state.currentMode === "ROUTE") {
-        const userWeight = state.currentUser ? state.currentUser.weight : 75.0;
-        const virtualSpeed = BleManager.calculateVirtualSpeed(
-          state.currentPower,
-          state.currentSlope,
-          userWeight,
-        );
+        setElText("metrics-speed", state.currentSpeed.toFixed(1));
 
-        state.currentSpeed = virtualSpeed;
-        setElText("metrics-speed", virtualSpeed.toFixed(1));
-
-        if (!state.isPaused && virtualSpeed > 0) {
-          state.speedHistory.push(virtualSpeed);
+        if (!state.isPaused && state.currentSpeed > 0) {
+          state.speedHistory.push(state.currentSpeed);
         }
 
-        // Auto-pause detection logic based on virtual speed
-        if (virtualSpeed > 0.5) {
+        // Auto-pause detection logic based on real speed
+        if (state.currentSpeed > 0.5) {
           state.lastMovementTime = now;
           if (state.isAutoPaused) {
             state.isAutoPaused = false;
@@ -1484,25 +1654,23 @@ function updateRouteSimulation(currentDistKm) {
   index = Math.max(0, Math.min(state.routePoints.length - 1, index));
 
   if (index !== state.currentRouteIndex) {
-    state.currentRouteIndex = index;
-    const point = state.routePoints[index];
+      state.currentRouteIndex = index;
+      const point = state.routePoints[index];
 
-    // 1. Move Marker on Map
-    if (state.userMarker) {
-      state.userMarker.setLatLng([point.lat, point.lon]);
-      state.map.panTo([point.lat, point.lon]);
-    }
+      // 1. Mover Marcador/Posición
+      // ... (código existente de posición)
 
-    // 2. Sync elevation chart cursor
-    if (index < state.routePoints.length - 1) {
-      const elevationDiffMeters =
-        state.routeElevations[index + 1] - state.routeElevations[index];
-      if (elevationDiffMeters > 0) {
-        state.totalAscent += elevationDiffMeters;
-        setElText("submetrics-ascent", `${Math.round(state.totalAscent)} m`);
-        updateRouteProgressHud();
+      // 2. Actualizar el gráfico "Prox 500m" y el desnivel
+      refreshUpcomingPreview(currentDistKm);
+        
+      if (index < state.routePoints.length - 1) {
+          const elevationDiffMeters = state.routeElevations[index + 1] - state.routeElevations[index];
+          if (elevationDiffMeters > 0) {
+              state.totalAscent += elevationDiffMeters;
+              setElText("submetrics-ascent", `${Math.round(state.totalAscent)} m`);
+              updateRouteProgressHud();
+          }
       }
-    }
   }
 
   // 2. Sync elevation chart cursor (always for smooth movement)
@@ -1510,11 +1678,62 @@ function updateRouteSimulation(currentDistKm) {
     state.routeDistances[state.routeDistances.length - 1] || 0.1;
   ChartsManager.setElevationCursor(currentDistKm, totalDistKm);
 
-  // Pendiente objetivo: media de los próximos 20 m desde la posición actual
-  setRouteTargetSlope(currentDistKm);
-  refreshUpcomingPreview(currentDistKm);
-  stepSlopeRamp();
-}
+    // Lógica para banner de alerta de distancia restante
+    const remaining = (state.routeDistances[state.routeDistances.length - 1] - currentDistKm);
+    const thresholds = [10, 5, 3, 1];
+    const trigger = thresholds.find(t => Math.abs(remaining - t) < 0.05);
+
+    if (trigger && state.lastAlertedThreshold !== trigger) {
+        state.lastAlertedThreshold = trigger;
+        const banner = document.getElementById("route-alert-banner");
+        if (banner) {
+            banner.textContent = `¡Quedan ${trigger} km para el final!`;
+            banner.style.display = "block";
+            setTimeout(() => { banner.style.display = "none"; }, 3000);
+        }
+    }
+
+    // Actualizar posición del usuario en el mapa según el motor
+    const point = state.routePoints[state.currentRouteIndex];
+    if (state.map.addSource) {
+        // Motor 3D (MapLibre)
+        if (!state.map.getSource('user-location')) {
+            state.map.addSource('user-location', { type: 'geojson', data: { type: 'Point', coordinates: [point.lon, point.lat] } });
+            state.map.addLayer({
+                id: 'user-location',
+                type: 'circle',
+                source: 'user-location',
+                paint: { 'circle-radius': 8, 'circle-color': '#4264fb', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
+            });
+        } else {
+            state.map.getSource('user-location').setData({ type: 'Point', coordinates: [point.lon, point.lat] });
+        }
+        // Seguimiento suave de cámara y rotación según rumbo
+        const center = [point.lon, point.lat];
+        const options = { center, pitch: 60, essential: true };
+        
+        if (state.isMapFollowingRoute) {
+            // Calcular el rumbo (bearing) del movimiento actual
+            const nextIdx = Math.min(state.currentRouteIndex + 5, state.routePoints.length - 1);
+            const nextPoint = state.routePoints[nextIdx];
+            const dx = nextPoint.lon - point.lon;
+            const dy = nextPoint.lat - point.lat;
+            const bearing = (Math.atan2(dx, dy) * 180) / Math.PI;
+            options.bearing = bearing;
+        } else {
+            // Resetear la orientación al Norte
+            options.bearing = 0;
+        }
+
+        state.map.flyTo(options);
+    } else {
+        // Motor 2D (Leaflet) - Actualizar marcador
+        if (state.userMarker) {
+            state.userMarker.setLatLng([point.lat, point.lon]);
+            state.map.panTo([point.lat, point.lon]);
+        }
+    }
+  }
 
 function coerceSlope(slope) {
   return Math.max(-15.0, Math.min(20.0, slope));
@@ -1600,7 +1819,9 @@ function stepSlopeRamp(now = Date.now()) {
 }
 
 function adjustManualSlope(delta) {
-  updateTrainerSlope(state.currentSlope + delta, true);
+  const newSlope = state.currentSlope + delta;
+  console.log(`[Manual Slope] Ajustando manualmente: ${state.currentSlope} -> ${newSlope}`);
+  updateTrainerSlope(newSlope, true);
 }
 
 function getElevationAtDistance(distKm) {
@@ -1794,7 +2015,84 @@ function updateGhostProgress() {
   }
 }
 
-// --- GPX DOWNLOAD EXPORTER TRIGGER ---
+function createOrientationToggleButton() {
+    const mapContainer = document.getElementById("workout-map");
+    if (!mapContainer) return;
+    
+    // Eliminar botón previo si existe
+    const existingBtn = document.getElementById("btn-orient-toggle");
+    if (existingBtn) existingBtn.remove();
+
+    const btn = document.createElement("button");
+    btn.id = "btn-orient-toggle";
+    btn.className = "btn btn-dark";
+    btn.style.position = "absolute";
+    btn.style.top = "10px";
+    btn.style.left = "10px";
+    btn.style.zIndex = "1000";
+    btn.textContent = state.isMapFollowingRoute ? "⬆️ Ruta" : "🗺️ Norte";
+    btn.onclick = () => {
+        state.isMapFollowingRoute = !state.isMapFollowingRoute;
+        btn.textContent = state.isMapFollowingRoute ? "⬆️ Ruta" : "🗺️ Norte";
+    };
+    mapContainer.appendChild(btn);
+}
+
+window.toggleMapEngine = function(btn) {
+    const container = document.getElementById("workout-map");
+    
+    // Forzamos el tamaño antes de cargar el nuevo motor
+    container.style.width = '100%';
+    container.style.height = '100%';
+    container.style.display = 'block';
+    
+    // Destruir mapa actual
+    if (state.map) {
+        if (typeof state.map.remove === 'function') {
+            state.map.remove();
+        }
+        state.map = null;
+        // Limpiamos clases residuales de Leaflet que puedan romper el canvas de MapLibre
+        container.className = "workout-map-fullscreen";
+        container.innerHTML = "";
+    }
+
+    if (btn.textContent.includes("2D")) {
+        btn.textContent = "🗺️ 3D";
+        initLeafletMap();
+        drawRouteOnMap();
+    } else {
+        // Cargar motor vectorial 3D
+        btn.textContent = "🗺️ 2D";
+        console.log("Iniciando motor MapLibre 3D...");
+        try {
+            state.map = new maplibregl.Map({
+                container: 'workout-map',
+                style: `https://api.maptiler.com/maps/streets-v2/style.json?key=eEyxGjEZ5Zh8LWXzYXcM`,
+                center: state.routePoints.length > 0 ? [state.routePoints[0].lon, state.routePoints[0].lat] : [-1.9297, 43.3178],
+                zoom: 14,
+                pitch: 60,
+                antialias: true
+            });
+
+            state.map.on("load", () => {
+                console.log("Mapa 3D cargado correctamente con calles.");
+                state.map.resize();
+                ne();
+                createOrientationToggleButton(); // Volver a crear botón tras carga
+            });
+
+            state.map.on("error", (e) => {
+                console.error("Error en motor MapLibre:", e);
+                alert("Error cargando mapa 3D. Verifica tu API Key.");
+            });
+        } catch (err) {
+            console.error("Error al inicializar MapLibre:", err);
+            btn.textContent = "🗺️ 3D"; // Revertir botón si falla la inicialización
+        }
+    }
+};
+
 async function handleSessionExport() {
   if (!state.currentSessionId && !state.lastSavedSessionId) return;
   const sId = state.currentSessionId || state.lastSavedSessionId;
@@ -1916,6 +2214,27 @@ async function downloadSpecificHistoryGpx(id) {
     }
   } catch (e) {
     console.error(e);
+  }
+}
+
+async function checkPendingSessions() {
+  if (!state.currentUser) return;
+  const sessions = await DbManager.getAllSessions(state.currentUser.id);
+  const pending = sessions.find((s) => !s.endTime);
+
+  if (pending) {
+    if (
+      confirm(
+        "Parece que tienes una sesión de entrenamiento incompleta. ¿Quieres recuperarla y guardarla?",
+      )
+    ) {
+      pending.endTime = Date.now();
+      await DbManager.updateSession(pending);
+      alert("Sesión recuperada con éxito.");
+    } else {
+      await DbManager.deleteSession(pending.id);
+      await DbManager.deleteDataForSession(pending.id);
+    }
   }
 }
 

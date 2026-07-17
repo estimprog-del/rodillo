@@ -1,5 +1,18 @@
 import { showModal, hideModal } from "./ui.js";
-import { state } from "./state.js";
+import {
+  openAddUserModal,
+  closeAddUserModal,
+  openImportUserModal,
+  closeImportUserModal,
+  openEditUserModal,
+  closeEditUserModal,
+  openSettingsModal,
+  closeSettingsModal,
+  openRouteModal,
+  closeRouteModal,
+} from "../ui/modals.js";
+import { state, saveStateToLocalStorage } from "./state.js";
+import { exportAllData, importAllData } from "../db.js";
 
 export function bindEvents(handlers) {
   const {
@@ -31,7 +44,7 @@ export function bindEvents(handlers) {
 
   document.body.addEventListener("click", (e) => {
     const target = e.target.closest(
-      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-slope-minus, #btn-slope-plus, #btn-export-gpx, [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back",
+      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-slope-minus, #btn-slope-plus, #btn-export-gpx, [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-dashboard-settings, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings",
     );
 
     if (!target) return;
@@ -39,12 +52,12 @@ export function bindEvents(handlers) {
 
     setTimeout(() => {
       // Modales y Navegación
-      if (id === "btn-show-add-user") showModal("add-user");
-      if (id === "btn-show-import-user") showModal("import-user");
-      if (id === "btn-close-add-user") hideModal("add-user");
-      if (id === "btn-close-import-user") hideModal("import-user");
-      if (id === "btn-close-edit-user") hideModal("edit-user");
-      if (id === "btn-dashboard-settings") {
+      if (id === "btn-show-add-user") openAddUserModal();
+      if (id === "btn-show-import-user") openImportUserModal();
+      if (id === "btn-close-add-user") closeAddUserModal();
+      if (id === "btn-close-import-user") closeImportUserModal();
+      if (id === "btn-close-edit-user") closeEditUserModal();
+      const openUserProfile = () => {
         const u = state.currentUser;
         if (u) {
           document.getElementById("edit-user-name").value = u.name || "";
@@ -55,7 +68,54 @@ export function bindEvents(handlers) {
           document.getElementById("edit-user-age").value = u.age || "";
           document.getElementById("edit-user-height").value = u.height || "";
         }
-        showModal("edit-user");
+        openEditUserModal();
+      };
+
+      const openSettingsModalHandler = () => {
+        openSettingsModal();
+      };
+
+      if (id === "btn-open-user-profile-trigger") {
+        openUserProfile();
+      }
+      if (id === "btn-dashboard-settings") {
+        openSettingsModal();
+        setTimeout(() => {
+          document.getElementById("setting-map-type").value = state.mapType || 'maplibre';
+          document.getElementById("setting-font-scale").value = state.fontScale || 1.0;
+          
+          const realismSlider = document.getElementById("setting-realism");
+          const realismDisplay = document.getElementById("realism-val-display");
+          realismSlider.value = Math.round(state.realismFactor * 100) || 100;
+          realismDisplay.textContent = realismSlider.value;
+          
+          // Actualizar display al mover el slider
+          realismSlider.oninput = (e) => realismDisplay.textContent = e.target.value;
+
+          document.getElementById("setting-power-zones").value = state.powerZones ? state.powerZones.join(',') : "55,75,88,95,106";
+          
+          document.querySelectorAll('.btn-smoothing').forEach(btn => {
+            btn.style.background = btn.getAttribute('data-val') == (state.sensorSmoothing || 1000) ? '#10b981' : '#333';
+          });
+        }, 250);
+      }
+      if (id === "btn-save-settings") {
+        state.mapType = document.getElementById("setting-map-type").value;
+        state.fontScale = parseFloat(document.getElementById("setting-font-scale").value);
+        state.realismFactor = parseInt(document.getElementById("setting-realism").value) / 100;
+        state.powerZones = document.getElementById("setting-power-zones").value.split(',').map(Number);
+        
+        saveStateToLocalStorage();
+        closeSettingsModal();
+      }
+      if (e.target.classList.contains('btn-smoothing')) {
+        state.sensorSmoothing = parseInt(e.target.getAttribute('data-val'));
+        document.querySelectorAll('.btn-smoothing').forEach(btn => {
+          btn.style.background = btn === e.target ? '#10b981' : '#333';
+        });
+      }
+      if (id === "btn-backup-data") {
+        exportAllData();
       }
 
       if (id === "btn-dashboard-connections") navigateTo("connections");
@@ -84,6 +144,19 @@ export function bindEvents(handlers) {
       // Controles entrenamiento
       if (id === "btn-workout-pause") togglePause();
       if (id === "btn-workout-stop") stopSessionFlow();
+      // Control de fuentes
+      if (e.target.classList.contains("btn-font-scale")) {
+        const scale = e.target.getAttribute("data-scale");
+        const increment = scale === "sm" ? -0.1 : scale === "lg" ? 0.1 : 0;
+        if (increment !== 0) {
+          setWorkoutFontScale(increment);
+          // Actualizar visualmente la clase active
+          document.querySelectorAll(".btn-font-scale").forEach((btn) => {
+            btn.classList.remove("active");
+          });
+          e.target.classList.add("active");
+        }
+      }
       if (id === "btn-slope-minus") adjustManualSlope(-0.5);
       if (id === "btn-slope-plus") adjustManualSlope(0.5);
       if (id === "btn-export-gpx") handleExportProfile();
@@ -150,12 +223,15 @@ export function bindEvents(handlers) {
       if (id === "btn-connections-continue") {
         const ble = window.BleManager;
         const isVirtual = ble?.simulator?.isActive;
-        const hasControllable =
-          ble?.connections?.TRAINER?.status === "CONECTADO";
+        const hasControllable = ble?.connections?.TRAINER?.status === "CONECTADO";
         const hasPower = ble?.connections?.POWER?.status === "CONECTADO";
         const hasSpeed = ble?.connections?.CSC?.status === "CONECTADO";
         if (isVirtual || hasControllable || hasPower || hasSpeed) {
-          navigateTo("workout");
+          if (state.currentMode === "ROUTE") {
+            openRouteModal();
+          } else {
+            navigateTo("workout");
+          }
         } else {
           alert(
             "Debes conectar al menos un sensor (Rodillo, Potencia o Velocidad) o activar el Rodillo Virtual para continuar.",
@@ -165,14 +241,15 @@ export function bindEvents(handlers) {
 
       // Sesión GPX
       if (id === "btn-modal-cancel") {
-        document.getElementById("route-modal").classList.remove("active");
+        closeRouteModal();
         navigateTo("dashboard");
       }
       if (id === "btn-modal-confirm") {
         if (state.routePoints.length === 0) {
           alert("Selecciona un archivo GPX/TCX antes de empezar.");
         } else {
-          document.getElementById("route-modal").classList.remove("active");
+          closeRouteModal();
+          navigateTo("workout");
           if (!state.isSessionActive) startSession();
         }
       }
@@ -197,11 +274,18 @@ export function bindEvents(handlers) {
     gpxInput.addEventListener("change", handleGpxUpload);
   }
 
-  document.querySelectorAll(".btn-font-scale").forEach((btn) => {
-    const scaleType = btn.getAttribute("data-scale");
-    btn.onclick = (e) => {
-      const inc = scaleType === "lg" ? 0.25 : -0.25;
-      setWorkoutFontScale(inc);
+  // Restaurar backup
+  const backupInput = document.getElementById("backup-file-input");
+  const backupTrigger = document.getElementById("btn-trigger-import-backup");
+  if (backupTrigger && backupInput) {
+    backupTrigger.onclick = () => {
+      backupInput.value = "";
+      backupInput.click();
     };
-  });
+    backupInput.addEventListener("change", (e) => {
+      if (e.target.files.length > 0) {
+        importAllData(e.target.files[0]);
+      }
+    });
+  }
 }
