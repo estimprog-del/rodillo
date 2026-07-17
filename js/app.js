@@ -2039,36 +2039,35 @@ function createOrientationToggleButton() {
 }
 
 window.toggleMapEngine = function(btn) {
+    console.log("Toggle map engine. Current text:", btn.textContent);
     const container = document.getElementById("workout-map");
-
-    // Forzamos el tamaño antes de cargar el nuevo motor
-    container.style.width = '100%';
-    container.style.height = '100%';
-    container.style.display = 'block';
-
-    // Destruir mapa actual
-    if (state.map) {
-        if (typeof state.map.remove === 'function') {
+    
+    // Si estamos en 3D (el botón dice 2D, queremos volver a 2D)
+    if (btn.textContent.trim() === "🗺️ 2D") {
+        console.log("Cambiando a motor Leaflet 2D...");
+        if (state.map) {
             state.map.remove();
+            state.map = null;
         }
-        state.map = null;
-        // Limpiamos clases residuales de Leaflet que puedan romper el canvas de MapLibre
         container.className = "workout-map-fullscreen";
         container.innerHTML = "";
-    }
-
-    if (btn.textContent.includes("2D")) {
         btn.textContent = "🗺️ 3D";
         initLeafletMap();
         drawRouteOnMap();
-    } else {
-        // Cargar motor vectorial 3D
+    } 
+    // Si estamos en 2D (el botón dice 3D, queremos ir a 3D)
+    else {
+        console.log("Cambiando a motor MapLibre 3D...");
+        if (state.map) {
+            state.map.remove();
+            state.map = null;
+        }
         btn.textContent = "🗺️ 2D";
-        console.log("Iniciando motor MapLibre 3D...");
+        
         try {
             state.map = new maplibregl.Map({
                 container: 'workout-map',
-                style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${import.meta.env.VITE_MAPTILER_API_KEY}`,
+                style: `https://api.maptiler.com/maps/streets-v2/style.json?key=eEyxGjEZ5Zh8LWXzYXcM`,
                 center: state.routePoints.length > 0 ? [state.routePoints[0].lon, state.routePoints[0].lat] : [-1.9297, 43.3178],
                 zoom: 14,
                 pitch: 60,
@@ -2076,19 +2075,23 @@ window.toggleMapEngine = function(btn) {
             });
 
             state.map.on("load", () => {
-                console.log("Mapa 3D cargado correctamente con calles.");
+                console.log("Mapa 3D cargado correctamente.");
                 state.map.resize();
                 ne();
-                createOrientationToggleButton(); // Volver a crear botón tras carga
+                createOrientationToggleButton();
             });
 
             state.map.on("error", (e) => {
-                console.error("Error en motor MapLibre:", e);
-                alert("Error cargando mapa 3D. Verifica tu API Key.");
+                console.error("Error MapLibre:", e);
+                alert("Error cargando mapa 3D.");
+                // Revertir a 2D si falla
+                btn.textContent = "🗺️ 3D";
+                initLeafletMap();
+                drawRouteOnMap();
             });
         } catch (err) {
-            console.error("Error al inicializar MapLibre:", err);
-            btn.textContent = "🗺️ 3D"; // Revertir botón si falla la inicialización
+            console.error("Error inicialización MapLibre:", err);
+            btn.textContent = "🗺️ 3D";
         }
     }
 };
