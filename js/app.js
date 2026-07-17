@@ -2027,9 +2027,9 @@ function createOrientationToggleButton() {
     btn.id = "btn-orient-toggle";
     btn.className = "btn btn-dark";
     btn.style.position = "absolute";
-    btn.style.bottom = "80px";
+    btn.style.bottom = "140px";
     btn.style.right = "10px";
-    btn.style.zIndex = "1000";
+    btn.style.zIndex = "2000";
     btn.textContent = state.isMapFollowingRoute ? "⬆️ Ruta" : "🗺️ Norte";
     btn.onclick = () => {
         state.isMapFollowingRoute = !state.isMapFollowingRoute;
@@ -2040,29 +2040,35 @@ function createOrientationToggleButton() {
 
 window.toggleMapEngine = function(btn) {
     console.log("¡Clic recibido en toggleMapEngine!");
-    console.log("Toggle map engine. Current text:", btn.textContent);
     const container = document.getElementById("workout-map");
     
-    // Si estamos en 3D (el botón dice 2D, queremos volver a 2D)
-    if (btn.textContent.trim() === "🗺️ 2D") {
+    // Normalizar el texto para comparar (eliminar espacios y saltos de línea)
+    const currentText = btn.textContent.replace(/\s+/g, '');
+    
+    // Si contiene "2D" (estamos en 3D), volvemos a 2D
+    if (currentText.includes("2D")) {
         console.log("Cambiando a motor Leaflet 2D...");
         if (state.map) {
             state.map.remove();
             state.map = null;
         }
         container.className = "workout-map-fullscreen";
-        container.innerHTML = "";
+        container.style.height = "100%";
+        container.style.width = "100%";
+        
         btn.textContent = "🗺️ 3D";
         initLeafletMap();
         drawRouteOnMap();
     } 
-    // Si estamos en 2D (el botón dice 3D, queremos ir a 3D)
+    // Si estamos en 2D (no contiene "2D", es decir, es 3D), vamos a 3D
     else {
         console.log("Cambiando a motor MapLibre 3D...");
         if (state.map) {
             state.map.remove();
             state.map = null;
         }
+        btn.textContent = "🗺️ 2D";
+        
         container.className = "workout-map-fullscreen";
         container.style.height = "100%";
         container.style.width = "100%";
