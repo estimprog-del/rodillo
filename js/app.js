@@ -2016,36 +2016,21 @@ function updateGhostProgress() {
 }
 
 function createOrientationToggleButton() {
-    console.log("Creando botón de orientación...");
-    const mapContainer = document.getElementById("workout-map");
-    if (!mapContainer) {
-        console.warn("No se pudo añadir el botón: contenedor no encontrado.");
+    console.log("Configurando funcionalidad del botón de orientación...");
+    const btn = document.getElementById("btn-orient-toggle");
+    if (!btn) {
+        console.warn("No se encontró el botón btn-orient-toggle en el DOM.");
         return;
     }
 
-    // Eliminar botón previo si existe
-    const existingBtn = document.getElementById("btn-orient-toggle");
-    if (existingBtn) existingBtn.remove();
-
-    const btn = document.createElement("button");
-    btn.id = "btn-orient-toggle";
-    // Usamos las mismas clases exactas que el botón 3D
-    btn.className = "btn-control btn-dark"; 
-    btn.style.position = "absolute";
-    // Posición fija relativa a la esquina inferior derecha
-    btn.style.bottom = "115px"; 
-    btn.style.right = "85px";
-    btn.style.zIndex = "2000";
-    btn.style.height = "38px";
-    btn.style.padding = "5px 15px";
-    btn.style.fontSize = "14px";
-    
+    // Inicializar texto según estado actual
     btn.textContent = state.isMapFollowingRoute ? "⬆️ Ruta" : "🗺️ Norte";
+
+    // Solo añadimos el evento de clic y la actualización del estado
     btn.onclick = () => {
         state.isMapFollowingRoute = !state.isMapFollowingRoute;
         btn.textContent = state.isMapFollowingRoute ? "⬆️ Ruta" : "🗺️ Norte";
     };
-    mapContainer.appendChild(btn);
 }
 
 window.toggleMapEngine = function(btn) {
