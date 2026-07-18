@@ -2034,7 +2034,7 @@ function createOrientationToggleButton() {
     // Colocamos el botón a la izquierda del botón 3D. 
     // El contenedor está a la derecha, así que ajustamos el right para que sea adyacente.
     // Suponiendo un ancho del botón 3D de aprox 70px + espacios.
-    btn.style.bottom = "80px"; 
+    btn.style.bottom = "142px"; 
     btn.style.right = "90px"; 
     btn.style.zIndex = "9999";
     btn.textContent = state.isMapFollowingRoute ? "⬆️ Ruta" : "🗺️ Norte";
