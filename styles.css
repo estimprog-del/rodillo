@@ -2034,6 +2034,7 @@ h4 {
 
 /* Ajuste fino para los controles de MapLibre en modo 3D */
 .maplibregl-ctrl-top-right {
+    z-index: 1000 !important;
     top: 70px !important; 
     right: 10px !important;
 }

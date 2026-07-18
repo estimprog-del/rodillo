@@ -2078,6 +2078,12 @@ window.toggleMapEngine = function(btn) {
                 antialias: true
             });
 
+            // Añadir controles de navegación (Zoom y Brújula)
+            state.map.addControl(new maplibregl.NavigationControl({
+                showCompass: true,
+                showZoom: true
+            }), 'top-right');
+
             state.map.on("load", () => {
                 console.log("Mapa 3D cargado correctamente.");
                 state.map.resize();
