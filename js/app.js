@@ -2033,8 +2033,8 @@ function createOrientationToggleButton() {
     btn.className = "btn-control btn-dark"; 
     btn.style.position = "absolute";
     // Posición fija relativa a la esquina inferior derecha
-    btn.style.bottom = "117px"; 
-    btn.style.right = "10px";
+    btn.style.bottom = "115px"; 
+    btn.style.right = "85px";
     btn.style.zIndex = "2000";
     btn.style.height = "38px";
     btn.style.padding = "5px 15px";
