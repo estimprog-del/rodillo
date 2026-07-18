@@ -2037,9 +2037,10 @@ function createOrientationToggleButton() {
     const containerRect = mapContainer.getBoundingClientRect();
     
     btn.style.position = "absolute";
-    // Colocarlo alineado horizontalmente con el botón 3D y justo encima
-    btn.style.left = (rect.left - containerRect.left) + "px";
-    btn.style.top = (rect.top - containerRect.top - 55) + "px"; // 55px para dejar margen
+    // Colocamos el botón a la izquierda del botón 3D.
+    // Usamos el ancho del botón 3D para calcular la posición exacta a la izquierda.
+    btn.style.left = (rect.left - containerRect.left - 105) + "px"; 
+    btn.style.top = (rect.top - containerRect.top) + "px"; 
     btn.style.zIndex = "9999";
     btn.style.padding = "5px 10px";
     
