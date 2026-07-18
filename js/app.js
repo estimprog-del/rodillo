@@ -2018,9 +2018,8 @@ function updateGhostProgress() {
 function createOrientationToggleButton() {
     console.log("Creando botón de orientación...");
     const mapContainer = document.getElementById("workout-map");
-    const toggle3dBtn = document.getElementById("btn-toggle-3d");
-    if (!mapContainer || !toggle3dBtn) {
-        console.warn("No se pudo añadir el botón: contenedor o botón 3D no encontrado.");
+    if (!mapContainer) {
+        console.warn("No se pudo añadir el botón: contenedor no encontrado.");
         return;
     }
 
@@ -2030,21 +2029,15 @@ function createOrientationToggleButton() {
 
     const btn = document.createElement("button");
     btn.id = "btn-orient-toggle";
-    btn.className = "btn-control btn-dark";
-    
-    // Obtener la posición del botón 3D
-    const rect = toggle3dBtn.getBoundingClientRect();
-    const containerRect = mapContainer.getBoundingClientRect();
-    
+    // Usamos las mismas clases exactas que el botón 3D
+    btn.className = "btn-control btn-dark"; 
     btn.style.position = "absolute";
-    // Colocarlo alineado horizontalmente a la izquierda del botón 3D
-    btn.style.left = (rect.left - containerRect.left - 95) + "px"; 
-    btn.style.top = (rect.top - containerRect.top) + "px";
-    
-    // Altura y padding para que coincida con el botón 3D
-    btn.style.height = "38px"; 
+    // Posición fija relativa a la esquina inferior derecha
+    btn.style.bottom = "117px"; 
+    btn.style.right = "10px";
+    btn.style.zIndex = "2000";
+    btn.style.height = "38px";
     btn.style.padding = "5px 15px";
-    btn.style.zIndex = "9999";
     btn.style.fontSize = "14px";
     
     btn.textContent = state.isMapFollowingRoute ? "⬆️ Ruta" : "🗺️ Norte";
