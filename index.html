@@ -449,43 +449,33 @@
 
                         <!-- Grupo HUD derecha inferior -->
                         <div class="hud-bottom-right-group">
-                            <button
-                                class="btn-control btn-pause"
-                                id="btn-workout-pause"
-                                style="
-                                    margin-bottom: 5px;
-                                    width: fit-content;
-                                    padding: 5px 15px;
-                                "
-                            >
-                                ▶ Reanudar
-                            </button>
-                            <button
-                                class="btn-control btn-stop"
-                                id="btn-workout-stop"
-                                style="
-                                    margin-bottom: 5px;
-                                    width: fit-content;
-                                    padding: 5px 15px;
-                                "
-                            >
-                                ⏹ Finalizar
-                            </button>
-                            <button
-                                class="btn-control btn-3d"
-                                id="btn-toggle-3d"
-                                style="
-                                    margin-bottom: 5px;
-                                    width: fit-content;
-                                    padding: 5px 15px;
-                                    background-color: #4f46e5;
-                                "
-                            >
-                                🗺️ 3D
-                            </button>
+                            <div class="hud-buttons-container" style="display: flex; gap: 5px; flex-wrap: wrap;">
+                                <button
+                                    class="btn-control btn-pause"
+                                    id="btn-workout-pause"
+                                    style="width: fit-content; padding: 5px 15px;"
+                                >
+                                    ▶ Reanudar
+                                </button>
+                                <button
+                                    class="btn-control btn-stop"
+                                    id="btn-workout-stop"
+                                    style="width: fit-content; padding: 5px 15px;"
+                                >
+                                    ⏹ Finalizar
+                                </button>
+                                <button
+                                    class="btn-control btn-3d"
+                                    id="btn-toggle-3d"
+                                    style="width: fit-content; padding: 5px 15px; background-color: #4f46e5;"
+                                >
+                                    🗺️ 3D
+                                </button>
+                            </div>
                             <div
                                 class="slope-box glass-card"
                                 id="metrics-slope"
+                                style="margin-top: 5px;"
                             >
                                 ⛰️ 0.0%
                             </div>
