@@ -1669,8 +1669,25 @@ function updateRouteSimulation(currentDistKm) {
       // 1. Mover Marcador/Posición
       // ... (código existente de posición)
 
-      // 2. Actualizar el gráfico "Prox 500m" y el desnivel
+      // Actualizar el gráfico "Prox 500m" y el desnivel
       refreshUpcomingPreview(currentDistKm);
+
+      // Comprobación para finalizar la sesión si se ha completado la ruta
+      const totalRouteDistance = state.routeDistances[state.routeDistances.length - 1] || 0;
+      if (currentDistKm >= totalRouteDistance && state.isSessionActive && !state.isPaused) {
+        console.log("¡Ruta completada!");
+        const banner = document.getElementById("route-finished-banner");
+        if (banner) {
+          banner.style.display = "block";
+          // Esperar 10 segundos y finalizar
+          setTimeout(() => {
+            banner.style.display = "none";
+            stopSessionFlow();
+          }, 10000);
+        } else {
+          stopSessionFlow();
+        }
+      }
 
       if (index < state.routePoints.length - 1) {
           const elevationDiffMeters = state.routeElevations[index + 1] - state.routeElevations[index];
@@ -1689,7 +1706,7 @@ function updateRouteSimulation(currentDistKm) {
 
     // Lógica para banner de alerta de distancia restante
     const remaining = (state.routeDistances[state.routeDistances.length - 1] - currentDistKm);
-    const thresholds = [10, 5, 3, 1];
+    const thresholds = [20, 10, 5, 4, 3, 2, 1];
     const trigger = thresholds.find(t => Math.abs(remaining - t) < 0.05);
 
     if (trigger && state.lastAlertedThreshold !== trigger) {
@@ -2045,10 +2062,10 @@ function createOrientationToggleButton() {
 window.toggleMapEngine = function(btn) {
     console.log("¡Clic recibido en toggleMapEngine!");
     const container = document.getElementById("workout-map");
-    
+
     // Normalizar el texto para comparar (eliminar espacios y saltos de línea)
     const currentText = btn.textContent.replace(/\s+/g, '');
-    
+
     // Si contiene "2D" (estamos en 3D), volvemos a 2D
     if (currentText.includes("2D")) {
         console.log("Cambiando a motor Leaflet 2D...");
@@ -2059,11 +2076,11 @@ window.toggleMapEngine = function(btn) {
         container.className = "workout-map-fullscreen";
         container.style.height = "100%";
         container.style.width = "100%";
-        
+
         btn.textContent = "🗺️ 3D";
         initLeafletMap();
         drawRouteOnMap();
-    } 
+    }
     // Si estamos en 2D (no contiene "2D", es decir, es 3D), vamos a 3D
     else {
         console.log("Cambiando a motor MapLibre 3D...");
@@ -2072,7 +2089,7 @@ window.toggleMapEngine = function(btn) {
             state.map = null;
         }
         btn.textContent = "🗺️ 2D";
-        
+
         container.className = "workout-map-fullscreen";
         container.style.height = "100%";
         container.style.width = "100%";
@@ -2133,6 +2150,7 @@ async function handleSessionExport() {
     console.error(e);
   }
 }
+window.handleSessionExport = handleSessionExport;
 
 // --- HISTORY AND STATISTICS SCREENS ---
 async function loadHistoryList() {
