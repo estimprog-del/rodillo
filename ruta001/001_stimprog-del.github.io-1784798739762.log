@@ -1,0 +1,61 @@
+contentscript.js:14083 MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 close listeners added. Use emitter.setMaxListeners() to increase limit
+n @ contentscript.js:14083
+contentscript.js:14083 MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 end listeners added. Use emitter.setMaxListeners() to increase limit
+n @ contentscript.js:14083
+contentscript.js:14083 ObjectMultiplex - orphaned data for stream "app-init-liveness"
+warn @ contentscript.js:14083
+contentscript.js:14083 ObjectMultiplex - orphaned data for stream "app-init-liveness"
+warn @ contentscript.js:14083
+contentscript.js:14083 ObjectMultiplex - orphaned data for stream "background-liveness"
+warn @ contentscript.js:14083
+contentscript.js:14083 ObjectMultiplex - orphaned data for stream "background-liveness"
+warn @ contentscript.js:14083
+index-CSNfEKW6.js:111 RodilloInt SPA initializing...
+index-CSNfEKW6.js:1 Database upgrade completed successfully
+favicon.ico:1  Failed to load resource: the server responded with a status of 404 ()
+index-CSNfEKW6.js:111 [Auto-Reconnect] El navegador no soporta navigator.bluetooth.getDevices()
+index-CSNfEKW6.js:111 [FTMS Setup] Buscando el punto de control FTMS (0x2ad9)...
+index-CSNfEKW6.js:111 [FTMS Setup] Características del servicio FTMS encontradas (7):
+index-CSNfEKW6.js:111   - UUID: 00002acc-0000-1000-8000-00805f9b34fb | Propiedades: [READ]
+index-CSNfEKW6.js:111   - UUID: 00002ad2-0000-1000-8000-00805f9b34fb | Propiedades: [NOTIFY]
+index-CSNfEKW6.js:111   - UUID: 00002ad3-0000-1000-8000-00805f9b34fb | Propiedades: [NOTIFY]
+index-CSNfEKW6.js:111   - UUID: 00002ad6-0000-1000-8000-00805f9b34fb | Propiedades: [READ]
+index-CSNfEKW6.js:111   - UUID: 00002ad8-0000-1000-8000-00805f9b34fb | Propiedades: [READ]
+index-CSNfEKW6.js:111   - UUID: 00002ad9-0000-1000-8000-00805f9b34fb | Propiedades: [WRITE, INDICATE]
+index-CSNfEKW6.js:111   - UUID: 00002ada-0000-1000-8000-00805f9b34fb | Propiedades: [NOTIFY]
+index-CSNfEKW6.js:111 [FTMS Setup] Característica del Punto de Control encontrada. Configurando...
+index-CSNfEKW6.js:111 [FTMS Setup] Suscribiendo a indicaciones del Control Point...
+index-CSNfEKW6.js:111 [FTMS Setup] Suscripción exitosa a indicaciones del Control Point.
+index-CSNfEKW6.js:111 [FTMS Setup] Enviando comando de solicitud de control (0x00)...
+index-CSNfEKW6.js:111 [FTMS Response] Request Control → ✅ Éxito
+index-CSNfEKW6.js:111 [FTMS Setup] Control solicitado con éxito (0x00 enviado via writeValueWithResponse)
+index-CSNfEKW6.js:123 Ghost Rider loaded from session: 7. Points count: 331
+index-CSNfEKW6.js:123 Configurando funcionalidad del botón de orientación...
+index-CSNfEKW6.js:111 [FTMS → Rodillo] Set Inclination (OpCode 0x11): 0.00% (valor bruto: 0) enviado correctamente
+index-CSNfEKW6.js:111 [FTMS Response] Set Indoor Bike Simulation Parameters → ✅ Éxito
+favicon.ico:1  Failed to load resource: the server responded with a status of 404 ()
+index-CSNfEKW6.js:123 Active training session started: 11
+index-CSNfEKW6.js:123 ¡Clic recibido en toggleMapEngine!
+index-CSNfEKW6.js:123 Cambiando a motor MapLibre 3D...
+util.ts:321 Image " " could not be loaded. Please make sure you have added the image with map.addImage() or a "sprite" property in your style. You can provide missing images by listening for the "styleimagemissing" map event.
+warnOnce @ util.ts:321
+index-CSNfEKW6.js:123 Mapa 3D cargado correctamente.
+index-CSNfEKW6.js:123 Configurando funcionalidad del botón de orientación...
+util.ts:321 Image "office" could not be loaded. Please make sure you have added the image with map.addImage() or a "sprite" property in your style. You can provide missing images by listening for the "styleimagemissing" map event.
+warnOnce @ util.ts:321
+index-CSNfEKW6.js:123 Error MapLibre: R
+(anonymous) @ index-CSNfEKW6.js:123
+index-CSNfEKW6.js:123 Error MapLibre: R
+(anonymous) @ index-CSNfEKW6.js:123
+index-CSNfEKW6.js:123 Error MapLibre: R
+(anonymous) @ index-CSNfEKW6.js:123
+index-CSNfEKW6.js:123 Error MapLibre: R
+(anonymous) @ index-CSNfEKW6.js:123
+index-CSNfEKW6.js:111 [FTMS Response] Set Indoor Bike Simulation Parameters → ✅ Éxito
+index-CSNfEKW6.js:111 [FTMS → Rodillo] Set Inclination (OpCode 0x11): -0.21% (valor bruto: -21) enviado correctamente
+index-CSNfEKW6.js:111 [FTMS → Rodillo] Set Inclination (OpCode 0x11): -2.54% (valor bruto: -254) enviado correctamente
+index-CSNfEKW6.js:111 [FTMS Response] Set Indoor Bike Simulation Parameters → ✅ Éxito
+util.ts:321 Image "exit_1" could not be loaded. Please make sure you have added the image with map.addImage() or a "sprite" property in your style. You can provide missing images by listening for the "styleimagemissing" map event.
+warnOnce @ util.ts:321
+util.ts:321 Image "exit_2" could not be loaded. Please make sure you have added the image with map.addImage() or a "sprite" property in your style. You can provide missing images by listening for the "styleimagemissing" map event.
+warnOnce @ util.ts:321

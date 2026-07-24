@@ -95,7 +95,7 @@ export function bindEvents(handlers) {
           document.getElementById("setting-power-zones").value = state.powerZones ? state.powerZones.join(',') : "55,75,88,95,106";
           
           document.querySelectorAll('.btn-smoothing').forEach(btn => {
-            btn.style.background = btn.getAttribute('data-val') == (state.sensorSmoothing || 1000) ? '#10b981' : '#333';
+            btn.style.background = btn.getAttribute('data-val') == (state.sensorSmoothing || 3000) ? '#10b981' : '#333';
           });
         }, 250);
       }
@@ -165,7 +165,7 @@ export function bindEvents(handlers) {
       }
       if (id === "btn-slope-minus") adjustManualSlope(-0.5);
       if (id === "btn-slope-plus") adjustManualSlope(0.5);
-      if (id === "btn-export-gpx") handleExportProfile();
+      if (id === "btn-export-gpx") handleSessionExport();
 
       // Bluetooth
       if (id && id.startsWith("btn-connect-")) {

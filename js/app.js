@@ -1000,6 +1000,15 @@ function enterWorkoutScreen() {
 
   configureWorkoutHudForMode();
 
+  // Aplicar tamaño de fuente guardado
+  const viewport = document.querySelector(".workout-viewport");
+  if (viewport) {
+    const savedScale = localStorage.getItem("rodilloint_fontSize");
+    if (savedScale) {
+      viewport.style.setProperty("--workout-text-multiplier", savedScale);
+    }
+  }
+
   const isRouteMode = state.currentMode === "ROUTE";
   const ghostBanner = document.getElementById("ghost-banner");
   if (ghostBanner) ghostBanner.classList.remove("visible");

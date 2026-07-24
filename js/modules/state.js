@@ -46,7 +46,7 @@ export const state = {
   realismFactor: 1.0,
   mapType: 'maplibre',
   fontScale: 1.0,
-  sensorSmoothing: 500,
+  sensorSmoothing: 3000,
   powerZones: [55, 75, 88, 95, 106],
 };
 
@@ -72,7 +72,7 @@ export function loadStateFromLocalStorage() {
     state.realismFactor = parsed.realismFactor || 1.0;
     state.mapType = parsed.mapType || 'maplibre';
     state.fontScale = parsed.fontScale || 1.0;
-    state.sensorSmoothing = parsed.sensorSmoothing || 500;
+    state.sensorSmoothing = parsed.sensorSmoothing || 3000;
     state.powerZones = parsed.powerZones || [55, 75, 88, 95, 106];
   }
 }

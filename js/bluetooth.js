@@ -787,7 +787,7 @@ async function setTrainerSlope(slope) {
       const clampedSlope = Math.max(-15.0, Math.min(20.0, adjustedSlope));
 
       if (trainer.useSimulationParameters === undefined) {
-        trainer.useSimulationParameters = true;
+        trainer.useSimulationParameters = false; // Forzamos el uso de OpCode 0x03
       }
 
       if (trainer.useSimulationParameters) {
