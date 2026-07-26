@@ -15,9 +15,9 @@ import { loadDashboardHeader } from "./ui/dashboard.js";
 import { updateClock, updatePauseButton } from "./ui/uiHelpers.js";
 import { bindEvents } from "./modules/events.js";
 
-const SLOPE_AVERAGE_METERS = 20;
+const SLOPE_AVERAGE_METERS = 10;
 const SLOPE_PREVIEW_LONG_METERS = 500;
-const MAX_SLOPE_CHANGE_PER_SEC = 0.5;
+const MAX_SLOPE_CHANGE_PER_SEC = 0.2;
 
 // Global Navigation function (injected)
 let navigateTo;
@@ -1282,12 +1282,14 @@ async function startSession() {
     state.targetSlope = 0.0;
     state.lastSlopeRampTime = Date.now();
 
+    // Forzamos el estado inicial en el rodillo
+    state.currentSlope = 0;
+    state.targetSlope = 0;
+    applyTrainerSlope(0);
+
     if (state.currentMode === "ROUTE" && state.routePoints.length > 0) {
       setRouteTargetSlope(0);
-      applyTrainerSlope(0);
       refreshUpcomingPreview(0);
-    } else {
-      applyTrainerSlope(0);
     }
 
     // Iniciar cuenta atrás antes de arrancar el temporizador oficial
@@ -1338,7 +1340,7 @@ function startTimerInterval() {
         }
       }
 
-      // 2. Rampa de pendiente y Simulador (Ocurren siempre para mantener el rodillo sincronizado)
+      // 2. Rampa de pendiente y Simulador (Controlados cada 2s para evitar saturación)
       stepSlopeRamp();
       if (BleManager.simulator.isActive && state.currentMode === "ROUTE") {
         BleManager.simulator.slope = state.currentSlope;
@@ -1356,11 +1358,15 @@ function startTimerInterval() {
         setElText("workout-timer", formatted);
 
         if (state.currentMode === "ROUTE") {
-          state.totalDistance += state.currentSpeed / 3600.0;
+          if (state.currentSpeed > 0.1) {
+            state.totalDistance += state.currentSpeed / 3600.0;
+          }
+
           if (window.ChartsManager) {
+            // Corregido: totalDistance ya es km, no dividir por 1000
             window.ChartsManager.setElevationCursor(
-              state.totalDistance / 1000,
-              state.routeTotalDistance / 1000,
+              state.totalDistance,
+              state.routeTotalDistance
             );
           }
           setElText(
@@ -1369,6 +1375,8 @@ function startTimerInterval() {
           );
           updateRouteProgressHud(state);
           updateRouteSimulation(state.totalDistance);
+          // Corregido: totalDistance ya es km, no dividir por 1000
+          setRouteTargetSlope(state.totalDistance);
         }
 
         updateSessionAverages();
@@ -1393,7 +1401,7 @@ function startTimerInterval() {
         }
       }
     }
-  }, 1000);
+  }, 2000);
 }
 
 function pauseTimer() {
@@ -1766,12 +1774,36 @@ function applyTrainerSlope(slope) {
 
 function syncSlopeDisplayLabels() {
   const formatted = `${state.currentSlope >= 0 ? "+" : ""}${state.currentSlope.toFixed(1)}%`;
+
+  // Actualizar etiqueta en panel manual
   const manualLabel = document.getElementById("manual-slope-label");
   if (manualLabel) manualLabel.textContent = formatted;
 
+  // Actualizar etiqueta de depuración/envío
   const sentLabel = document.getElementById("current-slope-sent-label");
   if (sentLabel) {
-    sentLabel.textContent = `Rodillo: ${state.currentSlope >= 0 ? "+" : ""}${state.currentSlope.toFixed(1)}%`;
+    sentLabel.textContent = `Rodillo: ${formatted}`;
+  }
+
+  // Actualizar etiqueta principal del HUD (metrics-slope)
+  // Ahora el usuario ve exactamente lo que el rodillo está aplicando
+  const slopeEl = document.getElementById("metrics-slope");
+  if (slopeEl) {
+    slopeEl.textContent = `⛰️ ${formatted}`;
+    const slope = state.currentSlope;
+    if (slope < 0) {
+      slopeEl.style.background = "#10b981"; // Verde (descenso)
+    } else if (slope <= 3) {
+      slopeEl.style.background = "#059669"; // Verde suave (llano)
+    } else if (slope <= 7) {
+      slopeEl.style.background = "#f59e0b"; // Amarillo (moderado)
+    } else if (slope <= 10) {
+      slopeEl.style.background = "#f97316"; // Naranja (media)
+    } else if (slope <= 15) {
+      slopeEl.style.background = "#ef4444"; // Rojo (duro)
+    } else {
+      slopeEl.style.background = "#7f1d1d"; // Negro/Rojo oscuro (>15%)
+    }
   }
 }
 
@@ -1805,7 +1837,8 @@ function stepSlopeRamp(now = Date.now()) {
   }
 
   const deltaSec = (now - state.lastSlopeRampTime) / 1000;
-  if (deltaSec <= 0) return;
+  // Bajamos a 1.5s para asegurar que entre en cada ciclo de 2s del timer
+  if (deltaSec < 1.5) return;
   state.lastSlopeRampTime = now;
 
   const target = state.targetSlope;
@@ -1941,23 +1974,8 @@ function refreshUpcomingPreview(currentDistKm = null) {
   if (!preview) return;
 
   const slope = preview.avgSlope;
-  const slopeEl = document.getElementById("metrics-slope");
-  if (slopeEl) {
-    slopeEl.textContent = `⛰️ ${slope >= 0 ? "+" : ""}${slope.toFixed(1)}%`;
-    if (slope < 0) {
-      slopeEl.style.background = "#10b981"; // Verde claro (descenso)
-    } else if (slope <= 3) {
-      slopeEl.style.background = "#059669"; // Verde (llano/suave)
-    } else if (slope <= 7) {
-      slopeEl.style.background = "#f59e0b"; // Amarillo (moderado)
-    } else if (slope <= 10) {
-      slopeEl.style.background = "#f97316"; // Naranja (dureza media-alta)
-    } else if (slope <= 15) {
-      slopeEl.style.background = "#ef4444"; // Rojo (rampa dura)
-    } else {
-      slopeEl.style.background = "#7f1d1d"; // Rojo oscuro/Negro (>15%)
-    }
-  }
+  // Ya no actualizamos metrics-slope aquí, porque ahora se encarga syncSlopeDisplayLabels
+  // para que coincida con la resistencia real del rodillo.
 
   ChartsManager.updateUpcomingChart(
     preview.distances,
