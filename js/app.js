@@ -683,10 +683,15 @@ function onStatusChanged(type, status) {
   targetIds.forEach((id) => {
     const icon = document.getElementById(id);
     if (icon) {
-      if (status === "CONECTADO") {
+      // Si el simulador está activo, forzamos el estado activo (verde)
+      if (BleManager.simulator.isActive) {
+        icon.className = "indicator-icon active";
+      } else if (status === "CONECTADO") {
         icon.className = "indicator-icon active";
       } else if (status === "CONECTANDO" || status === "BUSCANDO") {
         icon.className = "indicator-icon connecting";
+      } else if (status === "DESCONECTADO") {
+        icon.className = "indicator-icon disconnected";
       } else {
         icon.className = "indicator-icon";
       }
@@ -1689,7 +1694,7 @@ function updateRouteSimulation(currentDistKm) {
 
     // Lógica para banner de alerta de distancia restante
     const remaining = (state.routeDistances[state.routeDistances.length - 1] - currentDistKm);
-    const thresholds = [10, 5, 3, 1];
+    const thresholds = [20, 10, 5, 4, 3, 2, 1];
     const trigger = thresholds.find(t => Math.abs(remaining - t) < 0.05);
 
     if (trigger && state.lastAlertedThreshold !== trigger) {
@@ -1939,14 +1944,18 @@ function refreshUpcomingPreview(currentDistKm = null) {
   const slopeEl = document.getElementById("metrics-slope");
   if (slopeEl) {
     slopeEl.textContent = `⛰️ ${slope >= 0 ? "+" : ""}${slope.toFixed(1)}%`;
-    if (slope > 5) {
-      slopeEl.style.background = "rgba(239, 68, 68, 0.92)";
-    } else if (slope > 2) {
-      slopeEl.style.background = "rgba(249, 115, 22, 0.92)";
-    } else if (slope < -2) {
-      slopeEl.style.background = "rgba(16, 185, 129, 0.92)";
+    if (slope < 0) {
+      slopeEl.style.background = "#10b981"; // Verde claro (descenso)
+    } else if (slope <= 3) {
+      slopeEl.style.background = "#059669"; // Verde (llano/suave)
+    } else if (slope <= 7) {
+      slopeEl.style.background = "#f59e0b"; // Amarillo (moderado)
+    } else if (slope <= 10) {
+      slopeEl.style.background = "#f97316"; // Naranja (dureza media-alta)
+    } else if (slope <= 15) {
+      slopeEl.style.background = "#ef4444"; // Rojo (rampa dura)
     } else {
-      slopeEl.style.background = "rgba(255, 68, 68, 0.9)";
+      slopeEl.style.background = "#7f1d1d"; // Rojo oscuro/Negro (>15%)
     }
   }
 
@@ -2045,10 +2054,10 @@ function createOrientationToggleButton() {
 window.toggleMapEngine = function(btn) {
     console.log("¡Clic recibido en toggleMapEngine!");
     const container = document.getElementById("workout-map");
-    
+
     // Normalizar el texto para comparar (eliminar espacios y saltos de línea)
     const currentText = btn.textContent.replace(/\s+/g, '');
-    
+
     // Si contiene "2D" (estamos en 3D), volvemos a 2D
     if (currentText.includes("2D")) {
         console.log("Cambiando a motor Leaflet 2D...");
@@ -2059,11 +2068,11 @@ window.toggleMapEngine = function(btn) {
         container.className = "workout-map-fullscreen";
         container.style.height = "100%";
         container.style.width = "100%";
-        
+
         btn.textContent = "🗺️ 3D";
         initLeafletMap();
         drawRouteOnMap();
-    } 
+    }
     // Si estamos en 2D (no contiene "2D", es decir, es 3D), vamos a 3D
     else {
         console.log("Cambiando a motor MapLibre 3D...");
@@ -2072,7 +2081,7 @@ window.toggleMapEngine = function(btn) {
             state.map = null;
         }
         btn.textContent = "🗺️ 2D";
-        
+
         container.className = "workout-map-fullscreen";
         container.style.height = "100%";
         container.style.width = "100%";
@@ -2133,6 +2142,7 @@ async function handleSessionExport() {
     console.error(e);
   }
 }
+window.handleSessionExport = handleSessionExport;
 
 // --- HISTORY AND STATISTICS SCREENS ---
 async function loadHistoryList() {

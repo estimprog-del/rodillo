@@ -974,6 +974,17 @@ function stopSimulator() {
     simulator.intervalId = null;
   }
 
+  // Limpiar estado de las conexiones simuladas
+  ["TRAINER", "POWER", "CSC"].forEach((type) => {
+    if (connections[type].status === "CONECTADO" && connections[type].name.includes("Virtual")) {
+      connections[type].status = "DESCONECTADO";
+      connections[type].name = "";
+      // Notificar el cambio de estado para que la UI se refresque
+      if (dataListener && dataListener.onStatusChanged) 
+          dataListener.onStatusChanged(type, "DESCONECTADO");
+    }
+  });
+
   console.log("Virtual Sensor Simulator stopped");
 }
 

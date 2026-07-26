@@ -164,12 +164,12 @@ function initElevationChart(
 ) {
   // --- Slope categories: colour-coded by gradient percentage ---
   const slopeRanges = [
-    { name: "▼▼ < -5%", color: "#3b82f6", min: -Infinity, max: -5 },
-    { name: "▼ -5 a -1%", color: "#10b981", min: -5, max: -1 },
-    { name: "― Llano", color: "#9ca3af", min: -1, max: 2 },
-    { name: "▲ 2 a 5%", color: "#f59e0b", min: 2, max: 5 },
-    { name: "▲▲ 5 a 8%", color: "#f97316", min: 5, max: 8 },
-    { name: "▲▲▲ > 8%", color: "#ef4444", min: 8, max: Infinity },
+    { name: "▼▼ < 0%", color: "#10b981", min: -Infinity, max: 0 },
+    { name: "▼ 0 a 3%", color: "#059669", min: 0, max: 3 },
+    { name: "― 3 a 7%", color: "#f59e0b", min: 3, max: 7 },
+    { name: "▲ 7 a 10%", color: "#f97316", min: 7, max: 10 },
+    { name: "▲▲ 10 a 15%", color: "#ef4444", min: 10, max: 15 },
+    { name: "▲▲▲ > 15%", color: "#7f1d1d", min: 15, max: Infinity },
   ];
 
   function getSlopeCatIdx(slope) {

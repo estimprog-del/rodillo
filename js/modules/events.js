@@ -89,7 +89,6 @@ export function bindEvents(handlers) {
           realismSlider.value = Math.round(state.realismFactor * 100) || 100;
           realismDisplay.textContent = realismSlider.value;
           
-          // Actualizar display al mover el slider
           realismSlider.oninput = (e) => realismDisplay.textContent = e.target.value;
 
           document.getElementById("setting-power-zones").value = state.powerZones ? state.powerZones.join(',') : "55,75,88,95,106";
@@ -98,6 +97,10 @@ export function bindEvents(handlers) {
             btn.style.background = btn.getAttribute('data-val') == (state.sensorSmoothing || 3000) ? '#10b981' : '#333';
           });
         }, 250);
+      }
+      
+      if (id === "btn-close-settings") {
+        hideModal('settings');
       }
       if (id === "btn-save-settings") {
         state.mapType = document.getElementById("setting-map-type").value;
@@ -119,7 +122,9 @@ export function bindEvents(handlers) {
       }
 
       if (id === "btn-dashboard-connections") navigateTo("connections");
-      if (id === "btn-summary-close") navigateTo("dashboard");
+      if (id === "btn-summary-close") {
+        location.reload();
+      }
       if (id === "btn-go-history") navigateTo("history");
       if (id === "btn-history-back") navigateTo("dashboard");
       if (id === "btn-go-progress") navigateTo("stats");
@@ -165,7 +170,13 @@ export function bindEvents(handlers) {
       }
       if (id === "btn-slope-minus") adjustManualSlope(-0.5);
       if (id === "btn-slope-plus") adjustManualSlope(0.5);
-      if (id === "btn-export-gpx") handleSessionExport();
+      if (id === "btn-export-gpx") {
+        if (typeof window.handleSessionExport === 'function') {
+          window.handleSessionExport();
+        } else {
+          console.error("handleSessionExport no está disponible");
+        }
+      }
 
       // Bluetooth
       if (id && id.startsWith("btn-connect-")) {
@@ -183,13 +194,22 @@ export function bindEvents(handlers) {
               const status = BleManager.connections[type].device
                 ? "CONECTADO"
                 : "DESCONECTADO";
-              if (typeof updateStatus !== "undefined")
-                updateStatus(type, status);
+              
+              // Actualizar el estado interno
+              BleManager.connections[type].status = status;
+              
+              // Forzar actualización de los iconos del HUD (indicadores superiores)
+              if (typeof BleManager.onStatusChanged === "function") {
+                  BleManager.onStatusChanged(type, status);
+              }
             });
+            // Refrescar toda la interfaz de conexiones usando la función expuesta globalmente
+            if (typeof window.refreshConnectionScreen === "function") {
+                window.refreshConnectionScreen();
+            }
             btn.textContent = "Activar Rodillo Virtual";
             btn.className = "btn btn-secondary";
-            document.getElementById("virtual-trainer-panel").style.display =
-              "none";
+            document.getElementById("virtual-trainer-panel").style.display = "none";
           } else {
             const weight = state.currentUser ? state.currentUser.weight : 75.0;
             BleManager.startSimulator(weight);

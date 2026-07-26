@@ -600,6 +600,13 @@ h4 {
     background: var(--accent-orange-glow);
     animation: pulse-border 1s infinite alternate;
 }
+
+.indicator-icon.disconnected {
+    color: var(--accent-red);
+    border-color: var(--accent-red);
+    background: var(--accent-red-glow);
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+}
 @keyframes pulse-border {
     0% {
         border-color: rgba(245, 158, 11, 0.3);
@@ -1420,20 +1427,24 @@ h4 {
     pointer-events: auto;
 }
 
-.hud-sensor-bar .indicator-icon {
-    font-size: 9px;
-    padding: 4px 6px;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid var(--glass-border);
-    color: white;
-    text-align: center;
-    width: auto;
-    height: auto;
-    min-width: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.hud-sensor-bar .indicator-icon.active {
+    color: var(--accent-green);
+    border-color: var(--accent-green);
+    background: var(--accent-green-glow);
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+}
+
+.hud-sensor-bar .indicator-icon.disconnected {
+    color: var(--accent-red);
+    border-color: var(--accent-red);
+    background: var(--accent-red-glow);
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+    animation: error-pulse 1.5s infinite alternate;
+}
+
+@keyframes error-pulse {
+    0% { opacity: 0.6; transform: scale(1); }
+    100% { opacity: 1; transform: scale(1.05); }
 }
 
 #clock,
@@ -1590,11 +1601,11 @@ h4 {
 }
 
 .mini-profile-title {
-    font-size: 11px;
+    font-size: calc(9px * var(--workout-text-multiplier));
     font-weight: 700;
-    letter-spacing: 0.1em;
+    letter-spacing: .1em;
     color: var(--text-secondary);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, .1);
     padding-bottom: 6px;
     margin-bottom: 10px;
 }
@@ -1603,8 +1614,8 @@ h4 {
     display: flex;
     justify-content: space-between;
     margin-bottom: 5px;
-    font-size: 13px;
-    color: white;
+    font-size: calc(9px * var(--workout-text-multiplier));
+    color: #fff;
 }
 
 .progress-item-spaced {
@@ -1916,10 +1927,14 @@ h4 {
     background: rgba(0, 0, 0, 0.72);
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 12px;
-    padding: 14px 16px;
+    padding: 10px 16px;
     width: 210px;
+    height: 180px;
     backdrop-filter: blur(10px);
     pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
 .hud-bottom-right-group {
@@ -1942,27 +1957,28 @@ h4 {
     width: 60%;
     max-width: 800px;
     height: 180px;
-    background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    padding: 10px;
     pointer-events: auto;
     box-sizing: border-box;
     overflow: hidden;
-    color: #ffffff; /* Texto en blanco */
+    color: #ffffff;
 }
 
 .upcoming-profile-chart {
-    background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
+    /* Fondo y estilo heredados de glass-card */
     padding: 10px;
     height: 180px;
     width: 280px;
     overflow: hidden;
-    color: #ffffff; /* Texto en blanco */
+    color: #ffffff;
+}
+
+
+.upcoming-profile-chart-title {
+    color: #ffffff;
+    font-size: calc(12px * var(--workout-text-multiplier)); /* Ajusta aquí el tamaño */
+    font-weight: 700;
+    padding: 5px;
+    margin-top: 2px;
 }
 #elevation-chart-cursor {
     position: absolute;
@@ -2035,6 +2051,6 @@ h4 {
 /* Ajuste fino para los controles de MapLibre en modo 3D */
 .maplibregl-ctrl-top-right {
     z-index: 1000 !important;
-    top: 70px !important; 
+    top: 70px !important;
     right: 10px !important;
 }
