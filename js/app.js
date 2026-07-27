@@ -34,6 +34,9 @@ const UI = {
 // --- INITIALIZATION ---
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("RodilloInt SPA initializing...");
+  
+  // Cargar estado guardado
+  loadStateFromLocalStorage();
 
   // Initialize Navigation
   const navigationCallbacks = {
@@ -69,6 +72,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     stopSessionFlow,
     handleGpxUpload,
     adjustManualSlope,
+    adjustManualPower,
     setWorkoutFontScale,
     startSession,
   });
@@ -256,14 +260,30 @@ function updateSessionAverages() {
 function configureWorkoutHudForMode() {
   const isRoute = state.currentMode === "ROUTE";
   const isManual = state.currentMode === "MANUAL";
+  const isTraditional = state.currentMode === "TRADITIONAL"; // Suponiendo que este modo existe
 
+  // Ocultar/Mostrar elementos según el modo
   setElDisplay("hud-progress", isRoute ? "block" : "none");
   setElDisplay("hud-profile", isRoute ? "flex" : "none");
-  setElDisplay("manual-mode-panel", isManual ? "block" : "none");
+  setElDisplay("hud-elevation-footer", isRoute ? "block" : "none");
+  setElDisplay("workout-map", isRoute ? "block" : "none");
 
+  // Ocultar botones específicos de mapa/ruta
+  setElDisplay("btn-toggle-3d", isRoute ? "block" : "none");
+  setElDisplay("btn-orient-toggle", isRoute ? "block" : "none"); 
+  setElDisplay("metrics-slope", isRoute ? "block" : "none"); 
+  // Usamos el ID correcto que muestra el inspector: upcoming-profile-chart
+  setElDisplay("upcoming-profile-chart", isRoute ? "block" : "none"); 
+  setElDisplay("hud-elevation-footer", isRoute ? "block" : "none");
+
+  // Mostrar panel Manual si aplica
+  setElDisplay("manual-mode-panel", isManual ? "flex" : "none");
+  
+  // Ghost Rider solo en Ruta
   const ghostBanner = document.getElementById("ghost-banner");
-  if (ghostBanner && !isRoute) {
-    ghostBanner.classList.remove("visible");
+  if (ghostBanner) {
+    if (isRoute) ghostBanner.classList.add("visible");
+    else ghostBanner.classList.remove("visible");
   }
 }
 
@@ -702,6 +722,17 @@ function onStatusChanged(type, status) {
 // --- TELEMETRY RX & CALCULATIONS ---
 function onPowerReceived(power) {
   state.currentPower = power;
+
+  // Lógica de inicio por movimiento
+  if (state.isWaitingForMovement && power > 10) {
+    console.log("Movimiento detectado, iniciando cuenta atrás...");
+    state.isWaitingForMovement = false;
+    startCountdown(() => {
+      startTimerInterval();
+      updatePauseButton("⏸ Pausa");
+    }, state.countdownDuration || 3);
+  }
+
   setElText("metrics-power", power);
 
   // Power Buffer rolling average based on settings
@@ -886,7 +917,7 @@ function calculateNormalizedPower() {
 }
 
 // --- Countdown Timer ---
-function startCountdown(onComplete) {
+function startCountdown(onComplete, duration) {
   const countdownOverlay = document.getElementById("workout-countdown-overlay");
   const countdownText = document.getElementById("countdown-text");
 
@@ -895,7 +926,7 @@ function startCountdown(onComplete) {
     return;
   }
 
-  let count = 3;
+  let count = duration || state.countdownDuration || 3;
   countdownOverlay.style.display = "flex";
   countdownText.textContent = count;
 
@@ -932,8 +963,8 @@ function startCountdown(onComplete) {
       countdownText.textContent = "¡Listo!";
       setTimeout(() => {
         countdownOverlay.style.display = "none";
-        audioCtx.close(); // Cerrar contexto al terminar
-        if (onComplete) onComplete();
+        // Iniciar sesión real
+        startSession();
       }, 1000);
     }
   }, 1000);
@@ -1291,16 +1322,27 @@ async function startSession() {
       setRouteTargetSlope(0);
       refreshUpcomingPreview(0);
     }
+    
+    // Inicializar gráficos manuales si estamos en modo manual
+    if (state.currentMode === "MANUAL") {
+      window.ChartsManager.initManualTrainingCharts("manual-power-chart", "manual-hr-chart");
+    }
 
-    // Iniciar cuenta atrás antes de arrancar el temporizador oficial
-    // Añadimos un pequeño retardo para que el mapa sea visible al usuario
-    setTimeout(() => {
+    // Iniciar cuenta atrás condicional
+    const startLogic = () => {
       startCountdown(() => {
         startTimerInterval();
         updatePauseButton("⏸ Pausa");
         console.log(`Active training session started: ${sessId}`);
-      });
-    }, 800);
+      }, state.countdownDuration || 3);
+    };
+
+    if (state.startOnMovement) {
+      state.isWaitingForMovement = true;
+      setElText("workout-timer", "PEDALEA...");
+    } else {
+      setTimeout(startLogic, 800);
+    }
 
   } catch (e) {
     console.error(e);
@@ -1311,12 +1353,15 @@ async function startSession() {
 function startTimerInterval() {
   if (state.timerInterval) clearInterval(state.timerInterval);
 
+  // Guardamos el tiempo de inicio real de la sesión (ajustado por pausas previas)
+  const startTime = Date.now() - (state.elapsedSeconds || 0) * 1000;
+
   state.timerInterval = setInterval(() => {
-    if (state.isSessionActive) {
+    if (state.isSessionActive && !state.isPaused) {
       const now = Date.now();
+      state.elapsedSeconds = Math.floor((now - startTime) / 1000);
 
       // 1. Cálculos de velocidad virtual y estado (Modo Ruta)
-      // Ahora usamos la velocidad del rodillo (state.currentSpeed) en lugar de recalcular virtualSpeed
       if (state.currentMode === "ROUTE") {
         setElText("metrics-speed", state.currentSpeed.toFixed(1));
 
@@ -1332,7 +1377,6 @@ function startTimerInterval() {
             resumeTimer();
           }
         } else if (now - state.lastMovementTime > 3000) {
-          // 3 seconds timeout
           if (!state.isPaused && !state.isAutoPaused) {
             state.isAutoPaused = true;
             pauseTimer();
@@ -1340,68 +1384,59 @@ function startTimerInterval() {
         }
       }
 
-      // 2. Rampa de pendiente y Simulador (Controlados cada 2s para evitar saturación)
+      // 2. Rampa de pendiente y Simulador
       stepSlopeRamp();
       if (BleManager.simulator.isActive && state.currentMode === "ROUTE") {
         BleManager.simulator.slope = state.currentSlope;
       }
 
-      // 3. Lógica de progresión (Solo si NO está pausado)
-      if (!state.isPaused) {
-        state.elapsedSeconds++;
+      // 3. Actualizar UI de tiempo y métricas
+      const h = Math.floor(state.elapsedSeconds / 3600);
+      const m = Math.floor((state.elapsedSeconds % 3600) / 60);
+      const s = state.elapsedSeconds % 60;
+      const formatted = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+      setElText("workout-timer", formatted);
 
-        // Update Timer label
-        const h = Math.floor(state.elapsedSeconds / 3600);
-        const m = Math.floor((state.elapsedSeconds % 3600) / 60);
-        const s = state.elapsedSeconds % 60;
-        const formatted = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-        setElText("workout-timer", formatted);
+      if (state.currentMode === "MANUAL") {
+        window.ChartsManager.updateManualTrainingCharts(state.currentPower, state.currentHr);
+      }
 
-        if (state.currentMode === "ROUTE") {
-          if (state.currentSpeed > 0.1) {
-            state.totalDistance += state.currentSpeed / 3600.0;
-          }
-
-          if (window.ChartsManager) {
-            // Corregido: totalDistance ya es km, no dividir por 1000
-            window.ChartsManager.setElevationCursor(
-              state.totalDistance,
-              state.routeTotalDistance
-            );
-          }
-          setElText(
-            "submetrics-distance",
-            `${state.totalDistance.toFixed(2)} km`,
-          );
-          updateRouteProgressHud(state);
-          updateRouteSimulation(state.totalDistance);
-          // Corregido: totalDistance ya es km, no dividir por 1000
-          setRouteTargetSlope(state.totalDistance);
+      if (state.currentMode === "ROUTE") {
+        if (state.currentSpeed > 0.1) {
+          state.totalDistance += state.currentSpeed / 3600.0;
         }
 
-        updateSessionAverages();
-
-        const avgPower =
-          state.powerHistory.length > 0
-            ? Math.round(
-                state.powerHistory.reduce((a, b) => a + b, 0) /
-                  state.powerHistory.length,
-              )
-            : 0;
-        state.calories = Math.round(
-          avgPower * (state.elapsedSeconds / 3600.0) * 3.6,
-        );
-
-        updateGhostProgress();
-
-        // Persistent telemetry point save
-        saveTelemetryPoint();
-        if (state.elapsedSeconds % 30 === 0) {
-          flushTelemetryBuffer();
+        if (window.ChartsManager) {
+          window.ChartsManager.setElevationCursor(state.totalDistance, state.routeTotalDistance);
         }
+        setElText("submetrics-distance", `${state.totalDistance.toFixed(2)} km`);
+        updateRouteProgressHud(state);
+        updateRouteSimulation(state.totalDistance);
+        setRouteTargetSlope(state.totalDistance);
+      }
+
+      updateSessionAverages();
+
+      const avgPower =
+        state.powerHistory.length > 0
+          ? Math.round(
+              state.powerHistory.reduce((a, b) => a + b, 0) /
+                state.powerHistory.length,
+            )
+          : 0;
+      state.calories = Math.round(
+        avgPower * (state.elapsedSeconds / 3600.0) * 3.6,
+      );
+
+      updateGhostProgress();
+
+      // Persistent telemetry point save
+      saveTelemetryPoint();
+      if (state.elapsedSeconds % 30 === 0) {
+        flushTelemetryBuffer();
       }
     }
-  }, 2000);
+  }, 1000); // 1 segundo exacto
 }
 
 function pauseTimer() {
@@ -1865,6 +1900,14 @@ function stepSlopeRamp(now = Date.now()) {
   applyTrainerSlope(newSlope);
 }
 
+function adjustManualPower(delta) {
+  const newWatts = Math.max(50, state.targetWatts + delta * 10);
+  console.log(`[Manual ERG] Ajustando potencia: ${state.targetWatts}W -> ${newWatts}W`);
+  BleManager.setTargetPower(newWatts);
+  state.targetWatts = newWatts;
+  setElText("manual-slope-label", `${newWatts} W`);
+}
+
 function adjustManualSlope(delta) {
   const newSlope = state.currentSlope + delta;
   console.log(`[Manual Slope] Ajustando manualmente: ${state.currentSlope} -> ${newSlope}`);
@@ -1987,6 +2030,7 @@ function refreshUpcomingPreview(currentDistKm = null) {
 // --- GHOST RIDER GAP AND METRICS UPDATE ---
 function updateGhostProgress() {
   if (
+    !state.ghostPoints ||
     state.ghostPoints.length === 0 ||
     !state.isSessionActive ||
     state.isPaused

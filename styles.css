@@ -1590,14 +1590,16 @@ h4 {
 
 /* HUD inferior izquierda */
 .hud-bottom-left {
-    position: relative; /* Cambiado a relativo para que Flexbox lo posicione, pero sus hijos puedan ser absolutos si es necesario */
+    position: relative;
     background: rgba(0, 0, 0, 0.72);
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 12px;
     padding: 14px 16px;
-    width: 210px;
+    width: fit-content;
+    white-space: nowrap; /* Evita que las líneas se rompan */
+    min-width: 250px;   /* Aumentado para mayor holgura */
     backdrop-filter: blur(10px);
-    pointer-events: auto; /* Permitir interacción */
+    pointer-events: auto;
 }
 
 .mini-profile-title {
@@ -1741,9 +1743,13 @@ h4 {
 .hud-manual-overlay {
     position: absolute;
     top: 50%;
-    left: 50%;
+    left: 55%; /* Ligeramente más a la derecha */
     transform: translate(-50%, -50%);
     z-index: 9;
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+    align-items: center;
 }
 
 .hud-sim-panel {

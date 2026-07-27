@@ -29,6 +29,7 @@ export function bindEvents(handlers) {
     stopSessionFlow,
     handleGpxUpload,
     adjustManualSlope,
+    adjustManualPower,
     setWorkoutFontScale,
     startSession,
   } = handlers;
@@ -44,7 +45,7 @@ export function bindEvents(handlers) {
 
   document.body.addEventListener("click", (e) => {
     const target = e.target.closest(
-      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-slope-minus, #btn-slope-plus, #btn-export-gpx, [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-dashboard-settings, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-toggle-3d",
+      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-slope-minus, #btn-slope-plus, #btn-export-gpx, [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-dashboard-settings, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-toggle-3d, #btn-toggle-manual-mode",
     );
 
     if (!target) return;
@@ -91,9 +92,11 @@ export function bindEvents(handlers) {
           
           realismSlider.oninput = (e) => realismDisplay.textContent = e.target.value;
 
-          document.getElementById("setting-power-zones").value = state.powerZones ? state.powerZones.join(',') : "55,75,88,95,106";
-          
-          document.querySelectorAll('.btn-smoothing').forEach(btn => {
+  	        document.getElementById("setting-power-zones").value = state.powerZones ? state.powerZones.join(',') : "55,75,88,95,106";
+  	        document.getElementById("setting-countdown-duration").value = state.countdownDuration || 3;
+  	        document.getElementById("setting-start-on-movement").checked = state.startOnMovement || false;
+  	        
+  	        document.querySelectorAll('.btn-smoothing').forEach(btn => {
             btn.style.background = btn.getAttribute('data-val') == (state.sensorSmoothing || 3000) ? '#10b981' : '#333';
           });
         }, 250);
@@ -107,6 +110,9 @@ export function bindEvents(handlers) {
         state.fontScale = parseFloat(document.getElementById("setting-font-scale").value);
         state.realismFactor = parseInt(document.getElementById("setting-realism").value) / 100;
         state.powerZones = document.getElementById("setting-power-zones").value.split(',').map(Number);
+        
+        state.countdownDuration = parseInt(document.getElementById("setting-countdown-duration").value) || 3;
+        state.startOnMovement = document.getElementById("setting-start-on-movement").checked;
         
         saveStateToLocalStorage();
         closeSettingsModal();
@@ -168,8 +174,41 @@ export function bindEvents(handlers) {
           e.target.classList.add("active");
         }
       }
-      if (id === "btn-slope-minus") adjustManualSlope(-0.5);
-      if (id === "btn-slope-plus") adjustManualSlope(0.5);
+      if (id === "btn-slope-minus") {
+        if (state.manualMode === 'SLOPE') {
+          adjustManualSlope(-0.5);
+        } else if (state.manualMode === 'ERG') {
+          adjustManualPower(-1);
+        }
+      }
+      if (id === "btn-slope-plus") {
+        if (state.manualMode === 'SLOPE') {
+          adjustManualSlope(0.5);
+        } else if (state.manualMode === 'ERG') {
+          adjustManualPower(1);
+        }
+      }
+
+      if (id === "btn-toggle-manual-mode") {
+        state.manualMode = state.manualMode === 'SLOPE' ? 'ERG' : 'SLOPE';
+        
+        const label = document.getElementById("manual-slope-label");
+        const modeText = document.getElementById("manual-mode-label-text");
+        const btn = document.getElementById("btn-toggle-manual-mode");
+
+        if (state.manualMode === 'ERG') {
+          if (modeText) modeText.textContent = "Potencia Objetivo";
+          if (label) label.textContent = `${state.targetWatts} W`;
+          if (btn) btn.textContent = "Cambiar a Modo Pendiente (%)";
+          if (typeof BleManager !== "undefined") BleManager.setTargetPower(state.targetWatts);
+        } else {
+          if (modeText) modeText.textContent = "Pendiente";
+          if (label) label.textContent = `${state.currentSlope.toFixed(1)}%`;
+          if (btn) btn.textContent = "Cambiar a Modo ERG (W)";
+          if (typeof BleManager !== "undefined") BleManager.setTrainerSlope(state.currentSlope);
+        }
+      }
+
       if (id === "btn-export-gpx") {
         if (typeof window.handleSessionExport === 'function') {
           window.handleSessionExport();

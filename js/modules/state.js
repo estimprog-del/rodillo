@@ -48,6 +48,10 @@ export const state = {
   fontScale: 1.0,
   sensorSmoothing: 3000,
   powerZones: [55, 75, 88, 95, 106],
+  countdownDuration: 3,
+  startOnMovement: false,
+  manualMode: 'SLOPE',
+  targetWatts: 150,
 };
 
 export function saveStateToLocalStorage() {
@@ -59,6 +63,11 @@ export function saveStateToLocalStorage() {
     fontScale: state.fontScale,
     sensorSmoothing: state.sensorSmoothing,
     powerZones: state.powerZones,
+    powerZones: state.powerZones,
+    countdownDuration: state.countdownDuration,
+    startOnMovement: state.startOnMovement,
+    manualMode: state.manualMode,
+    targetWatts: state.targetWatts,
   };
   localStorage.setItem("rodilloint_state", JSON.stringify(persistableState));
 }
@@ -74,5 +83,9 @@ export function loadStateFromLocalStorage() {
     state.fontScale = parsed.fontScale || 1.0;
     state.sensorSmoothing = parsed.sensorSmoothing || 3000;
     state.powerZones = parsed.powerZones || [55, 75, 88, 95, 106];
+    state.countdownDuration = parsed.countdownDuration || 3;
+    state.startOnMovement = parsed.startOnMovement !== undefined ? parsed.startOnMovement : false;
+    state.manualMode = parsed.manualMode || 'SLOPE';
+    state.targetWatts = parsed.targetWatts || 150;
   }
 }

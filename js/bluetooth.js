@@ -67,6 +67,9 @@ const simulator = {
   intervalId: null,
 };
 
+// Control de flujo para Bluetooth
+let lastFtmsWriteTime = 0; 
+
 function setBleListener(listener) {
   dataListener = listener;
 }
@@ -279,10 +282,10 @@ function decodeFtmsControlResponse(dataView) {
       `[FTMS Response] ${opName} → ${resName} (código: 0x${resultCode.toString(16)})`,
     );
 
-    // Fallback logic: if OpCode 0x11 fails on a smart trainer, switch to OpCode 0x03
-    if (requestOpCode === 0x11 && connections.TRAINER.useSimulationParameters) {
+    // Fallback logic: if OpCode 0x11 or 0x06 fails on a smart trainer
+    if ((requestOpCode === 0x11 || requestOpCode === 0x06) && connections.TRAINER.useSimulationParameters) {
       console.warn(
-        "[FTMS Fallback] OpCode 0x11 rechazado. Intentando usar OpCode 0x03 (Set Target Inclination) en su lugar...",
+        `[FTMS Fallback] OpCode 0x${requestOpCode.toString(16)} rechazado. Desactivando SimulationParameters...`,
       );
       connections.TRAINER.useSimulationParameters = false;
       connections.TRAINER.lastSentInclination = null;
@@ -816,8 +819,8 @@ async function setTrainerSlope(slope) {
         );
       } else {
         // OpCode 0x03: Set Target Inclination
-        // Grade resolution is 0.1%
-        const inclination = Math.round(clampedSlope * 10);
+        // Grade resolution is 0.01% para el Suito-T
+        const inclination = Math.round(clampedSlope * 100);
 
         // Deduplicar: no enviar si la inclinación es la misma que la anterior
         if (trainer.lastSentInclination === inclination) {
@@ -1144,6 +1147,36 @@ async function silenceConnect(device, type) {
   }
 }
 
+async function setTargetPower(watts) {
+  const trainer = connections.TRAINER;
+  if (trainer.status === "CONECTADO" && trainer.charWrite) {
+    // RATE LIMIT: No enviar más de una vez cada 500ms
+    const now = Date.now();
+    if (now - lastFtmsWriteTime < 500) return;
+    lastFtmsWriteTime = now;
+
+    // Desactivamos parámetros de simulación (0x11) para que no interfieran con el modo ERG
+    trainer.useSimulationParameters = false;
+
+    try {
+      // 1. Solicitar el control explícito del rodillo
+      await trainer.charWrite.writeValue(new Uint8Array([0x00]));
+      
+      // 2. Enviar el comando 0x05 (Target Power) - el estándar de Elite suele usar 0x05 para potencia fija
+      const buffer = new ArrayBuffer(3);
+      const view = new DataView(buffer);
+      view.setUint8(0, 0x05);              // OpCode 0x05
+      view.setInt16(1, watts, true);       // Little Endian
+      
+      await trainer.charWrite.writeValue(buffer);
+      console.log(`[FTMS] Comando 0x05 enviado para ${watts}W`);
+      
+    } catch (err) {
+      console.error("[FTMS] Error al configurar ERG:", err);
+    }
+  }
+}
+
 // Export Bluetooth Manager globally
 window.BleManager = {
   connections,
@@ -1151,6 +1184,7 @@ window.BleManager = {
   connectDevice,
   disconnectAll,
   setTrainerSlope,
+  setTargetPower,
   calculateVirtualSpeed,
   autoReconnectSavedDevices,
   startSimulator,

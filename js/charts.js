@@ -536,6 +536,84 @@ function initZonesChart(containerId, timeInZonesSec) {
   }
 }
 
+let manualPowerChart = null;
+let manualHrChart = null;
+let manualData = {
+  power: [],
+  cadence: [],
+  hr: [],
+  speed: [],
+  labels: []
+};
+
+/**
+ * Inicializa los gráficos específicos para la Sesión Manual
+ */
+function initManualTrainingCharts(containerPowerId, containerHrId) {
+  manualData = { power: [], cadence: [], hr: [], speed: [], labels: [] };
+  
+  const commonOptions = {
+    chart: {
+      type: 'area',
+      height: 140,
+      sparkline: { enabled: false },
+      animations: { enabled: false },
+      background: 'transparent',
+      toolbar: { show: false }
+    },
+    stroke: { curve: 'smooth', width: 2 },
+    fill: {
+      type: 'gradient',
+      gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05, stops: [0, 90] }
+    },
+    tooltip: { enabled: false }
+  };
+
+  const powerContainer = document.getElementById(containerPowerId);
+  if (powerContainer) {
+    powerContainer.innerHTML = "";
+    manualPowerChart = new ApexCharts(powerContainer, {
+      ...commonOptions,
+      series: [{ name: 'Potencia', data: [] }],
+      colors: ['#10b981'],
+      yaxis: { title: { text: 'W' } },
+      xaxis: { title: { text: 'Tiempo' } }
+    });
+    manualPowerChart.render();
+  }
+
+  const hrContainer = document.getElementById(containerHrId);
+  if (hrContainer) {
+    hrContainer.innerHTML = "";
+    manualHrChart = new ApexCharts(hrContainer, {
+      ...commonOptions,
+      series: [{ name: 'Pulso', data: [] }],
+      colors: ['#ef4444'],
+      yaxis: { title: { text: 'BPM' } },
+      xaxis: { title: { text: 'Tiempo' } }
+    });
+    manualHrChart.render();
+  }
+}
+
+/**
+ * Actualiza los gráficos manuales con nuevos puntos de datos
+ */
+function updateManualTrainingCharts(power, hr) {
+  if (!manualPowerChart || !manualHrChart) return;
+
+  manualData.power.push(power);
+  manualData.hr.push(hr);
+
+  if (manualData.power.length > 100) {
+    manualData.power.shift();
+    manualData.hr.shift();
+  }
+
+  manualPowerChart.updateSeries([{ data: manualData.power }]);
+  manualHrChart.updateSeries([{ data: manualData.hr }]);
+}
+
 // Export charts functions globally
 window.ChartsManager = {
   initRealtimeChart,
@@ -545,6 +623,8 @@ window.ChartsManager = {
   initZonesChart,
   initUpcomingChart,
   updateUpcomingChart,
+  initManualTrainingCharts, // <-- NUEVA
+  updateManualTrainingCharts // <-- NUEVA
 };
 
 /**
