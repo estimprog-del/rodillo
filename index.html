@@ -20,8 +20,8 @@
 
         <!-- MapLibre 3D CSS -->
         <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
-      <script type="module" crossorigin src="./assets/index-CBV_q4ue.js"></script>
-      <link rel="stylesheet" crossorigin href="./assets/index-Cr_dNATl.css">
+      <script type="module" crossorigin src="./assets/index-bfl_5Crz.js"></script>
+      <link rel="stylesheet" crossorigin href="./assets/index-5LpXx40T.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -714,21 +714,26 @@
             <div
                 class="hud-manual-overlay"
                 id="manual-mode-panel"
-                style="display: none"
+                style="display: none;"
             >
-                <div class="glass-card manual-slope-adjuster">
+                <div class="glass-card manual-slope-adjuster" style="height: 330px; display: flex; flex-direction: column; justify-content: center;">
                     <div class="slope-dial">
-                        <span class="slope-dial-value" id="manual-slope-label"
-                            >0.0%</span
-                        >
-                        <span class="slope-dial-label">Pendiente</span>
+                        <span class="slope-dial-value" id="manual-slope-label">0.0%</span>
+                        <span class="slope-dial-label" id="manual-mode-label-text">Pendiente</span>
+                    </div>
+                    <div style="margin-top: 10px; margin-bottom: 10px;">
+                        <button class="btn btn-secondary btn-sm" id="btn-toggle-manual-mode" style="font-size: 0.8rem; padding: 5px 15px;">Cambiar a Modo ERG (W)</button>
                     </div>
                     <div class="slope-buttons">
-                        <button class="slope-btn" id="btn-slope-minus">
-                            -
-                        </button>
+                        <button class="slope-btn" id="btn-slope-minus">-</button>
                         <button class="slope-btn" id="btn-slope-plus">+</button>
                     </div>
+                </div>
+
+                <!-- Contenedores de Gráficos Manuales -->
+                <div class="glass-card" style="width: 560px; height: 330px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div id="manual-power-chart" style="flex: 1;"></div>
+                    <div id="manual-hr-chart" style="flex: 1;"></div>
                 </div>
             </div>
 
@@ -1464,6 +1469,14 @@
             <div style="display: flex; flex-direction: column; gap: 8px;">
               <label style="font-size: 0.9rem; opacity: 0.8;">FTP (%) para Zonas:</label>
               <input type="text" id="setting-power-zones" placeholder="55,75,88,95,106" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="font-size: 0.9rem; opacity: 0.8;">Segundos de cuenta atrás:</label>
+              <input type="number" id="setting-countdown-duration" min="0" max="10" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="checkbox" id="setting-start-on-movement" style="width: 18px; height: 18px;">
+              <label for="setting-start-on-movement" style="font-size: 0.9rem; opacity: 0.8;">Iniciar cuenta atrás al detectar movimiento</label>
             </div>
             <div style="margin-top: 10px; border-top: 1px solid #374151; pt: 10px;">
               <button id="btn-backup-data" class="btn" style="width: 100%; padding: 10px; background: #3b82f6; border: none; color: white; border-radius: 6px; cursor: pointer;">💾 Descargar Backup Completo</button>
