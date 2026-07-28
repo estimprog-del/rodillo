@@ -20,7 +20,7 @@
 
         <!-- MapLibre 3D CSS -->
         <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
-      <script type="module" crossorigin src="./assets/index-bfl_5Crz.js"></script>
+      <script type="module" crossorigin src="./assets/index-CZkaXgIC.js"></script>
       <link rel="stylesheet" crossorigin href="./assets/index-5LpXx40T.css">
     </head>
     <body>
@@ -450,6 +450,12 @@
 
                         <!-- Grupo HUD derecha inferior -->
                         <div class="hud-bottom-right-group" style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
+                            <!-- Panel de Marchas Virtuales -->
+                            <div id="virtual-gearing-panel" class="glass-card" style="display: none; padding: 5px 10px; margin-bottom: 5px; display: flex; align-items: center; gap: 10px;">
+                                <button id="btn-gear-down" class="btn-control" style="padding: 5px 10px; background: var(--bg-secondary); color: white;">-</button>
+                                <span id="label-current-gear" style="color: white; font-weight: bold; min-width: 70px; text-align: center;">Marcha 12</span>
+                                <button id="btn-gear-up" class="btn-control" style="padding: 5px 10px; background: var(--bg-secondary); color: white;">+</button>
+                            </div>
                             <button
                                 class="btn-control btn-pause"
                                 id="btn-workout-pause"
@@ -1470,13 +1476,25 @@
               <label style="font-size: 0.9rem; opacity: 0.8;">FTP (%) para Zonas:</label>
               <input type="text" id="setting-power-zones" placeholder="55,75,88,95,106" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
             </div>
-            <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
               <label style="font-size: 0.9rem; opacity: 0.8;">Segundos de cuenta atrás:</label>
-              <input type="number" id="setting-countdown-duration" min="0" max="10" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+              <input type="number" id="setting-countdown-duration" min="0" max="10" style="width: 80px; padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
             </div>
             <div style="display: flex; align-items: center; gap: 10px;">
               <input type="checkbox" id="setting-start-on-movement" style="width: 18px; height: 18px;">
               <label for="setting-start-on-movement" style="font-size: 0.9rem; opacity: 0.8;">Iniciar cuenta atrás al detectar movimiento</label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="checkbox" id="setting-gearing-enabled" style="width: 18px; height: 18px;">
+              <label for="setting-gearing-enabled" style="font-size: 0.9rem; opacity: 0.8;">Activar Marchas Virtuales</label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="checkbox" id="setting-gearing-sound" style="width: 18px; height: 18px;">
+              <label for="setting-gearing-sound" style="font-size: 0.9rem; opacity: 0.8;">Habilitar sonido de aviso (marchas)</label>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+              <label style="font-size: 0.9rem; opacity: 0.8;">Marcha inicial (1-24):</label>
+              <input type="number" id="setting-gearing-initial" min="1" max="24" style="width: 80px; padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
             </div>
             <div style="margin-top: 10px; border-top: 1px solid #374151; pt: 10px;">
               <button id="btn-backup-data" class="btn" style="width: 100%; padding: 10px; background: #3b82f6; border: none; color: white; border-radius: 6px; cursor: pointer;">💾 Descargar Backup Completo</button>
