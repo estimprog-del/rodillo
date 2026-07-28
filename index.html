@@ -20,7 +20,7 @@
 
         <!-- MapLibre 3D CSS -->
         <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
-      <script type="module" crossorigin src="./assets/index-CZkaXgIC.js"></script>
+      <script type="module" crossorigin src="./assets/index-CiMq4Zjr.js"></script>
       <link rel="stylesheet" crossorigin href="./assets/index-5LpXx40T.css">
     </head>
     <body>
@@ -651,6 +651,9 @@
                                         id="metrics-power"
                                         >0</span
                                     >
+                                    <div id="contenedor-barra-potencia" style="width: 100%; height: 5px; background-color: rgba(255,255,255,0.15); margin-top: 4px; border-radius: 2px; overflow: hidden;">
+                                      <div id="barra-zona-potencia" style="width: 0%; height: 100%; background-color: #4CAF50; transition: width 0.2s ease, background-color 0.3s ease;"></div>
+                                    </div>
                                     <span class="metric-label" style="color: #ffffff">W</span>
                                 </div>
                                 <div class="metric-avg" id="metrics-power-avg">
