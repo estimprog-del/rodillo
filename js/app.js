@@ -918,53 +918,59 @@ function calculateNormalizedPower() {
 
 // --- Countdown Timer ---
 function startCountdown(onComplete, duration) {
+  // Reset forzado antes de empezar para evitar bloqueos
+  state.isCountdownActive = true; 
+
   const countdownOverlay = document.getElementById("workout-countdown-overlay");
   const countdownText = document.getElementById("countdown-text");
 
   if (!countdownOverlay || !countdownText) {
     if (onComplete) onComplete();
+    state.isCountdownActive = false;
     return;
   }
 
-  let count = duration || state.countdownDuration || 3;
+  // Fuerza la visibilidad de la capa
   countdownOverlay.style.display = "flex";
+  countdownOverlay.style.visibility = "visible";
+  countdownOverlay.style.opacity = "1";
+
+  let count = duration || state.countdownDuration || 3;
   countdownText.textContent = count;
 
-  // Crear contexto de audio tras la interacción (clic en botón)
+  // Audio context se inicializa una vez
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const startTime = audioCtx.currentTime + 0.8;
 
-  const playBeep = (time, freq = 880) => {
+  const playBeep = (freq = 880) => {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     osc.type = "sine";
-    osc.frequency.setValueAtTime(freq, time);
-    gain.gain.setValueAtTime(0.5, time);
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.1);
-    osc.start(time);
-    osc.stop(time + 0.1);
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.1);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.1);
   };
-
-  // Programamos los 4 eventos de audio de forma absoluta e inamovible
-  playBeep(startTime, 880);         // Seg 0.8 (Número 3)
-  playBeep(startTime + 1, 880);     // Seg 1.8 (Número 2)
-  playBeep(startTime + 2, 880);     // Seg 2.8 (Número 1)
-  playBeep(startTime + 3, 1200);    // Seg 3.8 (¡Listo!)
 
   // Intervalo solo para actualizar la UI
   const timer = setInterval(() => {
     count--;
     if (count > 0) {
       countdownText.textContent = count;
+      // Pitido para 3, 2, 1
+      if (count <= 3) playBeep(880);
     } else {
       clearInterval(timer);
       countdownText.textContent = "¡Listo!";
+      // Pitido final
+      playBeep(1200);
       setTimeout(() => {
         countdownOverlay.style.display = "none";
-        // Iniciar sesión real
-        startSession();
+        state.isCountdownActive = false;
+        audioCtx.close();
+        if (onComplete) onComplete();
       }, 1000);
     }
   }, 1000);
@@ -1337,12 +1343,8 @@ async function startSession() {
       }, state.countdownDuration || 3);
     };
 
-    if (state.startOnMovement) {
-      state.isWaitingForMovement = true;
-      setElText("workout-timer", "PEDALEA...");
-    } else {
-      setTimeout(startLogic, 800);
-    }
+    // Forzamos la cuenta atrás siempre
+    startLogic();
 
   } catch (e) {
     console.error(e);

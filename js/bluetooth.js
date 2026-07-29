@@ -53,7 +53,7 @@ const connections = {
   },
 };
 
-// Listeners
+// Escuchador de estado
 let dataListener = null;
 
 // Virtual Simulator Settings
@@ -67,11 +67,39 @@ const simulator = {
   intervalId: null,
 };
 
-// Control de flujo para Bluetooth
+// 🌟 VARIABLES DE CONTROL AÑADIDAS PARA LAS MEJORAS 🌟
 let lastFtmsWriteTime = 0; 
+let powerHistory = [];         // Almacena los últimos vatios para el suavizado (Moving Average)
+let ergRampInterval = null;    // Almacena el setInterval de la rampa ERG progresiva
 
 function setBleListener(listener) {
   dataListener = listener;
+}
+
+/**
+ * Manejador para cuando el rodillo se desconecta físicamente
+ */
+function onTrainerDisconnected(event) {
+  const device = event.target;
+  console.warn(`[Bluetooth] El rodillo ${device.name || "desconocido"} se ha desconectado de forma inesperada.`);
+  
+  // Limpamos estados y temporizadores activos
+  if (ergRampInterval) {
+    clearInterval(ergRampInterval);
+    ergRampInterval = null;
+  }
+  powerHistory = [];
+
+  // Actualizamos el estado de la conexión
+  connections.TRAINER.status = "DESCONECTADO";
+  connections.TRAINER.server = null;
+  connections.TRAINER.charWrite = null;
+  connections.TRAINER.charRead = null;
+
+  // Notificamos a la interfaz
+  if (dataListener && dataListener.onTrainerDisconnected) {
+    dataListener.onTrainerDisconnected();
+  }
 }
 
 /**
@@ -104,17 +132,33 @@ function decodePower(dataView) {
   let offset = 2;
 
   // Bit 0: Power (Instantaneous Power, sint16)
-  // Bits 1-7: Other flags (Cumulative Wheel Revolutions, Last Wheel Event Time, etc.) - Ignored for now
   if ((flags & 0x01) !== 0) {
     if (dataView.byteLength >= offset + 2) {
-      const power = dataView.getInt16(offset, true);
+      const rawPower = dataView.getInt16(offset, true);
       offset += 2;
+
+      // 1. Guardar dato bruto original
+      if (typeof state !== 'undefined' && state.currentTraining) {
+        state.currentTraining.lastRawPower = rawPower; 
+      }
+
+      // 2. Lógica de Suavizado (Moving Average)
+      const smoothingSeconds = (typeof state !== 'undefined' && state.settings && state.settings.powerSmoothing) ? parseInt(state.settings.powerSmoothing) : 3;
+
+      powerHistory.push(rawPower);
+      if (powerHistory.length > smoothingSeconds) {
+        powerHistory.shift();
+      }
+
+      const sum = powerHistory.reduce((total, num) => total + num, 0);
+      const smoothedPower = Math.round(sum / powerHistory.length);
+
+      // 3. Enviar dato SUAVIZADO al listener
       if (dataListener && dataListener.onPowerReceived) {
-        dataListener.onPowerReceived(power);
+        dataListener.onPowerReceived(smoothedPower);
       }
     }
   }
-  // TODO: Handle other flags like Cumulative Wheel Revolutions if needed by CSC decoding
 }
 
 /**
@@ -1147,34 +1191,64 @@ async function silenceConnect(device, type) {
   }
 }
 
-async function setTargetPower(watts) {
+/**
+ * Envía de forma inmediata los bytes de potencia ERG al rodillo (OpCode 0x05)
+ */
+function setTargetPowerImmediate(watts) {
+  lastFtmsWriteTime = Date.now();
   const trainer = connections.TRAINER;
-  if (trainer.status === "CONECTADO" && trainer.charWrite) {
-    // RATE LIMIT: No enviar más de una vez cada 500ms
-    const now = Date.now();
-    if (now - lastFtmsWriteTime < 500) return;
-    lastFtmsWriteTime = now;
+  
+  const controlChar = trainer.charWrite;
+  if (!controlChar) return;
 
-    // Desactivamos parámetros de simulación (0x11) para que no interfieran con el modo ERG
-    trainer.useSimulationParameters = false;
+  const buffer = new ArrayBuffer(3);
+  const view = new DataView(buffer);
 
-    try {
-      // 1. Solicitar el control explícito del rodillo
-      await trainer.charWrite.writeValue(new Uint8Array([0x00]));
-      
-      // 2. Enviar el comando 0x05 (Target Power) - el estándar de Elite suele usar 0x05 para potencia fija
-      const buffer = new ArrayBuffer(3);
-      const view = new DataView(buffer);
-      view.setUint8(0, 0x05);              // OpCode 0x05
-      view.setInt16(1, watts, true);       // Little Endian
-      
-      await trainer.charWrite.writeValue(buffer);
-      console.log(`[FTMS] Comando 0x05 enviado para ${watts}W`);
-      
-    } catch (err) {
-      console.error("[FTMS] Error al configurar ERG:", err);
-    }
+  view.setUint8(0, 0x05); // OpCode 0x05: Set Target Power (ERG)
+  view.setInt16(1, watts, true); // Little-Endian (SINT16)
+
+  controlChar.writeValueWithResponse(buffer)
+    .then(() => console.log(`[FTMS → Rodillo] Vatios ERG aplicados: ${watts}W`))
+    .catch(err => console.error("Error enviando potencia ERG:", err));
+}
+
+/**
+ * Transiciona de la potencia actual a la potencia objetivo de forma suave (Rampa)
+ * @param {number} targetWatts - Los vatios finales que queremos alcanzar
+ * @param {number} currentWatts - Los vatios en los que está el ciclista actualmente
+ * @param {number} durationSeconds - Cuánto tiempo debe durar la transición (ej. 3 segundos)
+ */
+function setTargetPower(targetWatts, currentWatts = 150, durationSeconds = 3) {
+  if (ergRampInterval) {
+    clearInterval(ergRampInterval);
   }
+
+  const stepsPerSecond = 2; 
+  const totalSteps = durationSeconds * stepsPerSecond;
+  const wattsDifference = targetWatts - currentWatts;
+  const wattsPerStep = wattsDifference / totalSteps;
+  
+  let currentStep = 0;
+  let runningWatts = currentWatts;
+
+  console.log(`[ERG Ramp] Transición: ${currentWatts}W -> ${targetWatts}W`);
+
+  runningWatts += wattsPerStep;
+  setTargetPowerImmediate(Math.round(runningWatts));
+
+  ergRampInterval = setInterval(() => {
+    currentStep++;
+    runningWatts += wattsPerStep;
+
+    if (currentStep >= totalSteps) {
+      clearInterval(ergRampInterval);
+      ergRampInterval = null;
+      setTargetPowerImmediate(targetWatts);
+      console.log(`[ERG Ramp] Objetivo ${targetWatts}W alcanzado.`);
+    } else {
+      setTargetPowerImmediate(Math.round(runningWatts));
+    }
+  }, 1000 / stepsPerSecond);
 }
 
 // Export Bluetooth Manager globally
