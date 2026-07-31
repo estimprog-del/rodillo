@@ -1695,12 +1695,15 @@ h4 {
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    transition:
-        transform 0.15s ease,
-        opacity 0.15s ease;
+    transition: all 0.2s ease;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--glass-border);
 }
 
-.btn-control:hover {
+.btn-control:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--glass-border-hover);
     transform: translateY(-1px);
 }
 

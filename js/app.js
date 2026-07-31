@@ -1336,14 +1336,34 @@ async function startSession() {
 
     // Iniciar cuenta atrás condicional
     const startLogic = () => {
-      startCountdown(() => {
-        startTimerInterval();
-        updatePauseButton("⏸ Pausa");
-        console.log(`Active training session started: ${sessId}`);
-      }, state.countdownDuration || 3);
+      const runCountdown = () => {
+        startCountdown(() => {
+          startTimerInterval();
+          updatePauseButton("⏸ Pausa");
+          console.log(`Active training session started: ${sessId}`);
+        }, state.countdownDuration || 3);
+      };
+
+      if (state.startOnMovement) {
+        // Esperar a que haya movimiento
+        console.log("Esperando movimiento para iniciar...");
+        
+        // Usamos una función para comprobar el estado
+        const checkMovement = () => {
+          if (state.currentPower > 5 || state.currentSpeed > 0.5) {
+            runCountdown();
+          } else {
+            // Reintentar en 1 segundo si aún no hay movimiento
+            setTimeout(checkMovement, 1000);
+          }
+        };
+        
+        checkMovement();
+      } else {
+        runCountdown();
+      }
     };
 
-    // Forzamos la cuenta atrás siempre
     startLogic();
 
   } catch (e) {
@@ -1356,12 +1376,22 @@ function startTimerInterval() {
   if (state.timerInterval) clearInterval(state.timerInterval);
 
   // Guardamos el tiempo de inicio real de la sesión (ajustado por pausas previas)
+  // Nota: startTime debe ser relativo a Date.now() menos el tiempo transcurrido
+  // pero el tiempo que ya ha pasado en pausas debe ser ignorado.
+  // Para simplificar, ajustamos startTime en el momento de reanudar,
+  // pero en la estructura actual `startTimerInterval` recalcula
+  // `state.elapsedSeconds` basado en `Date.now() - startTime`.
+  // Si queremos que no cuente el tiempo de pausa, necesitamos otra forma de gestionar el tiempo acumulado.
   const startTime = Date.now() - (state.elapsedSeconds || 0) * 1000;
+  
+  // Guardamos el tiempo en que la sesión fue pausada por última vez
+  state.lastPauseTime = null;
+  state.totalPausedDuration = 0;
 
   state.timerInterval = setInterval(() => {
     if (state.isSessionActive && !state.isPaused) {
       const now = Date.now();
-      state.elapsedSeconds = Math.floor((now - startTime) / 1000);
+      state.elapsedSeconds = Math.floor((now - startTime - (state.totalPausedDuration || 0)) / 1000);
 
       // 1. Cálculos de velocidad virtual y estado (Modo Ruta)
       if (state.currentMode === "ROUTE") {
@@ -1443,6 +1473,7 @@ function startTimerInterval() {
 
 function pauseTimer() {
   state.isPaused = true;
+  state.lastPauseTime = Date.now(); // Marcamos cuándo empezamos a pausar
   state.lastSlopeRampTime = Date.now();
 
   updatePauseButton("▶ Reanudar", "resume");
@@ -1453,6 +1484,13 @@ function pauseTimer() {
 
 function resumeTimer() {
   state.isPaused = false;
+  
+  // Sumamos el tiempo transcurrido durante la pausa al total de tiempo pausado
+  if (state.lastPauseTime) {
+    state.totalPausedDuration += (Date.now() - state.lastPauseTime);
+    state.lastPauseTime = null;
+  }
+  
   state.lastSpeedUpdateTime = Date.now();
   state.lastMovementTime = Date.now();
   state.lastSlopeRampTime = Date.now();
@@ -1789,7 +1827,17 @@ function updateRouteSimulation(currentDistKm) {
         // Motor 2D (Leaflet) - Actualizar marcador
         if (state.userMarker) {
             state.userMarker.setLatLng([point.lat, point.lon]);
-            state.map.panTo([point.lat, point.lon]);
+            
+            if (state.isMapFollowingRoute) {
+                // Leaflet no tiene rotación nativa integrada de mapa de la misma manera que 3D,
+                // pero podemos orientar el marcador o rotar el mapa si se usara un plugin.
+                // Lo más estándar sin plugins pesados es ajustar la vista para seguir la dirección (Rumbo)
+                // calculando un ángulo. Como mínimo, panteamos al marcador para mantenerlo centrado.
+                state.map.panTo([point.lat, point.lon]);
+            } else {
+                // Modo Norte estándar (mantener centrado)
+                state.map.panTo([point.lat, point.lon]);
+            }
         }
     }
   }
@@ -2136,6 +2184,9 @@ window.toggleMapEngine = function(btn) {
         btn.textContent = "🗺️ 3D";
         initLeafletMap();
         drawRouteOnMap();
+        
+        // Re-configurar botón de orientación para 2D Leaflet
+        createOrientationToggleButton();
     }
     // Si estamos en 2D (no contiene "2D", es decir, es 3D), vamos a 3D
     else {
@@ -2170,6 +2221,8 @@ window.toggleMapEngine = function(btn) {
                 console.log("Mapa 3D cargado correctamente.");
                 state.map.resize();
                 drawRouteOnMap();
+                
+                // Re-configurar botón de orientación para 3D MapLibre
                 createOrientationToggleButton();
             });
 
