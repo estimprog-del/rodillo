@@ -1303,6 +1303,7 @@ async function startSession() {
     state.lastSpeedUpdateTime = Date.now();
     state.lastMovementTime = Date.now();
     state.lastTelemetryTimestamp = Date.now(); // for centralized distance accumulation
+    state.lastTelemetrySpeed = state.currentSpeed || 0.0;
 
     // Clean history array values
     state.powerHistory = [];
@@ -1520,9 +1521,15 @@ async function saveTelemetryPoint() {
   if (!state.lastTelemetryTimestamp) state.lastTelemetryTimestamp = nowTs;
   const dt = (nowTs - state.lastTelemetryTimestamp) / 1000.0; // seconds
   let increment = 0.0;
-  if (!state.isPaused && state.currentSpeed > 0 && dt > 0 && dt < 10) {
-    increment = (state.currentSpeed / 3600.0) * dt; // km
-    state.totalDistance += increment;
+  if (!state.isPaused && dt > 0 && dt < 10) {
+    // Use trapezoidal integration between lastTelemetrySpeed and currentSpeed for better accuracy
+    const lastSp = state.lastTelemetrySpeed !== undefined ? state.lastTelemetrySpeed : state.currentSpeed || 0;
+    const currSp = state.currentSpeed || 0;
+    increment = ((lastSp + currSp) / 2.0 / 3600.0) * dt; // km
+    if (currSp > 0 || lastSp > 0) {
+      state.totalDistance += increment;
+    }
+    state.lastTelemetrySpeed = currSp;
   }
   state.lastTelemetryTimestamp = nowTs;
 
@@ -1663,8 +1670,10 @@ async function stopSessionFlow() {
         let calc = 0.0;
         for (let i = 1; i < telemetry.length; i++) {
           const dt = (telemetry[i].timestamp - telemetry[i - 1].timestamp) / 1000.0;
-          const sp = telemetry[i - 1].speed || 0;
-          calc += (sp / 3600.0) * dt;
+          const spPrev = telemetry[i - 1].speed || 0;
+          const spCurr = telemetry[i].speed || 0;
+          // trapezoidal integration between consecutive speed samples
+          calc += (((spPrev + spCurr) / 2.0) / 3600.0) * dt;
         }
         // Prefer telemetry-derived distance as canonical source
         finalDistance = calc;
