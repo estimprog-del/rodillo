@@ -20,9 +20,10 @@ export function updatePauseButton(label, variant = "default") {
 }
 
 export function updateRouteProgressHud(state) {
-  const totalKm = (state.totalDistance / 1000).toFixed(2);
+  // state.totalDistance is stored in km across the app
+  const totalKm = state.totalDistance.toFixed(2);
   const remainingKm = state.routeTotalDistance
-    ? (state.routeTotalDistance / 1000 - totalKm).toFixed(2)
+    ? (state.routeTotalDistance - state.totalDistance).toFixed(2)
     : "--";
 
   setElText("submetrics-distance", `${totalKm} km`);

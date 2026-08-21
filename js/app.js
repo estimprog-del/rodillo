@@ -1434,8 +1434,12 @@ function startTimerInterval() {
       }
 
       if (state.currentMode === "ROUTE") {
-        if (state.currentSpeed > 0.1) {
-          state.totalDistance += state.currentSpeed / 3600.0;
+        // Only increment distance from timer if no recent speed update (to avoid double-counting).
+        const nowMs = Date.now();
+        if (!state.lastSpeedUpdateTime || (nowMs - state.lastSpeedUpdateTime) > 1500) {
+          if (state.currentSpeed > 0.1) {
+            state.totalDistance += state.currentSpeed / 3600.0;
+          }
         }
 
         if (window.ChartsManager) {
