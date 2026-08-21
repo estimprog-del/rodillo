@@ -1650,15 +1650,33 @@ async function stopSessionFlow() {
 
   // Distance / Speed averages
   const duration = document.getElementById("workout-timer").textContent;
-  const finalDistance = state.totalDistance; // km
-  const avgSpeed =
-    finalDistance > 0 && state.elapsedSeconds > 0
-      ? finalDistance / (state.elapsedSeconds / 3600.0)
-      : 0.0;
+  let finalDistance = state.totalDistance; // km
 
   try {
     // Guardar los puntos pendientes en el búfer
     await flushTelemetryBuffer();
+
+    // Recompute final distance from telemetry stored in DB to avoid any accumulation drift
+    try {
+      const telemetry = await DbManager.getSensorDataForSession(state.currentSessionId);
+      if (telemetry && telemetry.length > 1) {
+        let calc = 0.0;
+        for (let i = 1; i < telemetry.length; i++) {
+          const dt = (telemetry[i].timestamp - telemetry[i - 1].timestamp) / 1000.0;
+          const sp = telemetry[i - 1].speed || 0;
+          calc += (sp / 3600.0) * dt;
+        }
+        // Prefer telemetry-derived distance as canonical source
+        finalDistance = calc;
+      }
+    } catch (e) {
+      console.warn('Failed to recompute distance from telemetry, using state.totalDistance', e);
+    }
+
+    const avgSpeed =
+      finalDistance > 0 && state.elapsedSeconds > 0
+        ? finalDistance / (state.elapsedSeconds / 3600.0)
+        : 0.0;
 
     // Update DB Session headers
     const currentSession = await DbManager.getSessionById(
