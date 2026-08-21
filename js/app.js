@@ -111,6 +111,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("Failed to init IndexedDB", e);
   }
 
+  // Expose state globally for easier debugging in DevTools console
+  try {
+    window.state = state;
+  } catch (err) {
+    // noop if running in restricted environment
+  }
+
   BleManager.setBleListener({
     onPowerReceived,
     onHeartRateReceived,
@@ -1434,13 +1441,8 @@ function startTimerInterval() {
       }
 
       if (state.currentMode === "ROUTE") {
-        // Only increment distance from timer if no recent speed update (to avoid double-counting).
-        const nowMs = Date.now();
-        if (!state.lastSpeedUpdateTime || (nowMs - state.lastSpeedUpdateTime) > 1500) {
-          if (state.currentSpeed > 0.1) {
-            state.totalDistance += state.currentSpeed / 3600.0;
-          }
-        }
+        // Distance accumulation happens in onSpeedReceived() via sensor data
+        // Do NOT accumulate here to avoid double-counting
 
         if (window.ChartsManager) {
           window.ChartsManager.setElevationCursor(state.totalDistance, state.routeTotalDistance);
