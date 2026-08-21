@@ -1675,11 +1675,20 @@ async function stopSessionFlow() {
           // trapezoidal integration between consecutive speed samples
           calc += (((spPrev + spCurr) / 2.0) / 3600.0) * dt;
         }
-        // Prefer telemetry-derived distance as canonical source
-        finalDistance = calc;
+        // If telemetry-derived calc is very different from live state, prefer live state to keep HUD/summary consistent
+        const diff = Math.abs(calc - state.totalDistance);
+        if (diff > 0.05) {
+          console.warn(`Telemetry calc (${calc.toFixed(3)} km) differs from state.totalDistance (${state.totalDistance.toFixed(3)} km). Using state.totalDistance for final summary.`);
+          finalDistance = state.totalDistance;
+        } else {
+          finalDistance = calc;
+        }
+      } else {
+        finalDistance = state.totalDistance;
       }
     } catch (e) {
       console.warn('Failed to recompute distance from telemetry, using state.totalDistance', e);
+      finalDistance = state.totalDistance;
     }
 
     const avgSpeed =
