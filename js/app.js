@@ -1663,33 +1663,13 @@ async function stopSessionFlow() {
     // Guardar los puntos pendientes en el búfer
     await flushTelemetryBuffer();
 
-    // Recompute final distance from telemetry stored in DB to avoid any accumulation drift
+    // Use the live state.totalDistance as canonical finalDistance to keep HUD and summary consistent
     try {
-      const telemetry = await DbManager.getSensorDataForSession(state.currentSessionId);
-      if (telemetry && telemetry.length > 1) {
-        let calc = 0.0;
-        for (let i = 1; i < telemetry.length; i++) {
-          const dt = (telemetry[i].timestamp - telemetry[i - 1].timestamp) / 1000.0;
-          const spPrev = telemetry[i - 1].speed || 0;
-          const spCurr = telemetry[i].speed || 0;
-          // trapezoidal integration between consecutive speed samples
-          calc += (((spPrev + spCurr) / 2.0) / 3600.0) * dt;
-        }
-        // If telemetry-derived calc is very different from live state, prefer live state to keep HUD/summary consistent
-        const diff = Math.abs(calc - state.totalDistance);
-        if (diff > 0.05) {
-          console.warn(`Telemetry calc (${calc.toFixed(3)} km) differs from state.totalDistance (${state.totalDistance.toFixed(3)} km). Using state.totalDistance for final summary.`);
-          finalDistance = state.totalDistance;
-        } else {
-          finalDistance = calc;
-        }
-      } else {
-        finalDistance = state.totalDistance;
-      }
+      await DbManager.getSensorDataForSession(state.currentSessionId); // ensure telemetry flushed/accessible
     } catch (e) {
-      console.warn('Failed to recompute distance from telemetry, using state.totalDistance', e);
-      finalDistance = state.totalDistance;
+      console.warn('Failed to access telemetry for finalization:', e);
     }
+    finalDistance = state.totalDistance;
 
     const avgSpeed =
       finalDistance > 0 && state.elapsedSeconds > 0
