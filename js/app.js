@@ -875,20 +875,7 @@ function onSpeedReceived(speedKph) {
       }
     }
 
-    // Distance Accumulation based on speed & time delta
-    if (!state.isPaused && state.lastSpeedUpdateTime > 0) {
-      const deltaSeconds = (now - state.lastSpeedUpdateTime) / 1000.0;
-      if (deltaSeconds > 0 && deltaSeconds < 5) {
-        // Speed in km/h to km/s multiplied by deltaSeconds
-        state.totalDistance += (speedKph / 3600.0) * deltaSeconds;
-        setElText(
-          "submetrics-distance",
-          `${state.totalDistance.toFixed(2)} km`,
-        );
-        updateRouteSimulation(state.totalDistance);
-      }
-    }
-
+    // NOTE: distance accumulation moved to saveTelemetryPoint() to centralize timing
     if (!state.isPaused && speedKph > 0) {
       state.speedHistory.push(speedKph);
       updateSessionAverages();
@@ -897,6 +884,7 @@ function onSpeedReceived(speedKph) {
 
   state.lastSpeedUpdateTime = now;
 }
+
 
 // --- CYCLING PHYSICS / TSS / IF MATH ---
 function calculateNormalizedPower() {
@@ -1314,6 +1302,7 @@ async function startSession() {
     state.sessionStartTime = Date.now();
     state.lastSpeedUpdateTime = Date.now();
     state.lastMovementTime = Date.now();
+    state.lastTelemetryTimestamp = Date.now(); // for centralized distance accumulation
 
     // Clean history array values
     state.powerHistory = [];
@@ -1526,9 +1515,20 @@ async function saveTelemetryPoint() {
     ele = state.totalAscent;
   }
 
+  // Centralized distance accumulation based on last telemetry timestamp
+  const nowTs = Date.now();
+  if (!state.lastTelemetryTimestamp) state.lastTelemetryTimestamp = nowTs;
+  const dt = (nowTs - state.lastTelemetryTimestamp) / 1000.0; // seconds
+  let increment = 0.0;
+  if (!state.isPaused && state.currentSpeed > 0 && dt > 0 && dt < 10) {
+    increment = (state.currentSpeed / 3600.0) * dt; // km
+    state.totalDistance += increment;
+  }
+  state.lastTelemetryTimestamp = nowTs;
+
   const point = {
     sessionId: state.currentSessionId,
-    timestamp: Date.now(),
+    timestamp: nowTs,
     speed: state.currentSpeed,
     power: state.currentPower,
     cadence: state.currentCadence,
