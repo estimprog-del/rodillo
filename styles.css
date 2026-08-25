@@ -1983,11 +1983,23 @@ h4 {
 
 
 .upcoming-profile-chart-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     color: #ffffff;
     font-size: calc(12px * var(--workout-text-multiplier)); /* Ajusta aquí el tamaño */
     font-weight: 700;
     padding: 5px;
     margin-top: 2px;
+}
+
+#upcoming-slope-label {
+    border-radius: 8px;
+    padding: 3px 8px;
+    background: #059669;
+    color: #ffffff;
+    white-space: nowrap;
 }
 #elevation-chart-cursor {
     position: absolute;

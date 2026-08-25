@@ -2089,8 +2089,11 @@ function refreshUpcomingPreview(currentDistKm = null) {
   if (!preview) return;
 
   const slope = preview.avgSlope;
-  // Ya no actualizamos metrics-slope aquí, porque ahora se encarga syncSlopeDisplayLabels
-  // para que coincida con la resistencia real del rodillo.
+  const upcomingSlopeLabel = document.getElementById("upcoming-slope-label");
+  if (upcomingSlopeLabel) {
+    upcomingSlopeLabel.textContent =
+      `⛰️ ${slope >= 0 ? "+" : ""}${slope.toFixed(1)}%`;
+  }
 
   ChartsManager.updateUpcomingChart(
     preview.distances,
