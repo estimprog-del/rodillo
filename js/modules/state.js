@@ -3,6 +3,8 @@
 export const state = {
   currentUser: null,
   currentSessionId: null,
+  lastSavedSessionId: null,
+  summaryReturnScreen: "dashboard",
   currentMode: "ROUTE", // 'ROUTE' | 'MANUAL' | 'TRADITIONAL'
   isMapFollowingRoute: false,
   telemetryBuffer: [],

@@ -17,7 +17,8 @@ import { bindEvents } from "./modules/events.js";
 
 const SLOPE_AVERAGE_METERS = 10;
 const SLOPE_PREVIEW_LONG_METERS = 500;
-const MAX_SLOPE_CHANGE_PER_SEC = 0.2;
+const MAX_SLOPE_CHANGE_PER_SEC = 0.5;
+const MAPTILER_API_KEY = import.meta.env.VITE_MAPTILER_API_KEY || "";
 
 // Global Navigation function (injected)
 let navigateTo;
@@ -34,7 +35,7 @@ const UI = {
 // --- INITIALIZATION ---
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("RodilloInt SPA initializing...");
-  
+
   // Cargar estado guardado
   loadStateFromLocalStorage();
 
@@ -255,10 +256,10 @@ function updateSessionAverages() {
   setElText("metrics-hr-avg", `${avgHr} Ø`);
 
   const avgSpeed =
-    state.speedHistory.length > 0
+    state.elapsedSeconds > 0
       ? (
-          state.speedHistory.reduce((a, b) => a + b, 0) /
-          state.speedHistory.length
+          state.totalDistance /
+          (state.elapsedSeconds / 3600.0)
         ).toFixed(1)
       : "0.0";
   setElText("metrics-speed-avg", `${avgSpeed} Ø`);
@@ -277,15 +278,15 @@ function configureWorkoutHudForMode() {
 
   // Ocultar botones específicos de mapa/ruta
   setElDisplay("btn-toggle-3d", isRoute ? "block" : "none");
-  setElDisplay("btn-orient-toggle", isRoute ? "block" : "none"); 
-  setElDisplay("metrics-slope", isRoute ? "block" : "none"); 
+  setElDisplay("btn-orient-toggle", isRoute ? "block" : "none");
+  setElDisplay("metrics-slope", isRoute ? "block" : "none");
   // Usamos el ID correcto que muestra el inspector: upcoming-profile-chart
-  setElDisplay("upcoming-profile-chart", isRoute ? "block" : "none"); 
+  setElDisplay("upcoming-profile-chart", isRoute ? "block" : "none");
   setElDisplay("hud-elevation-footer", isRoute ? "block" : "none");
 
   // Mostrar panel Manual si aplica
   setElDisplay("manual-mode-panel", isManual ? "flex" : "none");
-  
+
   // Ghost Rider solo en Ruta
   const ghostBanner = document.getElementById("ghost-banner");
   if (ghostBanner) {
@@ -875,11 +876,6 @@ function onSpeedReceived(speedKph) {
       }
     }
 
-    // NOTE: distance accumulation moved to saveTelemetryPoint() to centralize timing
-    if (!state.isPaused && speedKph > 0) {
-      state.speedHistory.push(speedKph);
-      updateSessionAverages();
-    }
   }
 
   state.lastSpeedUpdateTime = now;
@@ -888,17 +884,20 @@ function onSpeedReceived(speedKph) {
 
 // --- CYCLING PHYSICS / TSS / IF MATH ---
 function calculateNormalizedPower() {
-  if (state.powerHistory.length < 30) {
+  return calculateNormalizedPowerFromValues(state.powerHistory);
+}
+
+function calculateNormalizedPowerFromValues(values) {
+  if (values.length < 30) {
     return (
-      state.powerHistory.reduce((a, b) => a + b, 0) /
-        state.powerHistory.length || 0.0
+      values.reduce((a, b) => a + b, 0) / values.length || 0.0
     );
   }
 
   // 1. Calculate 30-second rolling averages
   const rollingAverages = [];
-  for (let i = 29; i < state.powerHistory.length; i++) {
-    const sum = state.powerHistory
+  for (let i = 29; i < values.length; i++) {
+    const sum = values
       .slice(i - 29, i + 1)
       .reduce((a, b) => a + b, 0);
     const avg = sum / 30.0;
@@ -914,7 +913,7 @@ function calculateNormalizedPower() {
 // --- Countdown Timer ---
 function startCountdown(onComplete, duration) {
   // Reset forzado antes de empezar para evitar bloqueos
-  state.isCountdownActive = true; 
+  state.isCountdownActive = true;
 
   const countdownOverlay = document.getElementById("workout-countdown-overlay");
   const countdownText = document.getElementById("countdown-text");
@@ -1325,7 +1324,7 @@ async function startSession() {
       setRouteTargetSlope(0);
       refreshUpcomingPreview(0);
     }
-    
+
     // Inicializar gráficos manuales si estamos en modo manual
     if (state.currentMode === "MANUAL") {
       window.ChartsManager.initManualTrainingCharts("manual-power-chart", "manual-hr-chart");
@@ -1344,7 +1343,7 @@ async function startSession() {
       if (state.startOnMovement) {
         // Esperar a que haya movimiento
         console.log("Esperando movimiento para iniciar...");
-        
+
         // Usamos una función para comprobar el estado
         const checkMovement = () => {
           if (state.currentPower > 5 || state.currentSpeed > 0.5) {
@@ -1354,7 +1353,7 @@ async function startSession() {
             setTimeout(checkMovement, 1000);
           }
         };
-        
+
         checkMovement();
       } else {
         runCountdown();
@@ -1380,7 +1379,7 @@ function startTimerInterval() {
   // `state.elapsedSeconds` basado en `Date.now() - startTime`.
   // Si queremos que no cuente el tiempo de pausa, necesitamos otra forma de gestionar el tiempo acumulado.
   const startTime = Date.now() - (state.elapsedSeconds || 0) * 1000;
-  
+
   // Guardamos el tiempo en que la sesión fue pausada por última vez
   state.lastPauseTime = null;
   state.totalPausedDuration = 0;
@@ -1430,10 +1429,10 @@ function startTimerInterval() {
         window.ChartsManager.updateManualTrainingCharts(state.currentPower, state.currentHr);
       }
 
-      if (state.currentMode === "ROUTE") {
-        // Distance accumulation happens in onSpeedReceived() via sensor data
-        // Do NOT accumulate here to avoid double-counting
+      // Update distance before refreshing averages, HUD, and map position.
+      saveTelemetryPoint();
 
+      if (state.currentMode === "ROUTE") {
         if (window.ChartsManager) {
           window.ChartsManager.setElevationCursor(state.totalDistance, state.routeTotalDistance);
         }
@@ -1458,8 +1457,6 @@ function startTimerInterval() {
 
       updateGhostProgress();
 
-      // Persistent telemetry point save
-      saveTelemetryPoint();
       if (state.elapsedSeconds % 30 === 0) {
         flushTelemetryBuffer();
       }
@@ -1480,13 +1477,13 @@ function pauseTimer() {
 
 function resumeTimer() {
   state.isPaused = false;
-  
+
   // Sumamos el tiempo transcurrido durante la pausa al total de tiempo pausado
   if (state.lastPauseTime) {
     state.totalPausedDuration += (Date.now() - state.lastPauseTime);
     state.lastPauseTime = null;
   }
-  
+
   state.lastSpeedUpdateTime = Date.now();
   state.lastMovementTime = Date.now();
   state.lastSlopeRampTime = Date.now();
@@ -1609,6 +1606,39 @@ async function recoverTelemetryBackup() {
   }
 }
 
+function renderSummaryMetrics(metrics) {
+  document.getElementById("summary-duration").textContent = metrics.duration;
+  document.getElementById("summary-total-duration").textContent =
+    metrics.totalDuration;
+  document.getElementById("summary-distance").textContent =
+    `${metrics.distance.toFixed(2)} km`;
+  document.getElementById("summary-np").textContent = `${metrics.np} W`;
+  document.getElementById("summary-tss").textContent = metrics.tss;
+  document.getElementById("summary-if").textContent =
+    metrics.intensityFactor.toFixed(2);
+  document.getElementById("summary-calories").textContent =
+    `${metrics.calories} kcal`;
+  document.getElementById("summary-power-stats").textContent =
+    `${metrics.avgPower} / ${metrics.maxPower} W`;
+  document.getElementById("summary-speed-stats").textContent =
+    `${metrics.avgSpeed.toFixed(1)} / ${metrics.maxSpeed.toFixed(1)} km/h`;
+  document.getElementById("summary-hr-stats").textContent =
+    `${metrics.avgHr} / ${metrics.maxHr} bpm`;
+
+  ChartsManager.initZonesChart(
+    "summary-zones-chart",
+    metrics.timeInPowerZones,
+  );
+}
+
+function setSessionSaveStatus(message, color = "var(--text-secondary)") {
+  const status = document.getElementById("session-save-status");
+  if (status) {
+    status.textContent = message;
+    status.style.color = color;
+  }
+}
+
 async function stopSessionFlow() {
   if (!state.isSessionActive) {
     navigateTo("dashboard");
@@ -1626,6 +1656,8 @@ async function stopSessionFlow() {
   }
 
   state.isSessionActive = false;
+  state.lastSavedSessionId = state.currentSessionId;
+  state.summaryReturnScreen = "dashboard";
 
   // Calculate average telemetry fields
   const avgPower =
@@ -1637,6 +1669,10 @@ async function stopSessionFlow() {
       : 0;
   const maxPower =
     state.powerHistory.length > 0 ? Math.max(...state.powerHistory) : 0;
+  const maxSpeed =
+    state.speedHistory.length > 0
+      ? Math.max(...state.speedHistory)
+      : state.currentSpeed || 0;
 
   const avgHr =
     state.hrHistory.length > 0
@@ -1660,6 +1696,7 @@ async function stopSessionFlow() {
   let finalDistance = state.totalDistance; // km
 
   try {
+    setSessionSaveStatus("Guardando sesión...", "var(--accent-blue)");
     // Guardar los puntos pendientes en el búfer
     await flushTelemetryBuffer();
 
@@ -1671,42 +1708,59 @@ async function stopSessionFlow() {
     }
     finalDistance = state.totalDistance;
 
+    const currentSession = await DbManager.getSessionById(
+      state.currentSessionId,
+    );
+    const endTime = Date.now();
+    const totalDurationSeconds = currentSession
+        ? Math.max(0, (endTime - currentSession.startTime) / 1000)
+        : state.elapsedSeconds;
+    const totalDuration = new Date(totalDurationSeconds * 1000)
+        .toISOString()
+        .substr(11, 8);
+
     const avgSpeed =
-      finalDistance > 0 && state.elapsedSeconds > 0
+        finalDistance > 0 && state.elapsedSeconds > 0
         ? finalDistance / (state.elapsedSeconds / 3600.0)
         : 0.0;
 
     // Update DB Session headers
-    const currentSession = await DbManager.getSessionById(
-      state.currentSessionId,
-    );
     if (currentSession) {
       await DbManager.updateSession({
         ...currentSession,
-        endTime: Date.now(),
+        endTime,
         totalDistance: finalDistance,
+        activeDuration: state.elapsedSeconds,
+        totalDuration: totalDurationSeconds,
+        normalizedPower: np,
+        tss,
+        intensityFactor,
+        calories: state.calories,
+        maxSpeed,
+        maxHeartRate: maxHr,
         averageSpeed: avgSpeed,
         averagePower: avgPower,
         averageHeartRate: avgHr,
       });
     }
+    setSessionSaveStatus("Sesión guardada correctamente", "var(--accent-green)");
 
-    // Populate summary screen UI
-    document.getElementById("summary-duration").textContent = duration;
-    document.getElementById("summary-distance").textContent =
-      `${finalDistance.toFixed(2)} km`;
-    document.getElementById("summary-np").textContent = `${np} W`;
-    document.getElementById("summary-tss").textContent = tss;
-    document.getElementById("summary-if").textContent =
-      intensityFactor.toFixed(2);
-    document.getElementById("summary-calories").textContent =
-      `${state.calories} kcal`;
-    document.getElementById("summary-power-stats").textContent =
-      `${avgPower} / ${maxPower} W`;
-    document.getElementById("summary-speed-stats").textContent =
-      `${avgSpeed.toFixed(1)} / ${(avgSpeed * 1.3).toFixed(1)} km/h`; // Estimate max speed approx
-    document.getElementById("summary-hr-stats").textContent =
-      `${avgHr} / ${maxHr} bpm`;
+    renderSummaryMetrics({
+      duration,
+      totalDuration,
+      distance: finalDistance,
+      np,
+      tss,
+      intensityFactor,
+      calories: state.calories,
+      avgPower,
+      maxPower,
+      avgSpeed,
+      maxSpeed,
+      avgHr,
+      maxHr,
+      timeInPowerZones: state.timeInPowerZones,
+    });
 
     // Initial zones chart rendering
     ChartsManager.initZonesChart("summary-zones-chart", state.timeInPowerZones);
@@ -1758,6 +1812,7 @@ async function stopSessionFlow() {
 
     navigateTo("summary");
   } catch (e) {
+    setSessionSaveStatus("Error al guardar la sesión", "var(--accent-red)");
     console.error("Failed to close session", e);
     navigateTo("dashboard");
   }
@@ -1849,7 +1904,7 @@ function updateRouteSimulation(currentDistKm) {
         // Motor 2D (Leaflet) - Actualizar marcador
         if (state.userMarker) {
             state.userMarker.setLatLng([point.lat, point.lon]);
-            
+
             if (state.isMapFollowingRoute) {
                 // Leaflet no tiene rotación nativa integrada de mapa de la misma manera que 3D,
                 // pero podemos orientar el marcador o rotar el mapa si se usara un plugin.
@@ -2209,7 +2264,7 @@ window.toggleMapEngine = function(btn) {
         btn.textContent = "🗺️ 3D";
         initLeafletMap();
         drawRouteOnMap();
-        
+
         // Re-configurar botón de orientación para 2D Leaflet
         createOrientationToggleButton();
     }
@@ -2229,7 +2284,7 @@ window.toggleMapEngine = function(btn) {
         try {
             state.map = new maplibregl.Map({
                 container: 'workout-map',
-                style: `https://api.maptiler.com/maps/streets-v2/style.json?key=UBHzQV2yOKcBPfo2g11x`,
+                style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_API_KEY}`,
                 center: state.routePoints.length > 0 ? [state.routePoints[0].lon, state.routePoints[0].lat] : [-1.9297, 43.3178],
                 zoom: 14,
                 pitch: 60,
@@ -2246,7 +2301,7 @@ window.toggleMapEngine = function(btn) {
                 console.log("Mapa 3D cargado correctamente.");
                 state.map.resize();
                 drawRouteOnMap();
-                
+
                 // Re-configurar botón de orientación para 3D MapLibre
                 createOrientationToggleButton();
             });
@@ -2268,7 +2323,7 @@ window.toggleMapEngine = function(btn) {
 
 async function handleSessionExport() {
   if (!state.currentSessionId && !state.lastSavedSessionId) return;
-  const sId = state.currentSessionId || state.lastSavedSessionId;
+  const sId = state.lastSavedSessionId || state.currentSessionId;
 
   try {
     const session = await DbManager.getSessionById(sId);
@@ -2276,7 +2331,13 @@ async function handleSessionExport() {
 
     if (session && data.length > 0) {
       const uName = state.currentUser ? state.currentUser.name : "Usuario";
-      GpxManager.exportSession(session, data, uName);
+      if (!session.gpxPath) {
+        alert("Las sesiones manuales no tienen una ruta GPS para exportar.");
+        return;
+      }
+      if (!GpxManager.exportSession(session, data, uName)) {
+        alert("Esta sesión no contiene coordenadas GPS válidas para exportar.");
+      }
     } else {
       alert("Error: No hay datos de telemetría válidos para exportar.");
     }
@@ -2313,9 +2374,14 @@ async function loadHistoryList() {
         minute: "2-digit",
       });
 
-      const duration = s.endTime
+      const totalDuration = s.endTime
         ? new Date(s.endTime - s.startTime).toISOString().substr(11, 8)
         : "00:00:00";
+      const activeDuration = Number.isFinite(Number(s.activeDuration))
+        ? new Date(Number(s.activeDuration) * 1000)
+            .toISOString()
+            .substr(11, 8)
+        : totalDuration;
 
       const modeText = s.gpxPath ? "Ruta" : "Manual";
       const modeClass = s.gpxPath ? "route" : "manual";
@@ -2335,8 +2401,12 @@ async function loadHistoryList() {
             <span class="history-stat-value">${s.totalDistance.toFixed(2)} km</span>
           </div>
           <div class="history-stat-unit">
-            <span class="history-stat-label">Duración</span>
-            <span class="history-stat-value">${duration}</span>
+            <span class="history-stat-label">Actividad</span>
+            <span class="history-stat-value">${activeDuration}</span>
+          </div>
+          <div class="history-stat-unit">
+            <span class="history-stat-label">Total sesión</span>
+            <span class="history-stat-value">${totalDuration}</span>
           </div>
           <div class="history-stat-unit">
             <span class="history-stat-label">Pot. Media</span>
@@ -2351,13 +2421,117 @@ async function loadHistoryList() {
         deleteHistorySession(s.id);
       };
 
-      // Let user download GPX of this specific session when clicking the card
-      card.onclick = () => downloadSpecificHistoryGpx(s.id);
+      // Open the same summary screen used after finishing a live session
+      card.onclick = () => openHistoricalSessionSummary(s.id);
 
       container.appendChild(card);
     });
   } catch (e) {
     console.error(e);
+  }
+}
+
+async function openHistoricalSessionSummary(id) {
+  try {
+    const session = await DbManager.getSessionById(id);
+    const telemetry = await DbManager.getSensorDataForSession(id);
+
+    if (!session) {
+      alert("No se encontró la sesión seleccionada.");
+      return;
+    }
+
+    const totalDurationSeconds = session.endTime
+      ? Math.max(0, (session.endTime - session.startTime) / 1000)
+      : 0;
+    const activeDurationSeconds =
+      Number.isFinite(Number(session.activeDuration)) &&
+      Number(session.activeDuration) >= 0
+        ? Number(session.activeDuration)
+        : totalDurationSeconds;
+    const duration = new Date(activeDurationSeconds * 1000)
+      .toISOString()
+      .substr(11, 8);
+    const totalDuration = new Date(totalDurationSeconds * 1000)
+      .toISOString()
+      .substr(11, 8);
+    const powers = telemetry.map((point) => Number(point.power) || 0);
+    const speeds = telemetry.map((point) => Number(point.speed) || 0);
+    const heartRates = telemetry
+      .map((point) => Number(point.heartRate) || 0)
+      .filter((value) => value > 0);
+    const avgPower = Number(session.averagePower) || 0;
+    const maxPower = Number.isFinite(Number(session.maxPower))
+      ? Number(session.maxPower)
+      : powers.length > 0
+        ? Math.max(...powers)
+        : 0;
+    const avgHr = Number(session.averageHeartRate) || 0;
+    const maxHr = Number.isFinite(Number(session.maxHeartRate))
+      ? Number(session.maxHeartRate)
+      : heartRates.length > 0
+        ? Math.max(...heartRates)
+        : 0;
+    const distance = Number(session.totalDistance) || 0;
+    const avgSpeed = Number.isFinite(Number(session.averageSpeed))
+      ? Number(session.averageSpeed)
+      : activeDurationSeconds > 0
+        ? distance / (activeDurationSeconds / 3600)
+        : 0;
+    const maxSpeed = Number.isFinite(Number(session.maxSpeed))
+      ? Number(session.maxSpeed)
+      : speeds.length > 0
+        ? Math.max(...speeds)
+        : 0;
+    const ftp = state.currentUser ? state.currentUser.ftp : 200;
+    const np = Number.isFinite(Number(session.normalizedPower))
+      ? Number(session.normalizedPower)
+      : Math.round(calculateNormalizedPowerFromValues(powers));
+    const intensityFactor = Number.isFinite(Number(session.intensityFactor))
+      ? Number(session.intensityFactor)
+      : ftp > 0
+        ? parseFloat((np / ftp).toFixed(2))
+        : 0;
+    const tss = Number.isFinite(Number(session.tss))
+      ? Number(session.tss)
+      : ftp > 0
+        ? Math.round((activeDurationSeconds * np * intensityFactor) / (ftp * 36))
+        : 0;
+    const timeInPowerZones = [0, 0, 0, 0, 0, 0];
+    const z = state.powerZones || [55, 75, 88, 95, 106];
+
+    powers.forEach((power) => {
+      const thresholds = z.map((value) => ftp * (value / 100));
+      let zone = thresholds.findIndex((threshold) => power < threshold);
+      if (zone === -1) zone = 5;
+      timeInPowerZones[zone]++;
+    });
+
+    state.lastSavedSessionId = id;
+    state.summaryReturnScreen = "history";
+    setSessionSaveStatus("Sesión guardada correctamente", "var(--accent-green)");
+    renderSummaryMetrics({
+      duration,
+      totalDuration,
+      distance,
+      np,
+      tss,
+      intensityFactor,
+      calories: Number.isFinite(Number(session.calories))
+        ? Number(session.calories)
+        : Math.round(avgPower * (activeDurationSeconds / 3600) * 3.6),
+      avgPower,
+      maxPower,
+      avgSpeed,
+      maxSpeed,
+      avgHr,
+      maxHr,
+      timeInPowerZones,
+    });
+    navigateTo("summary");
+  } catch (e) {
+    console.error("Error loading historical session summary:", e);
+    alert("No se pudo abrir el resumen de la sesión.");
   }
 }
 
@@ -2382,7 +2556,13 @@ async function downloadSpecificHistoryGpx(id) {
     const data = await DbManager.getSensorDataForSession(id);
     if (session && data.length > 0) {
       const uName = state.currentUser ? state.currentUser.name : "Usuario";
-      GpxManager.exportSession(session, data, uName);
+      if (!session.gpxPath) {
+        alert("Las sesiones manuales no tienen una ruta GPS para exportar.");
+        return;
+      }
+      if (!GpxManager.exportSession(session, data, uName)) {
+        alert("Esta sesión no contiene coordenadas GPS válidas para exportar.");
+      }
     } else {
       alert("Esta sesión no posee datos de telemetría exportables.");
     }

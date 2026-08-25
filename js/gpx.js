@@ -114,6 +114,14 @@ function parseRoute(fileText) {
  */
 function exportSession(session, sensorData, userName = 'Usuario') {
   try {
+    const trackPoints = sensorData.filter((point) =>
+      Number.isFinite(Number(point.latitude)) &&
+      Number.isFinite(Number(point.longitude)),
+    );
+    if (trackPoints.length === 0) {
+      return false;
+    }
+
     const formatDateUTC = (timestamp) => {
       const date = new Date(timestamp);
       return date.toISOString().replace(/\.\d+Z$/, 'Z');
@@ -141,7 +149,7 @@ function exportSession(session, sensorData, userName = 'Usuario') {
     gpx += `    <name>Entrenamiento RodilloInt - ${userName} - ${dateString}</name>\n`;
     gpx += '    <trkseg>\n';
 
-    sensorData.forEach((point) => {
+    trackPoints.forEach((point) => {
       const lat = point.latitude !== null ? point.latitude.toFixed(6) : '0.000000';
       const lon = point.longitude !== null ? point.longitude.toFixed(6) : '0.000000';
       const ele = (point.elevation !== null && point.elevation !== undefined) ? point.elevation.toFixed(1) : (point.slope !== null ? point.slope.toFixed(1) : '0.0');

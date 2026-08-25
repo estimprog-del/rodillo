@@ -147,6 +147,14 @@ async function insertSession(session) {
       averageSpeed: 0.0,
       averagePower: 0,
       averageHeartRate: 0,
+      activeDuration: 0,
+      totalDuration: 0,
+      normalizedPower: 0,
+      tss: 0,
+      intensityFactor: 0,
+      calories: 0,
+      maxSpeed: 0,
+      maxHeartRate: 0,
       ...session
     };
 

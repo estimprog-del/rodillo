@@ -884,8 +884,14 @@
                 <!-- Metrics summaries -->
                 <div class="glass-card summary-big-numbers">
                     <div class="summary-num-card">
-                        <div class="summary-num-title">Tiempo Total</div>
+                        <div class="summary-num-title">Tiempo de Actividad</div>
                         <div class="summary-num-value" id="summary-duration">
+                            00:00:00
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">Tiempo Total de Sesión</div>
+                        <div class="summary-num-value" id="summary-total-duration">
                             00:00:00
                         </div>
                     </div>
@@ -1008,6 +1014,9 @@
                     Exportar GPX
                 </button>
             </div>
+            <span id="session-save-status" style="display: block; margin-top: 12px; font-size: 12px; color: var(--text-secondary);">
+                Sesión guardada
+            </span>
 
             <button
                 class="btn btn-primary"

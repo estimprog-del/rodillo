@@ -129,7 +129,7 @@ export function bindEvents(handlers) {
 
       if (id === "btn-dashboard-connections") navigateTo("connections");
       if (id === "btn-summary-close") {
-        location.reload();
+        navigateTo(state.summaryReturnScreen || "dashboard");
       }
       if (id === "btn-go-history") navigateTo("history");
       if (id === "btn-history-back") navigateTo("dashboard");
