@@ -20,8 +20,8 @@
 
         <!-- MapLibre 3D CSS -->
         <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
-      <script type="module" crossorigin src="./assets/index-BnWCqx00.js"></script>
-      <link rel="stylesheet" crossorigin href="./assets/index-Cz_oYshU.css">
+      <script type="module" crossorigin src="./assets/index-BOUOi9Ft.js"></script>
+      <link rel="stylesheet" crossorigin href="./assets/index-AdWgTUZo.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -491,7 +491,8 @@
                                 class="upcoming-profile-chart glass-card"
                             >
                                 <div class="upcoming-profile-chart-title">
-                                    Prox 500m
+                                    <span>Prox 500m</span>
+                                    <span id="upcoming-slope-label">⛰️ 0.0%</span>
                                 </div>
                                 <div
                                     id="upcoming-chart-inner"
@@ -884,8 +885,14 @@
                 <!-- Metrics summaries -->
                 <div class="glass-card summary-big-numbers">
                     <div class="summary-num-card">
-                        <div class="summary-num-title">Tiempo Total</div>
+                        <div class="summary-num-title">Tiempo de Actividad</div>
                         <div class="summary-num-value" id="summary-duration">
+                            00:00:00
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">Tiempo Total de Sesión</div>
+                        <div class="summary-num-value" id="summary-total-duration">
                             00:00:00
                         </div>
                     </div>
@@ -1008,6 +1015,9 @@
                     Exportar GPX
                 </button>
             </div>
+            <span id="session-save-status" style="display: block; margin-top: 12px; font-size: 12px; color: var(--text-secondary);">
+                Sesión guardada
+            </span>
 
             <button
                 class="btn btn-primary"
