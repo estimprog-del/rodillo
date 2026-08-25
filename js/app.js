@@ -1870,6 +1870,8 @@ function updateRouteSimulation(currentDistKm) {
     // Actualizar posición del usuario en el mapa según el motor
     const point = state.routePoints[state.currentRouteIndex];
     if (state.map.addSource) {
+        if (!state.map.isStyleLoaded()) return;
+
         // Motor 3D (MapLibre)
         if (!state.map.getSource('user-location')) {
             state.map.addSource('user-location', { type: 'geojson', data: { type: 'Point', coordinates: [point.lon, point.lat] } });
@@ -2271,6 +2273,11 @@ window.toggleMapEngine = function(btn) {
     // Si estamos en 2D (no contiene "2D", es decir, es 3D), vamos a 3D
     else {
         console.log("Cambiando a motor MapLibre 3D...");
+        if (!MAPTILER_API_KEY) {
+            alert("El mapa 3D no está configurado: falta la clave de MapTiler.");
+            return;
+        }
+
         if (state.map) {
             state.map.remove();
             state.map = null;
@@ -2308,11 +2315,7 @@ window.toggleMapEngine = function(btn) {
 
             state.map.on("error", (e) => {
                 console.error("Error MapLibre:", e);
-                alert("Error cargando mapa 3D.");
-                // Revertir a 2D si falla
-                btn.textContent = "🗺️ 3D";
-                initLeafletMap();
-                drawRouteOnMap();
+                alert("Error cargando mapa 3D. Revisa la clave de MapTiler.");
             });
         } catch (err) {
             console.error("Error inicialización MapLibre:", err);
