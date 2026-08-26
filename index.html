@@ -39,6 +39,7 @@
                             Cargando perfiles...
                         </p>
                     </div>
+
                 </div>
 
                 <div class="user-action-buttons">
@@ -80,6 +81,13 @@
                         style="padding: 10px 14px"
                     >
                         ⚙️ Ajustes
+                    </button>
+                    <button
+                        class="btn btn-dark"
+                        id="btn-toggle-fullscreen"
+                        style="padding: 10px 14px"
+                    >
+                        ⛶ Pantalla completa
                     </button>
                     <button
                         class="btn btn-dark"
@@ -426,29 +434,42 @@
                             class="hud-bottom-left glass-card"
                             id="hud-progress"
                         >
-                            <div class="mini-profile-title">PROGRESO RUTA</div>
-                            <div class="progress-item">
+                            <div class="mini-profile-title">
+                                <span>PROGRESO RUTA</span>
+                                <button class="panel-toggle" data-panel-target="progress" title="Mostrar u ocultar panel">−</button>
+                            </div>
+                            <div class="panel-content">
+                              <div class="progress-item">
                                 <span class="progress-label">Recorrido</span>
                                 <span id="submetrics-distance">0.00 km</span>
-                            </div>
-                            <div class="progress-item">
+                              </div>
+                              <div class="progress-item">
                                 <span class="progress-label accent"
                                     >Restante</span
                                 >
                                 <span id="submetrics-remaining">--</span>
-                            </div>
-                            <div class="progress-item progress-item-spaced">
+                              </div>
+                              <div class="progress-item progress-item-spaced">
                                 <span class="progress-label">Desnivel +</span>
                                 <span id="submetrics-ascent">0 m</span>
-                            </div>
-                            <div class="progress-item">
+                              </div>
+                              <div class="progress-item">
                                 <span class="progress-label warn">Faltan</span>
                                 <span id="submetrics-remaining-ascent">--</span>
+                              </div>
                             </div>
                         </div>
 
                         <!-- Grupo HUD derecha inferior -->
                         <div class="hud-bottom-right-group" style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
+                            <button
+                                class="btn-control btn-layout"
+                                id="btn-cycle-layout"
+                                style="width: fit-content; padding: 5px 15px;"
+                                title="Cambiar diseño de pantalla"
+                            >
+                                ▣ Diseño: Auto
+                            </button>
                             <button
                                 class="btn-control btn-pause"
                                 id="btn-workout-pause"
@@ -492,11 +513,11 @@
                                 <div class="upcoming-profile-chart-title">
                                     <span>Prox 500m</span>
                                     <span id="upcoming-slope-label">⛰️ 0.0%</span>
+                                    <button class="panel-toggle" data-panel-target="upcoming" title="Mostrar u ocultar panel">−</button>
                                 </div>
-                                <div
-                                    id="upcoming-chart-inner"
-                                    style="flex-grow: 1"
-                                ></div>
+                                <div class="panel-content" style="flex-grow: 1">
+                                    <div id="upcoming-chart-inner"></div>
+                                </div>
                             </div>
                         </div>
 
@@ -506,8 +527,14 @@
                             id="hud-elevation-footer"
                             style="display: none"
                         >
-                            <div id="elevation-chart"></div>
-                            <div id="elevation-chart-cursor"></div>
+                            <div class="elevation-profile-title">
+                                <span>PERFIL ALTITUD RUTA</span>
+                                <button class="panel-toggle" data-panel-target="elevation" title="Mostrar u ocultar panel">−</button>
+                            </div>
+                            <div class="panel-content">
+                                <div id="elevation-chart"></div>
+                                <div id="elevation-chart-cursor"></div>
+                            </div>
                         </div>
                     </div>
 
@@ -743,7 +770,10 @@
                 id="virtual-trainer-panel"
                 style="display: none"
             >
-                <h3 class="hud-sim-title">🎛️ Consola del Rodillo Virtual</h3>
+                <h3 class="hud-sim-title">
+                    <span>🎛️ Consola del Rodillo Virtual</span>
+                    <button class="panel-toggle" data-panel-target="virtual" title="Mostrar u ocultar panel">−</button>
+                </h3>
                 <div class="sim-slider-group">
                     <div class="sim-slider-label">
                         <span>Pedaleo Virtual: Potencia</span>
@@ -866,6 +896,17 @@
                             ¡Empezar Sesión!
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-overlay" id="modal-fullscreen-recovery" style="display: none;">
+            <div class="glass-card modal-content fullscreen-recovery-content">
+                <h3>Reactivar pantalla completa</h3>
+                <p>Chrome ha salido de pantalla completa al abrir el selector de archivos.</p>
+                <div class="fullscreen-recovery-actions">
+                    <button class="btn btn-dark" id="btn-fullscreen-recovery-cancel">Cancelar</button>
+                    <button class="btn btn-primary" id="btn-fullscreen-recovery-confirm">Reactivar</button>
                 </div>
             </div>
         </div>
@@ -1462,6 +1503,16 @@
               <select id="setting-map-type" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
                 <option value="leaflet">Leaflet (2D)</option>
                 <option value="maplibre">MapLibre (3D)</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label for="setting-workout-layout" style="font-size: 0.9rem; opacity: 0.8;">Diseño de pantalla de entrenamiento:</label>
+              <select id="setting-workout-layout" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+                <option value="auto">Automático</option>
+                <option value="horizontal-1">Horizontal 1 - Mapa completo</option>
+                <option value="horizontal-2">Horizontal 2 - Mapa y datos</option>
+                <option value="vertical-1">Vertical 1 - Mapa completo</option>
+                <option value="vertical-2">Vertical 2 - Mapa y datos</option>
               </select>
             </div>
             <div style="display: flex; flex-direction: column; gap: 8px;">

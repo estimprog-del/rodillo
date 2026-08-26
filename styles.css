@@ -1205,6 +1205,29 @@ h4 {
     max-height: 90vh;
     overflow-y: auto;
 }
+
+.fullscreen-recovery-content {
+    text-align: center;
+}
+
+#modal-fullscreen-recovery {
+    z-index: 1000;
+}
+
+.fullscreen-recovery-content p {
+    color: var(--text-secondary);
+    margin: 12px 0 20px;
+}
+
+.fullscreen-recovery-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.fullscreen-recovery-actions .btn {
+    flex: 1;
+}
 .modal-header {
     display: flex;
     align-items: center;
@@ -1337,6 +1360,236 @@ h4 {
     background: var(--bg-primary);
     --workout-text-multiplier: 1;
     font-size: calc(1rem * var(--workout-text-multiplier));
+    --workout-panel-gap: clamp(8px, 1.2vw, 20px);
+}
+
+/* Alternative workout layouts share the same map, HUD and session data. */
+.workout-viewport.layout-horizontal-2 .workout-map-fullscreen {
+    right: 50%;
+}
+
+.workout-viewport.layout-horizontal-2 .hud-top-bar {
+    left: 0;
+    right: 0;
+    min-height: 64px;
+    padding-left: calc(50% + 12px);
+    padding-right: 12px;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.workout-viewport.layout-horizontal-2 .hud-left-group {
+    display: none;
+}
+
+.workout-viewport.layout-horizontal-2 .hud-right-group {
+    width: min(100%, 620px);
+    margin-left: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+    justify-content: stretch;
+    gap: 8px;
+}
+
+.workout-viewport.layout-horizontal-2 .hud-right-group > .hud-font-selector,
+.workout-viewport.layout-horizontal-2 .hud-right-group > .clock-session-time {
+    grid-column: 1 / -1;
+    justify-self: center;
+}
+
+.workout-viewport.layout-horizontal-2 .hud-right-group > .metric-group,
+.workout-viewport.layout-horizontal-2 .hud-right-group > .metric-main {
+    justify-content: center;
+    min-width: 0;
+}
+
+.workout-viewport.layout-horizontal-2 .hud-bottom-left,
+.workout-viewport.layout-horizontal-2 .hud-bottom-right-group {
+    bottom: 20px;
+}
+
+.workout-viewport.layout-horizontal-2 .hud-bottom-left {
+    left: calc(50% + 20px);
+}
+
+.workout-viewport.layout-horizontal-2 .hud-bottom-right-group {
+    right: 20px;
+}
+
+.workout-viewport.layout-horizontal-2 .hud-elevation-footer {
+    display: block !important;
+    left: calc(50% + 20px);
+    right: 220px;
+    top: 300px;
+    bottom: auto;
+    width: auto;
+    max-width: none;
+    height: 110px;
+    transform: none;
+}
+
+.workout-viewport.layout-horizontal-2 .hud-bottom-right-group {
+    top: auto;
+    bottom: 20px;
+}
+
+.workout-viewport.layout-vertical-2 .workout-map-fullscreen {
+    bottom: 50%;
+}
+
+.workout-viewport.layout-vertical-1 .hud-top-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.workout-viewport.layout-vertical-1 .hud-right-group {
+    flex: 1 1 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+    justify-content: stretch;
+    gap: 8px;
+}
+
+.workout-viewport.layout-vertical-1 .hud-right-group > .hud-font-selector,
+.workout-viewport.layout-vertical-1 .hud-right-group > .clock-session-time {
+    grid-column: 1 / -1;
+    justify-self: center;
+}
+
+.workout-viewport.layout-vertical-1 .hud-right-group > .metric-group,
+.workout-viewport.layout-vertical-1 .hud-right-group > .metric-main {
+    justify-content: center;
+    min-width: 0;
+}
+
+.workout-viewport.layout-vertical-1 .hud-elevation-footer {
+    left: 20px;
+    right: 180px;
+    bottom: 230px;
+    width: auto;
+    max-width: none;
+    height: 120px;
+    transform: none;
+}
+
+.workout-viewport.layout-vertical-2 .hud-top-bar {
+    top: 50%;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    align-items: flex-start;
+    min-height: 64px;
+    padding: 8px 12px;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.workout-viewport.layout-vertical-2 .hud-left-group {
+    display: none;
+}
+
+.workout-viewport.layout-vertical-2 .hud-right-group {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.workout-viewport.layout-vertical-2 .hud-right-group > .hud-font-selector,
+.workout-viewport.layout-vertical-2 .hud-right-group > .clock-session-time {
+    grid-column: 1 / -1;
+    justify-self: center;
+}
+
+.workout-viewport.layout-vertical-2 .hud-right-group > .metric-group,
+.workout-viewport.layout-vertical-2 .hud-right-group > .metric-main {
+    justify-content: center;
+    min-width: 0;
+}
+
+.workout-viewport.layout-vertical-2 .hud-bottom-right-group {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: var(--workout-panel-gap);
+}
+
+.workout-viewport.layout-vertical-2 .hud-bottom-right-group .upcoming-profile-chart {
+    flex: 1 1 240px;
+    width: auto;
+    min-width: clamp(180px, 24vw, 280px);
+}
+
+.workout-viewport.layout-horizontal-2 .hud-right-group,
+.workout-viewport.layout-vertical-1 .hud-right-group,
+.workout-viewport.layout-vertical-2 .hud-right-group {
+    gap: var(--workout-panel-gap);
+}
+
+.workout-viewport.layout-horizontal-2 .hud-elevation-footer {
+    right: clamp(180px, 14vw, 220px);
+    height: clamp(90px, 14vh, 110px);
+}
+
+.workout-viewport.layout-vertical-1 .hud-elevation-footer {
+    right: clamp(150px, 18vw, 180px);
+    bottom: clamp(200px, 25vh, 230px);
+    height: clamp(100px, 16vh, 120px);
+}
+
+.workout-viewport.layout-vertical-2 .hud-elevation-footer {
+    right: clamp(150px, 20vw, 180px);
+    bottom: clamp(170px, 22vh, 190px);
+    height: clamp(85px, 14vh, 100px);
+}
+
+@media (max-width: 700px) {
+    .workout-viewport .metric-value {
+        font-size: clamp(20px, 7vw, 28px) !important;
+    }
+
+    .workout-viewport .metric-avg {
+        font-size: clamp(10px, 3vw, 13px) !important;
+        padding-left: 4px;
+    }
+
+    .workout-viewport.layout-vertical-2 .hud-right-group,
+    .workout-viewport.layout-vertical-1 .hud-right-group {
+        column-gap: 4px;
+        row-gap: 6px;
+    }
+}
+
+.workout-viewport.layout-vertical-2 .hud-bottom-left {
+    bottom: 20px;
+    left: 20px;
+}
+
+.workout-viewport.layout-vertical-2 .hud-bottom-right-group {
+    bottom: 20px;
+    right: 20px;
+}
+
+.workout-viewport.layout-vertical-2 .hud-elevation-footer {
+    display: block !important;
+    left: 12px;
+    right: 180px;
+    top: auto;
+    bottom: 190px;
+    width: auto;
+    max-width: none;
+    height: 100px;
+    transform: none;
 }
 
 /* Apply multiplier to HUD metrics and clocks */
@@ -1726,6 +1979,11 @@ h4 {
     color: white;
 }
 
+.btn-layout {
+    background: #374151;
+    color: white;
+}
+
 /* Ghost banner flotante */
 .hud-ghost {
     position: absolute;
@@ -1768,6 +2026,48 @@ h4 {
     font-size: 14px;
     margin-bottom: 12px;
     color: var(--accent-blue);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.panel-toggle {
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    min-width: 24px;
+    min-height: 22px;
+    padding: 2px 6px;
+}
+
+.panel-toggle:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.mini-profile-title,
+.upcoming-profile-chart-title,
+.elevation-profile-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.panel-content {
+    min-height: 0;
+}
+
+.workout-panel-collapsed > .panel-content {
+    display: none !important;
+}
+
+.workout-panel-collapsed {
+    height: auto !important;
+    min-height: 0 !important;
 }
 
 /* Modal de carga de ruta */

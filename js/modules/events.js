@@ -45,7 +45,7 @@ export function bindEvents(handlers) {
 
   document.body.addEventListener("click", (e) => {
     const target = e.target.closest(
-      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-slope-minus, #btn-slope-plus, #btn-export-gpx, [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-dashboard-settings, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-toggle-3d, #btn-toggle-manual-mode",
+      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-cycle-layout, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-export-gpx, [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-toggle-3d, #btn-toggle-manual-mode",
     );
 
     if (!target) return;
@@ -83,6 +83,7 @@ export function bindEvents(handlers) {
         openSettingsModal();
         setTimeout(() => {
           document.getElementById("setting-map-type").value = state.mapType || 'maplibre';
+          document.getElementById("setting-workout-layout").value = state.workoutLayout || 'auto';
           document.getElementById("setting-font-scale").value = state.fontScale || 1.0;
           
           const realismSlider = document.getElementById("setting-realism");
@@ -101,12 +102,22 @@ export function bindEvents(handlers) {
           });
         }, 250);
       }
+      if (id === "btn-toggle-fullscreen" && typeof window.toggleFullscreen === "function") {
+        window.toggleFullscreen();
+      }
+      if (id === "btn-fullscreen-recovery-cancel" && typeof window.closeFullscreenRecovery === "function") {
+        window.closeFullscreenRecovery();
+      }
+      if (id === "btn-fullscreen-recovery-confirm" && typeof window.reactivateFullscreen === "function") {
+        window.reactivateFullscreen();
+      }
       
       if (id === "btn-close-settings") {
         hideModal('settings');
       }
       if (id === "btn-save-settings") {
         state.mapType = document.getElementById("setting-map-type").value;
+        state.workoutLayout = document.getElementById("setting-workout-layout").value;
         state.fontScale = parseFloat(document.getElementById("setting-font-scale").value);
         state.realismFactor = parseInt(document.getElementById("setting-realism").value) / 100;
         state.powerZones = document.getElementById("setting-power-zones").value.split(',').map(Number);
@@ -115,6 +126,9 @@ export function bindEvents(handlers) {
         state.startOnMovement = document.getElementById("setting-start-on-movement").checked;
         
         saveStateToLocalStorage();
+        if (typeof window.applyWorkoutLayout === "function") {
+          window.applyWorkoutLayout();
+        }
         closeSettingsModal();
       }
       if (e.target.classList.contains('btn-smoothing')) {
@@ -155,6 +169,12 @@ export function bindEvents(handlers) {
       // Controles entrenamiento
       if (id === "btn-workout-pause") togglePause();
       if (id === "btn-workout-stop") stopSessionFlow();
+      if (id === "btn-cycle-layout" && typeof window.cycleWorkoutLayout === "function") {
+        window.cycleWorkoutLayout();
+      }
+      if (target.classList.contains("panel-toggle") && typeof window.toggleWorkoutPanel === "function") {
+        window.toggleWorkoutPanel(target.getAttribute("data-panel-target"));
+      }
       if (id === "btn-toggle-3d") {
         const btn = document.getElementById("btn-toggle-3d");
         if (typeof window.toggleMapEngine === "function") {
@@ -332,6 +352,11 @@ export function bindEvents(handlers) {
   const gpxTrigger = document.getElementById("btn-trigger-gpx-pick");
   if (gpxTrigger && gpxInput) {
     gpxTrigger.onclick = () => {
+      state.fullscreenFilePickerActive = true;
+      if (document.fullscreenElement) {
+        state.fullscreenPreference = true;
+        saveStateToLocalStorage();
+      }
       gpxInput.value = "";
       gpxInput.click();
     };

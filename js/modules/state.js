@@ -47,6 +47,13 @@ export const state = {
   clockInterval: null,
   realismFactor: 1.0,
   mapType: 'maplibre',
+  workoutLayout: 'auto',
+  workoutLayouts: {},
+  workoutPanels: { virtual: true, progress: true, elevation: true, upcoming: true },
+  workoutPanelsByUser: {},
+  fullscreenPreference: false,
+  fullscreenByUser: {},
+  fullscreenFilePickerActive: false,
   fontScale: 1.0,
   sensorSmoothing: 3000,
   powerZones: [55, 75, 88, 95, 106],
@@ -57,11 +64,22 @@ export const state = {
 };
 
 export function saveStateToLocalStorage() {
+  const userKey = state.currentUser?.uuid || state.currentUser?.id;
+  if (userKey) {
+    state.workoutLayouts[userKey] = state.workoutLayout;
+    state.workoutPanelsByUser[userKey] = state.workoutPanels;
+    state.fullscreenByUser[userKey] = state.fullscreenPreference;
+  }
+
   const persistableState = {
     currentUser: state.currentUser,
     currentMode: state.currentMode,
     realismFactor: state.realismFactor,
     mapType: state.mapType,
+    workoutLayout: state.workoutLayout,
+    workoutLayouts: state.workoutLayouts,
+    workoutPanelsByUser: state.workoutPanelsByUser,
+    fullscreenByUser: state.fullscreenByUser,
     fontScale: state.fontScale,
     sensorSmoothing: state.sensorSmoothing,
     powerZones: state.powerZones,
@@ -82,6 +100,23 @@ export function loadStateFromLocalStorage() {
     state.currentMode = parsed.currentMode;
     state.realismFactor = parsed.realismFactor || 1.0;
     state.mapType = parsed.mapType || 'maplibre';
+    state.workoutLayout = parsed.workoutLayout || 'auto';
+    state.workoutLayouts = parsed.workoutLayouts || {};
+    state.workoutPanelsByUser = parsed.workoutPanelsByUser || {};
+    state.fullscreenByUser = parsed.fullscreenByUser || {};
+    const userKey = state.currentUser?.uuid || state.currentUser?.id;
+    if (userKey && state.workoutLayouts[userKey]) {
+      state.workoutLayout = state.workoutLayouts[userKey];
+    }
+    if (userKey && state.workoutPanelsByUser[userKey]) {
+      state.workoutPanels = {
+        ...state.workoutPanels,
+        ...state.workoutPanelsByUser[userKey],
+      };
+    }
+    state.fullscreenPreference = userKey
+      ? state.fullscreenByUser[userKey] === true
+      : false;
     state.fontScale = parsed.fontScale || 1.0;
     state.sensorSmoothing = parsed.sensorSmoothing || 3000;
     state.powerZones = parsed.powerZones || [55, 75, 88, 95, 106];
@@ -90,4 +125,17 @@ export function loadStateFromLocalStorage() {
     state.manualMode = parsed.manualMode || 'SLOPE';
     state.targetWatts = parsed.targetWatts || 150;
   }
+}
+
+export function loadWorkoutLayoutForUser(user) {
+  const userKey = user?.uuid || user?.id;
+  state.workoutLayout = (userKey && state.workoutLayouts[userKey]) || "auto";
+  state.workoutPanels = {
+    virtual: true,
+    progress: true,
+    elevation: true,
+    upcoming: true,
+    ...((userKey && state.workoutPanelsByUser[userKey]) || {}),
+  };
+  state.fullscreenPreference = (userKey && state.fullscreenByUser[userKey]) === true;
 }

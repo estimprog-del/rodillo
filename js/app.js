@@ -9,6 +9,7 @@ import {
   state,
   saveStateToLocalStorage,
   loadStateFromLocalStorage,
+  loadWorkoutLayoutForUser,
 } from "./modules/state.js";
 import { initNavigation } from "./ui/navigation.js";
 import { loadDashboardHeader } from "./ui/dashboard.js";
@@ -19,6 +20,144 @@ const SLOPE_AVERAGE_METERS = 10;
 const SLOPE_PREVIEW_LONG_METERS = 500;
 const MAX_SLOPE_CHANGE_PER_SEC = 0.5;
 const MAPTILER_API_KEY = import.meta.env.VITE_MAPTILER_API_KEY || "";
+
+function applyWorkoutLayout() {
+  const viewport = document.querySelector(".workout-viewport");
+  if (!viewport) return;
+
+  const layouts = ["horizontal-1", "horizontal-2", "vertical-1", "vertical-2"];
+  const selectedLayout = state.workoutLayout;
+  const isVertical = window.matchMedia("(orientation: portrait)").matches;
+  const layout = layouts.includes(selectedLayout)
+    ? selectedLayout
+    : isVertical
+      ? (window.innerWidth < 700 ? "vertical-2" : "vertical-1")
+      : (window.innerWidth < 1100 ? "horizontal-2" : "horizontal-1");
+
+  viewport.classList.remove(...layouts.map((name) => `layout-${name}`));
+  viewport.classList.add(`layout-${layout}`);
+
+  requestAnimationFrame(() => {
+    if (!state.map) return;
+    if (typeof state.map.resize === "function") state.map.resize();
+    if (typeof state.map.invalidateSize === "function") state.map.invalidateSize();
+  });
+
+  const layoutLabels = {
+    auto: `Auto (${layoutLabelsForResolvedLayout(layout)})`,
+    "horizontal-1": "H1",
+    "horizontal-2": "H2",
+    "vertical-1": "V1",
+    "vertical-2": "V2",
+  };
+  const layoutButton = document.getElementById("btn-cycle-layout");
+  if (layoutButton) {
+    layoutButton.textContent = `▣ Diseño: ${selectedLayout === "auto" ? layoutLabels.auto : layoutLabels[layout]}`;
+  }
+}
+
+function layoutLabelsForResolvedLayout(layout) {
+  return { "horizontal-1": "H1", "horizontal-2": "H2", "vertical-1": "V1", "vertical-2": "V2" }[layout];
+}
+
+window.applyWorkoutLayout = applyWorkoutLayout;
+
+function updateFullscreenButton() {
+  const button = document.getElementById("btn-toggle-fullscreen");
+  if (!button) return;
+  button.textContent = document.fullscreenElement
+    ? "⛶ Salir de pantalla completa"
+    : "⛶ Pantalla completa";
+}
+
+function saveFullscreenPreference(value) {
+  state.fullscreenPreference = value;
+  saveStateToLocalStorage();
+}
+
+async function toggleFullscreen() {
+  if (!document.fullscreenEnabled) {
+    alert("El navegador no permite pantalla completa en este dispositivo.");
+    return;
+  }
+
+  if (document.fullscreenElement) {
+    await document.exitFullscreen();
+    saveFullscreenPreference(false);
+  } else {
+    await document.documentElement.requestFullscreen();
+    saveFullscreenPreference(true);
+  }
+  updateFullscreenButton();
+}
+
+window.toggleFullscreen = toggleFullscreen;
+document.addEventListener("fullscreenchange", () => {
+  updateFullscreenButton();
+  if (!state.fullscreenFilePickerActive) {
+    saveFullscreenPreference(!!document.fullscreenElement);
+  }
+});
+
+function showFullscreenRecovery() {
+  showModal("fullscreen-recovery");
+}
+
+function closeFullscreenRecovery() {
+  hideModal("fullscreen-recovery");
+}
+
+async function reactivateFullscreen() {
+  closeFullscreenRecovery();
+  if (!document.fullscreenEnabled) {
+    alert("El navegador no permite pantalla completa en este dispositivo.");
+    return;
+  }
+  await document.documentElement.requestFullscreen();
+  saveFullscreenPreference(true);
+  updateFullscreenButton();
+}
+
+window.closeFullscreenRecovery = closeFullscreenRecovery;
+window.reactivateFullscreen = reactivateFullscreen;
+
+function cycleWorkoutLayout() {
+  const layouts = ["auto", "horizontal-1", "horizontal-2", "vertical-1", "vertical-2"];
+  const currentIndex = layouts.indexOf(state.workoutLayout);
+  state.workoutLayout = layouts[(currentIndex + 1) % layouts.length];
+  saveStateToLocalStorage();
+  applyWorkoutLayout();
+}
+
+window.cycleWorkoutLayout = cycleWorkoutLayout;
+
+window.addEventListener("resize", () => {
+  if (state.workoutLayout === "auto") applyWorkoutLayout();
+});
+
+function applyWorkoutPanels() {
+  const panels = {
+    virtual: document.getElementById("virtual-trainer-panel"),
+    progress: document.getElementById("hud-progress"),
+    elevation: document.getElementById("hud-elevation-footer"),
+    upcoming: document.getElementById("upcoming-profile-chart"),
+  };
+  Object.entries(panels).forEach(([name, panel]) => {
+    if (!panel) return;
+    panel.classList.toggle("workout-panel-collapsed", state.workoutPanels[name] === false);
+    const toggle = panel.querySelector(".panel-toggle");
+    if (toggle) toggle.textContent = state.workoutPanels[name] === false ? "+" : "−";
+  });
+}
+
+function toggleWorkoutPanel(name) {
+  if (!(name in state.workoutPanels)) return;
+  state.workoutPanels[name] = !state.workoutPanels[name];
+  saveStateToLocalStorage();
+  applyWorkoutPanels();
+}
+
+window.toggleWorkoutPanel = toggleWorkoutPanel;
 
 // Global Navigation function (injected)
 let navigateTo;
@@ -293,6 +432,29 @@ function configureWorkoutHudForMode() {
     if (isRoute) ghostBanner.classList.add("visible");
     else ghostBanner.classList.remove("visible");
   }
+
+}
+
+function initConfiguredMap() {
+  if (state.map) {
+    const isMapLibre = typeof state.map.addSource === "function";
+    if ((state.mapType === "maplibre" && isMapLibre) ||
+        (state.mapType === "leaflet" && !isMapLibre)) {
+      return;
+    }
+    state.map.remove();
+    state.map = null;
+  }
+
+  initLeafletMap();
+
+  if (state.mapType === "maplibre") {
+    const toggleButton = document.getElementById("btn-toggle-3d");
+    if (toggleButton && typeof window.toggleMapEngine === "function") {
+      toggleButton.textContent = "🗺️ 3D";
+      window.toggleMapEngine(toggleButton);
+    }
+  }
 }
 
 // --- Eventos movidos a modules/events.js ---
@@ -394,6 +556,7 @@ async function deleteProfileFromSelectScreen(id, name) {
 
 function selectUser(user) {
   state.currentUser = user;
+  loadWorkoutLayoutForUser(user);
   localStorage.setItem("rodilloint_userId", user.id);
   // Asegurarse de que navega a dashboard después de seleccionar usuario
   if (navigateTo) {
@@ -972,6 +1135,11 @@ function startCountdown(onComplete, duration) {
 
 // --- WORKOUT SCREEN ACTIVATION ---
 function enterWorkoutScreen() {
+  applyWorkoutLayout();
+  setElDisplay("hud-top-bar", "flex");
+  setElDisplay("hud-bottom-left", "flex");
+  setElDisplay("hud-bottom-right-group", "flex");
+  setElDisplay("elevation-chart-cursor", "none");
   state.powerBuffer = [];
   state.powerHistory = [];
   state.hrHistory = [];
@@ -1035,6 +1203,7 @@ function enterWorkoutScreen() {
   }
 
   configureWorkoutHudForMode();
+  applyWorkoutPanels();
 
   // Aplicar tamaño de fuente guardado
   const viewport = document.querySelector(".workout-viewport");
@@ -1050,7 +1219,7 @@ function enterWorkoutScreen() {
   if (ghostBanner) ghostBanner.classList.remove("visible");
 
   if (isRouteMode) {
-    initLeafletMap();
+    initConfiguredMap();
     ChartsManager.initUpcomingChart("upcoming-chart-inner");
 
     // Mostrar footer de elevación y cargar gráfico si hay puntos
@@ -1089,6 +1258,8 @@ function enterWorkoutScreen() {
 async function handleGpxUpload(e) {
   const file = e.target.files[0];
   if (!file) return;
+  state.fullscreenFilePickerActive = false;
+  const shouldRecoverFullscreen = state.fullscreenPreference && !document.fullscreenElement;
 
   // Validación de extensión
   const fileName = file.name.toLowerCase();
@@ -1120,7 +1291,7 @@ async function handleGpxUpload(e) {
       state.currentRouteIndex = 0;
       state.routeTotalAscent = calculateTotalRouteAscent();
 
-      initLeafletMap();
+      initConfiguredMap();
       drawRouteOnMap();
       refreshUpcomingPreview(0);
       updateRouteProgressHud(state);
@@ -1134,6 +1305,7 @@ async function handleGpxUpload(e) {
 
       loadGhostRiderSession();
       if (label) label.textContent = file.name;
+      if (shouldRecoverFullscreen) showFullscreenRecovery();
     } else {
       throw new Error("No se encontraron puntos de ruta válidos.");
     }
@@ -1213,6 +1385,10 @@ function drawRouteOnMap() {
 
   // Detectar motor: si existe addSource es MapLibre (3D)
   if (state.map.addSource) {
+      if (typeof state.map.isStyleLoaded === "function" && !state.map.isStyleLoaded()) {
+          return;
+      }
+
       const geojson = {
           type: 'Feature',
           geometry: {
@@ -2313,9 +2489,14 @@ window.toggleMapEngine = function(btn) {
                 createOrientationToggleButton();
             });
 
+            let mapErrorAlertShown = false;
             state.map.on("error", (e) => {
                 console.error("Error MapLibre:", e);
-                alert("Error cargando mapa 3D. Revisa la clave de MapTiler.");
+                const status = e?.error?.status;
+                if (!mapErrorAlertShown && (status === 401 || status === 403)) {
+                    mapErrorAlertShown = true;
+                    alert("Error de autorización del mapa 3D. Revisa la clave de MapTiler.");
+                }
             });
         } catch (err) {
             console.error("Error inicialización MapLibre:", err);
