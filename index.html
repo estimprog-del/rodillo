@@ -20,8 +20,8 @@
 
         <!-- MapLibre 3D CSS -->
         <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
-      <script type="module" crossorigin src="./assets/index-DbWpcL4y.js"></script>
-      <link rel="stylesheet" crossorigin href="./assets/index-yr_TBgiz.css">
+      <script type="module" crossorigin src="./assets/index-QXmhPISy.js"></script>
+      <link rel="stylesheet" crossorigin href="./assets/index-C_RxXhcj.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -507,6 +507,12 @@
                             >
                                 ⛰️ 0.0%
                             </div>
+                            <div class="virtual-gear-control glass-card" id="virtual-gear-control">
+                                <button class="btn-control remote-room-open-button" id="btn-open-remote-room" title="Mostrar mando móvil">📱</button>
+                                <button class="btn-control virtual-gear-button" id="btn-gear-down" title="Bajar marcha">− Marcha</button>
+                                <strong id="metrics-gear">Marcha: 12 / 24</strong>
+                                <button class="btn-control virtual-gear-button" id="btn-gear-up" title="Subir marcha">+ Marcha</button>
+                            </div>
                             <div
                                 id="upcoming-profile-chart"
                                 class="upcoming-profile-chart glass-card"
@@ -519,6 +525,19 @@
                                 <div class="panel-content" style="flex-grow: 1">
                                     <div id="upcoming-chart-inner"></div>
                                 </div>
+                            </div>
+
+                        </div>
+
+                        <div class="remote-room-panel glass-card" id="remote-room-panel" aria-hidden="true">
+                            <div class="remote-room-title">
+                                <span>MANDO MÓVIL</span>
+                                <button class="panel-toggle" id="btn-close-remote-room" title="Cerrar mando móvil">×</button>
+                            </div>
+                            <div class="panel-content">
+                                <img id="remote-room-qr" alt="Código QR para abrir el mando móvil" />
+                                <div class="remote-room-id" id="remote-room-id">Sala: --</div>
+                                <small id="remote-room-status">Ably: conectando...</small>
                             </div>
                         </div>
 
@@ -729,6 +748,17 @@
                     style="display: none"
                 >
                     ⏸️ AUTO-PAUSA
+                </div>
+            </div>
+
+            <!-- Vista secundaria para el mando móvil. Se activa con /mando o #/mando. -->
+            <div id="screen-remote" class="screen">
+                <div class="remote-controller">
+                    <h1>Mando virtual</h1>
+                    <p id="remote-room-label">Sala: --</p>
+                    <button class="remote-gear-button remote-gear-up" id="btn-remote-gear-up">Subir Marcha</button>
+                    <button class="remote-gear-button remote-gear-down" id="btn-remote-gear-down">Bajar Marcha</button>
+                    <p class="remote-status" id="remote-status">Conexión pendiente</p>
                 </div>
             </div>
 
