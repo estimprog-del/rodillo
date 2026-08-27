@@ -15,11 +15,27 @@ import { initNavigation } from "./ui/navigation.js";
 import { loadDashboardHeader } from "./ui/dashboard.js";
 import { updateClock, updatePauseButton } from "./ui/uiHelpers.js";
 import { bindEvents } from "./modules/events.js";
+import {
+  RemoteRoomClient,
+  buildQrUrl,
+  buildRemoteUrl,
+  createRoomId,
+  getRemoteRoomId,
+  isRemoteRoute,
+} from "./modules/remoteRoom.js";
+import {
+  clampVirtualGear,
+  DEFAULT_VIRTUAL_GEAR,
+  formatVirtualGear,
+  getVirtualGearRatio,
+  calculateVirtualResistanceSlope,
+} from "./modules/virtualGears.js";
 
 const SLOPE_AVERAGE_METERS = 10;
 const SLOPE_PREVIEW_LONG_METERS = 500;
 const MAX_SLOPE_CHANGE_PER_SEC = 0.5;
 const MAPTILER_API_KEY = import.meta.env.VITE_MAPTILER_API_KEY || "";
+let activeRemoteRoomClient = null;
 
 function applyWorkoutLayout() {
   const viewport = document.querySelector(".workout-viewport");
@@ -175,6 +191,11 @@ const UI = {
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("RodilloInt SPA initializing...");
 
+  if (isRemoteRoute()) {
+    initializeRemoteController();
+    return;
+  }
+
   // Cargar estado guardado
   loadStateFromLocalStorage();
 
@@ -215,7 +236,45 @@ document.addEventListener("DOMContentLoaded", async () => {
     adjustManualPower,
     setWorkoutFontScale,
     startSession,
+    changeVirtualGear,
   });
+
+  function initializeRemoteController() {
+    document.querySelectorAll(".screen").forEach((screen) => {
+      screen.classList.remove("active");
+    });
+    document.getElementById("screen-remote")?.classList.add("active");
+
+    const roomId = getRemoteRoomId();
+    const status = document.getElementById("remote-status");
+    const label = document.getElementById("remote-room-label");
+    const client = roomId ? new RemoteRoomClient(roomId) : null;
+
+    if (label) label.textContent = roomId ? `Sala: ${roomId}` : "Falta el identificador de sala";
+    if (status) status.textContent = client ? "Mando preparado" : "Enlace de sala no válido";
+
+    const emitGearChange = async (direction) => {
+      if (!client) return;
+      try {
+        await client.emit("CHANGE_GEAR", { direction });
+        if (status) status.textContent = `Orden enviada: ${direction === "up" ? "subir" : "bajar"}`;
+      } catch (error) {
+        if (status) status.textContent = "Ably: error de publicación";
+        console.error("[Mando móvil] No se pudo enviar el cambio de marcha:", error);
+      }
+    };
+
+    document.getElementById("btn-remote-gear-up")?.addEventListener("click", () => emitGearChange("up"));
+    document.getElementById("btn-remote-gear-down")?.addEventListener("click", () => emitGearChange("down"));
+    void client?.connect().catch((error) => {
+      if (status) {
+        status.textContent = error?.message?.includes("Falta configurar")
+          ? "Ably: no configurado"
+          : "Ably: credencial rechazada";
+      }
+      console.error("[Mando móvil] No se pudo conectar con Ably:", error);
+    });
+  }
 
   // Init Database and listeners
   try {
@@ -1135,6 +1194,7 @@ function startCountdown(onComplete, duration) {
 
 // --- WORKOUT SCREEN ACTIVATION ---
 function enterWorkoutScreen() {
+  initializeRemoteRoomPanel();
   applyWorkoutLayout();
   setElDisplay("hud-top-bar", "flex");
   setElDisplay("hud-bottom-left", "flex");
@@ -1150,6 +1210,8 @@ function enterWorkoutScreen() {
   state.currentRouteIndex = 0;
   state.currentSlope = 0.0;
   state.targetSlope = 0.0;
+  state.virtualGear = clampVirtualGear(state.virtualGear || DEFAULT_VIRTUAL_GEAR);
+  updateVirtualGearDisplay();
   state.lastSlopeRampTime = 0;
   state.timeInPowerZones = [0, 0, 0, 0, 0, 0];
   state.isPaused = false;
@@ -1198,6 +1260,7 @@ function enterWorkoutScreen() {
         saveStateToLocalStorage();
       };
     }
+
   } else {
     setElDisplay("virtual-trainer-panel", "none");
   }
@@ -1442,6 +1505,50 @@ function drawRouteOnMap() {
   }
 }
 
+function initializeRemoteRoomPanel() {
+  const panel = document.getElementById("remote-room-panel");
+  const qr = document.getElementById("remote-room-qr");
+  const label = document.getElementById("remote-room-id");
+  const status = document.getElementById("remote-room-status");
+  if (!panel || !qr || !label || !status) return;
+
+  activeRemoteRoomClient?.disconnect();
+  const roomId = createRoomId();
+  const remoteUrl = buildRemoteUrl(roomId);
+  activeRemoteRoomClient = new RemoteRoomClient(roomId);
+  status.textContent = "Ably: conectando...";
+  void activeRemoteRoomClient.connect()
+    .then(() => {
+      activeRemoteRoomClient?.on("CHANGE_GEAR", ({ direction }) => {
+        changeVirtualGear(direction === "up" ? 1 : -1);
+      });
+      status.textContent = "Ably: conectado";
+    })
+    .catch((error) => {
+      console.error("[Mando móvil] No se pudo abrir la sala Ably:", error);
+      status.textContent = error?.message?.includes("Falta configurar")
+        ? "Ably: no configurado"
+        : "Ably: credencial rechazada";
+    });
+
+  label.textContent = `Sala: ${roomId}`;
+  qr.src = buildQrUrl(remoteUrl);
+  qr.title = remoteUrl;
+  panel.title = `Mando móvil: ${remoteUrl}`;
+}
+
+function toggleRemoteRoomPanel(isOpen = null) {
+  const panel = document.getElementById("remote-room-panel");
+  if (!panel) return;
+  const nextIsOpen = isOpen === null
+    ? !panel.classList.contains("is-open")
+    : isOpen;
+  panel.classList.toggle("is-open", nextIsOpen);
+  panel.setAttribute("aria-hidden", String(!nextIsOpen));
+}
+
+window.toggleRemoteRoomPanel = toggleRemoteRoomPanel;
+
 // --- SESSION WORKFLOW CONTROL ---
 function togglePause() {
   if (!state.isSessionActive) {
@@ -1468,6 +1575,8 @@ async function startSession() {
       userId: state.currentUser.id,
       startTime: Date.now(),
       gpxPath: state.currentMode === "ROUTE" ? state.gpxFilename : null,
+      virtualGear: state.virtualGear,
+      gearRatio: getVirtualGearRatio(state.virtualGear),
     });
 
     state.currentSessionId = sessId;
@@ -1714,6 +1823,8 @@ async function saveTelemetryPoint() {
     cadence: state.currentCadence,
     heartRate: state.currentHr,
     slope: state.currentSlope,
+    virtualGear: state.virtualGear,
+    gearRatio: getVirtualGearRatio(state.virtualGear),
     elevation: ele,
     latitude: lat,
     longitude: lon,
@@ -2104,7 +2215,28 @@ function coerceSlope(slope) {
 function setRouteTargetSlope(currentDistKm) {
   const preview = getUpcomingSegmentData(SLOPE_AVERAGE_METERS, currentDistKm);
   if (preview) {
-    state.targetSlope = coerceSlope(preview.avgSlope);
+    state.targetSlope = coerceSlope(
+      calculateVirtualResistanceSlope(preview.avgSlope, state.virtualGear),
+    );
+  }
+}
+
+function updateVirtualGearDisplay() {
+  setElText("metrics-gear", formatVirtualGear(state.virtualGear));
+}
+
+function changeVirtualGear(delta) {
+  const nextGear = clampVirtualGear(state.virtualGear + delta);
+  if (nextGear === state.virtualGear) return;
+
+  state.virtualGear = nextGear;
+  const userKey = state.currentUser?.uuid || state.currentUser?.id;
+  if (userKey) state.virtualGearByUser[userKey] = nextGear;
+  saveStateToLocalStorage();
+  updateVirtualGearDisplay();
+
+  if (state.currentMode === "ROUTE" && state.isSessionActive) {
+    setRouteTargetSlope(state.totalDistance);
   }
 }
 

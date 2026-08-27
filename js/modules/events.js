@@ -30,6 +30,7 @@ export function bindEvents(handlers) {
     handleGpxUpload,
     adjustManualSlope,
     adjustManualPower,
+    changeVirtualGear,
     setWorkoutFontScale,
     startSession,
   } = handlers;
@@ -45,7 +46,7 @@ export function bindEvents(handlers) {
 
   document.body.addEventListener("click", (e) => {
     const target = e.target.closest(
-      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-cycle-layout, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-export-gpx, [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-toggle-3d, #btn-toggle-manual-mode",
+      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-cycle-layout, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-toggle-3d, #btn-toggle-manual-mode",
     );
 
     if (!target) return;
@@ -208,6 +209,14 @@ export function bindEvents(handlers) {
           adjustManualPower(1);
         }
       }
+      if (id === "btn-gear-down") changeVirtualGear(-1);
+      if (id === "btn-gear-up") changeVirtualGear(1);
+      if (id === "btn-open-remote-room" && typeof window.toggleRemoteRoomPanel === "function") {
+        window.toggleRemoteRoomPanel();
+      }
+      if (id === "btn-close-remote-room" && typeof window.toggleRemoteRoomPanel === "function") {
+        window.toggleRemoteRoomPanel(false);
+      }
 
       if (id === "btn-toggle-manual-mode") {
         state.manualMode = state.manualMode === 'SLOPE' ? 'ERG' : 'SLOPE';
@@ -262,6 +271,7 @@ export function bindEvents(handlers) {
                   BleManager.onStatusChanged(type, status);
               }
             });
+
             // Refrescar toda la interfaz de conexiones usando la función expuesta globalmente
             if (typeof window.refreshConnectionScreen === "function") {
                 window.refreshConnectionScreen();
@@ -339,6 +349,26 @@ export function bindEvents(handlers) {
         }
       }
     }, 0);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    const target = event.target;
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      target?.isContentEditable
+    ) {
+      return;
+    }
+
+    if (event.key.toLowerCase() === "w" || event.key === "ArrowUp") {
+      event.preventDefault();
+      changeVirtualGear(1);
+    } else if (event.key.toLowerCase() === "s" || event.key === "ArrowDown") {
+      event.preventDefault();
+      changeVirtualGear(-1);
+    }
   });
 
   // Eventos específicos (formularios, GPX, fuentes)

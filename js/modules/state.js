@@ -1,5 +1,7 @@
 /* state.js - Gestión del estado de la aplicación */
 
+import { DEFAULT_VIRTUAL_GEAR } from "./virtualGears.js";
+
 export const state = {
   currentUser: null,
   currentSessionId: null,
@@ -49,7 +51,7 @@ export const state = {
   mapType: 'maplibre',
   workoutLayout: 'auto',
   workoutLayouts: {},
-  workoutPanels: { virtual: true, progress: true, elevation: true, upcoming: true },
+  workoutPanels: { virtual: true, progress: true, elevation: true, upcoming: true, remote: true },
   workoutPanelsByUser: {},
   fullscreenPreference: false,
   fullscreenByUser: {},
@@ -61,6 +63,8 @@ export const state = {
   startOnMovement: false,
   manualMode: 'SLOPE',
   targetWatts: 150,
+  virtualGear: DEFAULT_VIRTUAL_GEAR,
+  virtualGearByUser: {},
 };
 
 export function saveStateToLocalStorage() {
@@ -88,6 +92,7 @@ export function saveStateToLocalStorage() {
     startOnMovement: state.startOnMovement,
     manualMode: state.manualMode,
     targetWatts: state.targetWatts,
+    virtualGearByUser: state.virtualGearByUser,
   };
   localStorage.setItem("rodilloint_state", JSON.stringify(persistableState));
 }
@@ -124,6 +129,8 @@ export function loadStateFromLocalStorage() {
     state.startOnMovement = parsed.startOnMovement !== undefined ? parsed.startOnMovement : false;
     state.manualMode = parsed.manualMode || 'SLOPE';
     state.targetWatts = parsed.targetWatts || 150;
+    state.virtualGearByUser = parsed.virtualGearByUser || {};
+    state.virtualGear = state.virtualGearByUser[userKey] || DEFAULT_VIRTUAL_GEAR;
   }
 }
 
@@ -135,7 +142,9 @@ export function loadWorkoutLayoutForUser(user) {
     progress: true,
     elevation: true,
     upcoming: true,
+    remote: true,
     ...((userKey && state.workoutPanelsByUser[userKey]) || {}),
   };
   state.fullscreenPreference = (userKey && state.fullscreenByUser[userKey]) === true;
+  state.virtualGear = (userKey && state.virtualGearByUser[userKey]) || DEFAULT_VIRTUAL_GEAR;
 }

@@ -1244,7 +1244,7 @@ h4 {
 
 /* Virtual Training Mode Control Block */
 .simulator-control-panel {
-    margin-top: 16px;
+    margin-top: 36px;
     background: rgba(59, 130, 246, 0.05);
     border-color: rgba(59, 130, 246, 0.2);
 }
@@ -1904,13 +1904,134 @@ h4 {
 
 .slope-box {
     background: rgba(255, 68, 68, 0.9);
-    padding: 8px 15px;
+    padding: 10px 10px;
     border-radius: 10px;
-    font-size: 18px;
+    font-size: 25px;
     font-weight: bold;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
     width: fit-content;
     color: white;
+}
+
+.virtual-gear-control {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: max-content;
+    max-width: calc(100vw - 24px);
+    padding: 6px;
+    border-radius: 12px;
+    white-space: nowrap;
+}
+
+.virtual-gear-control strong {
+    min-width: 76px;
+    text-align: center;
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.virtual-gear-button {
+    padding: 6px 8px;
+    font-size: 11px;
+}
+
+.remote-room-panel {
+    position: absolute;
+    right: 20px;
+    bottom: 120px;
+    z-index: 20;
+    display: none;
+    width: 220px;
+    padding: 10px;
+    text-align: center;
+    pointer-events: auto;
+}
+
+.remote-room-panel.is-open {
+    display: block;
+}
+
+.remote-room-open-button {
+    width: fit-content;
+    padding: 6px 8px;
+    font-size: 11px;
+}
+
+.remote-room-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--accent-blue);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .08em;
+}
+
+.remote-room-panel img {
+    display: block;
+    width: 150px;
+    height: 150px;
+    margin: 6px auto;
+    background: #ffffff;
+    border-radius: 6px;
+}
+
+.remote-room-id {
+    font-weight: 700;
+    font-size: 13px;
+}
+
+.remote-room-panel small {
+    color: var(--text-secondary);
+    font-size: 10px;
+}
+
+.remote-controller {
+    width: min(100%, 440px);
+    margin: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    text-align: center;
+}
+
+.remote-controller h1 {
+    font-size: clamp(28px, 8vw, 48px);
+}
+
+.remote-controller p {
+    color: var(--text-secondary);
+}
+
+.remote-gear-button {
+    min-height: 28vh;
+    border: 0;
+    border-radius: 24px;
+    color: #ffffff;
+    font-family: var(--font-title);
+    font-size: clamp(24px, 8vw, 42px);
+    font-weight: 800;
+    cursor: pointer;
+    touch-action: manipulation;
+    box-shadow: var(--glass-shadow);
+}
+
+.remote-gear-button:active {
+    transform: scale(.98);
+}
+
+.remote-gear-up {
+    background: linear-gradient(135deg, var(--accent-green), #047857);
+}
+
+.remote-gear-down {
+    background: linear-gradient(135deg, var(--accent-blue), #1d4ed8);
+}
+
+.remote-status {
+    min-height: 1.5em;
 }
 
 .mini-profile-card {
@@ -2061,6 +2182,11 @@ h4 {
     min-height: 0;
 }
 
+.hud-elevation-footer > .panel-content,
+.upcoming-profile-chart > .panel-content {
+    margin-top: 0;
+}
+
 .workout-panel-collapsed > .panel-content {
     display: none !important;
 }
@@ -2181,7 +2307,7 @@ h4 {
         flex-wrap: wrap;
         justify-content: center;
         gap: 10px;
-        padding: 8px 10px;
+        padding: 18px 10px;
     }
 
     .hud-sensor-bar {
@@ -2270,11 +2396,12 @@ h4 {
     box-sizing: border-box;
     overflow: hidden;
     color: #ffffff;
+    padding: 4px 24px 24px;
 }
 
 .upcoming-profile-chart {
     /* Fondo y estilo heredados de glass-card */
-    padding: 10px;
+    padding: 2px 12px 10px;
     height: 180px;
     width: 280px;
     overflow: hidden;

@@ -155,6 +155,8 @@ async function insertSession(session) {
       calories: 0,
       maxSpeed: 0,
       maxHeartRate: 0,
+      virtualGear: null,
+      gearRatio: null,
       ...session
     };
 
@@ -270,7 +272,9 @@ async function insertSensorData(data) {
       elevation: data.elevation !== undefined ? Number(data.elevation) : null,
       latitude: data.latitude !== undefined ? Number(data.latitude) : null,
       longitude: data.longitude !== undefined ? Number(data.longitude) : null,
-      distance: Number(data.distance) || 0.0
+      distance: Number(data.distance) || 0.0,
+      virtualGear: data.virtualGear !== undefined ? Number(data.virtualGear) : null,
+      gearRatio: data.gearRatio !== undefined ? Number(data.gearRatio) : null
     });
 
     request.onsuccess = () => resolve(request.result);
@@ -340,7 +344,9 @@ async function insertSensorDataBulk(pointsArray) {
         elevation: data.elevation !== undefined ? Number(data.elevation) : null,
         latitude: data.latitude !== undefined ? Number(data.latitude) : null,
         longitude: data.longitude !== undefined ? Number(data.longitude) : null,
-        distance: Number(data.distance) || 0.0
+        distance: Number(data.distance) || 0.0,
+        virtualGear: data.virtualGear !== undefined ? Number(data.virtualGear) : null,
+        gearRatio: data.gearRatio !== undefined ? Number(data.gearRatio) : null
       });
     }
   });
