@@ -35,7 +35,37 @@ const SLOPE_AVERAGE_METERS = 10;
 const SLOPE_PREVIEW_LONG_METERS = 500;
 const MAX_SLOPE_CHANGE_PER_SEC = 0.5;
 const MAPTILER_API_KEY = import.meta.env.VITE_MAPTILER_API_KEY || "";
+const MAP_VIEW_MODES = ["2D", "3D_AEREO", "3D_FPV"];
+let fpvZoomLevel = 25;
 let activeRemoteRoomClient = null;
+let fpvAnimationFrame = null;
+let fpvDebugCalls = 0;
+let lastFpvDebugState = "";
+let mapReadyInstance = null;
+
+function logFpvDebug(message, details = {}) {
+  const stateKey = `${message}:${JSON.stringify(details)}`;
+  if (stateKey === lastFpvDebugState) return;
+  lastFpvDebugState = stateKey;
+  console.debug(`[FPV] ${message}`, details);
+}
+
+function getMapSdk() {
+  return (
+    [globalThis.maptilersdk, globalThis.maplibregl].find(
+      (sdk) => sdk?.Map && sdk?.MercatorCoordinate,
+    ) || null
+  );
+}
+
+function isMapReady(map) {
+  return Boolean(
+    map &&
+      (map === mapReadyInstance ||
+        typeof map.isStyleLoaded !== "function" ||
+        map.isStyleLoaded()),
+  );
+}
 
 function applyWorkoutLayout() {
   const viewport = document.querySelector(".workout-viewport");
@@ -266,7 +296,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     document.getElementById("btn-remote-gear-up")?.addEventListener("click", () => emitGearChange("up"));
     document.getElementById("btn-remote-gear-down")?.addEventListener("click", () => emitGearChange("down"));
-    void client?.connect().catch((error) => {
+    void client?.connect().then(() => client.enterPresence("remote")).catch((error) => {
       if (status) {
         status.textContent = error?.message?.includes("Falta configurar")
           ? "Ably: no configurado"
@@ -495,28 +525,43 @@ function configureWorkoutHudForMode() {
 }
 
 function initConfiguredMap() {
-  if (state.map) {
-    const isMapLibre = typeof state.map.addSource === "function";
-    if ((state.mapType === "maplibre" && isMapLibre) ||
-        (state.mapType === "leaflet" && !isMapLibre)) {
-      return;
-    }
-    state.map.remove();
-    state.map = null;
-  }
-
-  initLeafletMap();
-
-  if (state.mapType === "maplibre") {
+    const configuredMode = MAP_VIEW_MODES.includes(state.mapViewMode)
+        ? state.mapViewMode
+        : state.mapType === "leaflet"
+            ? "2D"
+            : "3D_AEREO";
     const toggleButton = document.getElementById("btn-toggle-3d");
-    if (toggleButton && typeof window.toggleMapEngine === "function") {
-      toggleButton.textContent = "🗺️ 3D";
-      window.toggleMapEngine(toggleButton);
-    }
-  }
-}
 
-// --- Eventos movidos a modules/events.js ---
+    if (state.map) {
+        state.map.remove();
+        state.map = null;
+    }
+    mapReadyInstance = null;
+
+    if (configuredMode === "2D") {
+        state.mapViewMode = "2D";
+        state.mapType = "leaflet";
+        initLeafletMap();
+        drawRouteOnMap();
+        createOrientationToggleButton();
+        return;
+    }
+
+    if (!toggleButton || typeof window.toggleMapEngine !== "function") {
+        console.error("No se pudo inicializar el mapa 3D: falta el control del motor.");
+        return;
+    }
+
+    // Reutilizar el flujo probado del botón garantiza el mismo mapa al arrancar
+    // desde Ajustes y al cambiarlo manualmente durante la sesión.
+    state.mapViewMode = "2D";
+    state.mapType = "leaflet";
+    window.toggleMapEngine(toggleButton);
+
+    if (configuredMode === "3D_FPV") {
+        window.toggleMapEngine(toggleButton);
+    }
+}// --- Eventos movidos a modules/events.js ---
 // Se ha importado la función bindEvents al inicio del archivo.
 
 /*
@@ -1210,8 +1255,11 @@ function enterWorkoutScreen() {
   state.currentRouteIndex = 0;
   state.currentSlope = 0.0;
   state.targetSlope = 0.0;
-  state.virtualGear = clampVirtualGear(state.virtualGear || DEFAULT_VIRTUAL_GEAR);
+  state.virtualGear = state.virtualGearsEnabled
+    ? clampVirtualGear(state.initialVirtualGear || DEFAULT_VIRTUAL_GEAR)
+    : DEFAULT_VIRTUAL_GEAR;
   updateVirtualGearDisplay();
+  updateVirtualGearVisibility();
   state.lastSlopeRampTime = 0;
   state.timeInPowerZones = [0, 0, 0, 0, 0, 0];
   state.isPaused = false;
@@ -1448,7 +1496,7 @@ function drawRouteOnMap() {
 
   // Detectar motor: si existe addSource es MapLibre (3D)
   if (state.map.addSource) {
-      if (typeof state.map.isStyleLoaded === "function" && !state.map.isStyleLoaded()) {
+      if (!isMapReady(state.map)) {
           return;
       }
 
@@ -1475,7 +1523,11 @@ function drawRouteOnMap() {
       }
 
       // Posicionar cámara en el primer punto
-      state.map.jumpTo({ center: [firstPoint.lon, firstPoint.lat], zoom: 14 });
+      state.map.jumpTo({
+          center: [firstPoint.lon, firstPoint.lat],
+          zoom: state.mapViewMode === "3D_FPV" ? 18 : 14,
+          pitch: state.mapViewMode === "3D_FPV" ? 82 : 60,
+      });
   } else {
       // Lógica original para Leaflet (2D)
       if (state.routePolyline) state.map.removeLayer(state.routePolyline);
@@ -1520,7 +1572,14 @@ function initializeRemoteRoomPanel() {
   void activeRemoteRoomClient.connect()
     .then(() => {
       activeRemoteRoomClient?.on("CHANGE_GEAR", ({ direction }) => {
+        toggleRemoteRoomPanel(false);
         changeVirtualGear(direction === "up" ? 1 : -1);
+      });
+      activeRemoteRoomClient?.onPresence("enter", (member) => {
+        if (member?.data === "remote" || member?.clientId === "remote") {
+          toggleRemoteRoomPanel(false);
+          status.textContent = "Mando conectado";
+        }
       });
       status.textContent = "Ably: conectado";
     })
@@ -2156,12 +2215,28 @@ function updateRouteSimulation(currentDistKm) {
 
     // Actualizar posición del usuario en el mapa según el motor
     const point = state.routePoints[state.currentRouteIndex];
+    if (!point) return;
     if (state.map.addSource) {
-        if (!state.map.isStyleLoaded()) return;
+        if (!isMapReady(state.map)) return;
+        const posicionCiclistaActual = normalizeLngLat({
+            lon: point.lon,
+            lat: point.lat,
+        });
+        if (!posicionCiclistaActual) return;
+        const puntoSiguienteData = state.routePoints[
+            Math.min(state.currentRouteIndex + 5, state.routePoints.length - 1)
+        ] || point;
+        const posicionCiclistaSiguiente = normalizeLngLat({
+            lon: puntoSiguienteData.lon,
+            lat: puntoSiguienteData.lat,
+        }) || posicionCiclistaActual;
 
         // Motor 3D (MapLibre)
         if (!state.map.getSource('user-location')) {
-            state.map.addSource('user-location', { type: 'geojson', data: { type: 'Point', coordinates: [point.lon, point.lat] } });
+            state.map.addSource('user-location', {
+                type: 'geojson',
+                data: { type: 'Point', coordinates: posicionCiclistaActual },
+            });
             state.map.addLayer({
                 id: 'user-location',
                 type: 'circle',
@@ -2169,18 +2244,38 @@ function updateRouteSimulation(currentDistKm) {
                 paint: { 'circle-radius': 8, 'circle-color': '#4264fb', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' }
             });
         } else {
-            state.map.getSource('user-location').setData({ type: 'Point', coordinates: [point.lon, point.lat] });
+            state.map.getSource('user-location').setData({
+                type: 'Point',
+                coordinates: posicionCiclistaActual,
+            });
+        }
+        if (state.map.getLayer("user-location")) {
+            state.map.setLayoutProperty(
+                "user-location",
+                "visibility",
+                state.mapViewMode === "3D_FPV" ? "none" : "visible",
+            );
         }
         // Seguimiento suave de cámara y rotación según rumbo
-        const center = [point.lon, point.lat];
+        const center = posicionCiclistaActual;
         const options = { center, pitch: 60, essential: true };
 
-        if (state.isMapFollowingRoute) {
+        if (state.mapViewMode === "3D_FPV") {
+            logFpvDebug("Actualizando desde telemetría", {
+                routeIndex: state.currentRouteIndex,
+                position: posicionCiclistaActual,
+                nextPosition: posicionCiclistaSiguiente,
+            });
+            updateFpvCamera(
+                posicionCiclistaActual,
+                posicionCiclistaSiguiente,
+                state.isMapFollowingRoute,
+            );
+            if (fpvAnimationFrame === null) startFpvCameraLoop();
+        } else if (state.isMapFollowingRoute) {
             // Calcular el rumbo (bearing) del movimiento actual
-            const nextIdx = Math.min(state.currentRouteIndex + 5, state.routePoints.length - 1);
-            const nextPoint = state.routePoints[nextIdx];
-            const dx = nextPoint.lon - point.lon;
-            const dy = nextPoint.lat - point.lat;
+            const dx = posicionCiclistaSiguiente[0] - posicionCiclistaActual[0];
+            const dy = posicionCiclistaSiguiente[1] - posicionCiclistaActual[1];
             const bearing = (Math.atan2(dx, dy) * 180) / Math.PI;
             options.bearing = bearing;
         } else {
@@ -2188,7 +2283,17 @@ function updateRouteSimulation(currentDistKm) {
             options.bearing = 0;
         }
 
-        state.map.flyTo(options);
+        if (
+            state.mapViewMode !== "3D_FPV" &&
+            isValidLngLat(options.center) &&
+            Number.isFinite(options.bearing)
+        ) {
+            try {
+                state.map.flyTo(options);
+            } catch (mapUpdateError) {
+                console.error("Error controlado actualizando el mapa:", mapUpdateError);
+            }
+        }
     } else {
         // Motor 2D (Leaflet) - Actualizar marcador
         if (state.userMarker) {
@@ -2216,7 +2321,10 @@ function setRouteTargetSlope(currentDistKm) {
   const preview = getUpcomingSegmentData(SLOPE_AVERAGE_METERS, currentDistKm);
   if (preview) {
     state.targetSlope = coerceSlope(
-      calculateVirtualResistanceSlope(preview.avgSlope, state.virtualGear),
+      calculateVirtualResistanceSlope(
+        preview.avgSlope,
+        state.virtualGearsEnabled ? state.virtualGear : DEFAULT_VIRTUAL_GEAR,
+      ),
     );
   }
 }
@@ -2225,7 +2333,13 @@ function updateVirtualGearDisplay() {
   setElText("metrics-gear", formatVirtualGear(state.virtualGear));
 }
 
+function updateVirtualGearVisibility() {
+  const control = document.getElementById("virtual-gear-control");
+  if (control) control.style.display = state.virtualGearsEnabled ? "flex" : "none";
+}
+
 function changeVirtualGear(delta) {
+  if (!state.virtualGearsEnabled) return;
   const nextGear = clampVirtualGear(state.virtualGear + delta);
   if (nextGear === state.virtualGear) return;
 
@@ -2495,8 +2609,39 @@ function updateGhostProgress() {
   if (closest && closest.latitude !== null && closest.longitude !== null) {
     // Draw/Move ghost marker
     if (state.map) {
-      if (!state.ghostMarker) {
-        // Create green neon icon or marker for rival ghost
+      if (typeof state.map.addSource === "function") {
+        if (!isMapReady(state.map)) {
+          return;
+        }
+        const ghostCoordinates = [Number(closest.longitude), Number(closest.latitude)];
+        if (!isValidLngLat(ghostCoordinates)) return;
+
+        const ghostData = {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: ghostCoordinates },
+          properties: {},
+        };
+        if (!state.map.getSource("ghost-location")) {
+          state.map.addSource("ghost-location", {
+            type: "geojson",
+            data: ghostData,
+          });
+          state.map.addLayer({
+            id: "ghost-location",
+            type: "circle",
+            source: "ghost-location",
+            paint: {
+              "circle-radius": 7,
+              "circle-color": "#39ff88",
+              "circle-stroke-width": 2,
+              "circle-stroke-color": "#123d28",
+            },
+          });
+        } else {
+          state.map.getSource("ghost-location").setData(ghostData);
+        }
+      } else if (!state.ghostMarker) {
+        // Create green neon icon or marker for rival ghost in Leaflet.
         const ghostIcon = L.divIcon({
           className: "custom-ghost-marker",
           html: '<div class="ghost-marker-core"></div>',
@@ -2555,32 +2700,37 @@ function createOrientationToggleButton() {
 
 window.toggleMapEngine = function(btn) {
     console.log("¡Clic recibido en toggleMapEngine!");
+    stopFpvCameraLoop();
     const container = document.getElementById("workout-map");
+    const currentMode = state.mapViewMode || (state.mapType === "leaflet" ? "2D" : "3D_AEREO");
+    const nextMode = MAP_VIEW_MODES[(MAP_VIEW_MODES.indexOf(currentMode) + 1) % MAP_VIEW_MODES.length];
+    state.mapViewMode = nextMode;
+    state.mapType = nextMode === "2D" ? "leaflet" : "maplibre";
+    if (nextMode === "3D_FPV") {
+        state.isMapFollowingRoute = true;
+    }
+    saveStateToLocalStorage();
 
-    // Normalizar el texto para comparar (eliminar espacios y saltos de línea)
-    const currentText = btn.textContent.replace(/\s+/g, '');
-
-    // Si contiene "2D" (estamos en 3D), volvemos a 2D
-    if (currentText.includes("2D")) {
+    if (nextMode === "2D") {
         console.log("Cambiando a motor Leaflet 2D...");
         if (state.map) {
             state.map.remove();
             state.map = null;
         }
+        mapReadyInstance = null;
         container.className = "workout-map-fullscreen";
         container.style.height = "100%";
         container.style.width = "100%";
 
-        btn.textContent = "🗺️ 3D";
+        btn.textContent = getMapViewLabel(nextMode);
         initLeafletMap();
         drawRouteOnMap();
 
         // Re-configurar botón de orientación para 2D Leaflet
         createOrientationToggleButton();
     }
-    // Si estamos en 2D (no contiene "2D", es decir, es 3D), vamos a 3D
     else {
-        console.log("Cambiando a motor MapLibre 3D...");
+        console.log(`Cambiando a motor MapLibre ${nextMode}...`);
         if (!MAPTILER_API_KEY) {
             alert("El mapa 3D no está configurado: falta la clave de MapTiler.");
             return;
@@ -2590,52 +2740,317 @@ window.toggleMapEngine = function(btn) {
             state.map.remove();
             state.map = null;
         }
-        btn.textContent = "🗺️ 2D";
+        mapReadyInstance = null;
+        btn.textContent = getMapViewLabel(nextMode);
 
         container.className = "workout-map-fullscreen";
         container.style.height = "100%";
         container.style.width = "100%";
 
         try {
-            state.map = new maplibregl.Map({
+            const mapSdk = getMapSdk();
+            if (!mapSdk?.Map) {
+                throw new Error("El SDK 3D no está disponible.");
+            }
+
+            state.map = new mapSdk.Map({
                 container: 'workout-map',
                 style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_API_KEY}`,
                 center: state.routePoints.length > 0 ? [state.routePoints[0].lon, state.routePoints[0].lat] : [-1.9297, 43.3178],
                 zoom: 14,
-                pitch: 60,
+                pitch: nextMode === "3D_FPV" ? 82 : 60,
+                maxPitch: 85,
                 antialias: true
             });
+            const mapInstance = state.map;
 
             // Añadir controles de navegación (Zoom y Brújula)
-            state.map.addControl(new maplibregl.NavigationControl({
+            state.map.addControl(new mapSdk.NavigationControl({
                 showCompass: true,
                 showZoom: true
             }), 'top-right');
 
             state.map.on("load", () => {
-                console.log("Mapa 3D cargado correctamente.");
+                if (state.map !== mapInstance) return;
+                mapReadyInstance = mapInstance;
+                console.log(`Mapa ${nextMode} cargado correctamente.`);
+                logFpvDebug("Mapa cargado", {
+                    mode: nextMode,
+                    routePoints: state.routePoints.length,
+                    currentRouteIndex: state.currentRouteIndex,
+                    hasFreeCamera:
+                        typeof state.map.getFreeCameraOptions === "function" &&
+                        typeof state.map.setFreeCameraOptions === "function",
+                    sdk: getMapSdk()?.version || "desconocido",
+                });
+                if (typeof state.map.setFog === "function") {
+                    state.map.setFog({
+                        range: [0.5, 10],
+                        color: "#ffffff",
+                        "horizon-blend": 0.1,
+                    });
+                }
+                state.map.setMaxPitch(85);
+                if (nextMode === "3D_FPV") state.map.setPitch(85);
+                if (nextMode === "3D_FPV" && !state.map.getSource("terrain")) {
+                    state.map.addSource("terrain", {
+                        type: "raster-dem",
+                        url: `https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=${MAPTILER_API_KEY}`,
+                        tileSize: 256,
+                        encoding: "mapbox",
+                    });
+                    state.map.setTerrain({ source: "terrain", exaggeration: 1 });
+                }
                 state.map.resize();
                 drawRouteOnMap();
 
                 // Re-configurar botón de orientación para 3D MapLibre
                 createOrientationToggleButton();
+                if (nextMode === "3D_FPV" && state.routePoints.length > 0) {
+                    const point = state.routePoints[state.currentRouteIndex];
+                    const nextPoint = state.routePoints[Math.min(state.currentRouteIndex + 1, state.routePoints.length - 1)];
+                    updateFpvCamera(
+                        [point.lon, point.lat],
+                        [nextPoint.lon, nextPoint.lat],
+                        state.isMapFollowingRoute,
+                    );
+                    startFpvCameraLoop();
+                }
             });
 
             let mapErrorAlertShown = false;
+            const reportedMapErrors = new Set();
             state.map.on("error", (e) => {
-                console.error("Error MapLibre:", e);
+                const mapError = e?.error;
                 const status = e?.error?.status;
                 if (!mapErrorAlertShown && (status === 401 || status === 403)) {
                     mapErrorAlertShown = true;
                     alert("Error de autorización del mapa 3D. Revisa la clave de MapTiler.");
                 }
+                const errorMessage = mapError?.message || String(mapError || "");
+                if (errorMessage && !reportedMapErrors.has(errorMessage)) {
+                    reportedMapErrors.add(errorMessage);
+                    console.warn("MapLibre notificó un recurso no disponible:", errorMessage);
+                }
             });
         } catch (err) {
             console.error("Error inicialización MapLibre:", err);
-            btn.textContent = "🗺️ 3D";
+            state.mapViewMode = "3D_AEREO";
+            state.mapType = "maplibre";
+            btn.textContent = getMapViewLabel(state.mapViewMode);
         }
     }
 };
+
+function getMapViewLabel(mode) {
+    return {
+        "2D": "🗺️ 2D",
+        "3D_AEREO": "🗺️ 3D Aéreo",
+        "3D_FPV": "🚴 3D FPV",
+    }[mode] || "🗺️ 3D Aéreo";
+}
+
+// Función matemática para encontrar el punto exacto [lng, lat] intermedio en base a metros totales.
+function obtenerPuntoPorDistancia(puntos, distanciaObjetivoKm) {
+    if (!puntos || puntos.length === 0) return null;
+    const distanciaObjetivoMetros = distanciaObjetivoKm * 1000;
+
+    // Asumimos que state.routeDistances tiene los km acumulados
+    const distancias = state.routeDistances;
+    if (distanciaObjetivoKm <= 0) return [puntos[0].lon, puntos[0].lat];
+    if (distanciaObjetivoKm >= distancias[distancias.length - 1])
+        return [puntos[puntos.length - 1].lon, puntos[puntos.length - 1].lat];
+
+    for (let i = 0; i < distancias.length - 1; i++) {
+        if (distanciaObjetivoKm >= distancias[i] && distanciaObjetivoKm <= distancias[i + 1]) {
+            const p1 = puntos[i];
+            const p2 = puntos[i + 1];
+            const distTramo = (distancias[i + 1] - distancias[i]); // en km
+            const t = distTramo > 0 ? (distanciaObjetivoKm - distancias[i]) / distTramo : 0;
+
+            const lng = p1.lon + (p2.lon - p1.lon) * t;
+            const lat = p1.lat + (p2.lat - p1.lat) * t;
+            return [lng, lat];
+        }
+    }
+    return [puntos[puntos.length - 1].lon, puntos[puntos.length - 1].lat];
+}
+
+function updateFpvCamera(point, nextPoint, followRoute = true) {
+    if (!state.map || !isMapReady(state.map)) return;
+
+    const mapSdk = getMapSdk();
+    if (!mapSdk?.MercatorCoordinate) return;
+
+    // Usar la interpolación continua si es modo RUTA
+    let currentLngLat, targetLngLat;
+
+    if (state.currentMode === "ROUTE" && state.routePoints.length > 0) {
+        const metrosRecorridosKm = state.totalDistance; // state.totalDistance está en km
+        currentLngLat = obtenerPuntoPorDistancia(state.routePoints, metrosRecorridosKm);
+        targetLngLat = obtenerPuntoPorDistancia(state.routePoints, metrosRecorridosKm + 0.015); // +15 metros
+    } else {
+        currentLngLat = normalizeLngLat(point);
+        targetLngLat = normalizeLngLat(nextPoint) || currentLngLat;
+    }
+
+    if (!currentLngLat || !targetLngLat) return;
+
+    // 2. MODO AVANZADO: FreeCameraOptions
+    if (typeof state.map.getFreeCameraOptions === "function") {
+        try {
+            const camera = state.map.getFreeCameraOptions();
+
+            // Alturas basadas en elevación del terreno (usando interpolación si es posible)
+            const elevation = Wr(currentLngLat, 0);
+            const targetElevation = Wr(targetLngLat, 0);
+
+            camera.position = mapSdk.MercatorCoordinate.fromLngLat(currentLngLat, elevation + 1.7);
+            camera.lookAtPoint(mapSdk.MercatorCoordinate.fromLngLat(targetLngLat, targetElevation + 1.2));
+
+            state.map.setFreeCameraOptions(camera);
+            return;
+        } catch (errFPV) {
+            console.error("Error en estabilización FreeCamera:", errFPV);
+        }
+    }
+
+    // 3. MODO RESPALDO: jumpTo
+    if (typeof state.map.jumpTo === "function") {
+        const deltaLat = targetLngLat[1] - currentLngLat[1];
+        const deltaLng = targetLngLat[0] - currentLngLat[0];
+        const rumboEstabilizado = (Math.atan2(deltaLng, deltaLat) * 180 / Math.PI + 360) % 360;
+
+        state.map.jumpTo({
+            center: currentLngLat,
+            pitch: 85,
+            bearing: rumboEstabilizado,
+            zoom: fpvZoomLevel,
+        });
+    }
+}
+
+function getBearingBetween([lng1, lat1], [lng2, lat2]) {
+    const deltaLng = ((lng2 - lng1) * Math.PI) / 180;
+    const lat1Radians = (lat1 * Math.PI) / 180;
+    const lat2Radians = (lat2 * Math.PI) / 180;
+    const y = Math.sin(deltaLng) * Math.cos(lat2Radians);
+    const x =
+        Math.cos(lat1Radians) * Math.sin(lat2Radians) -
+        Math.sin(lat1Radians) *
+            Math.cos(lat2Radians) *
+            Math.cos(deltaLng);
+    const bearing = (Math.atan2(y, x) * 180) / Math.PI;
+    return (bearing + 360) % 360;
+}
+
+function getCameraElevation(position, fallbackElevation = 0) {
+    const fallback = Number.isFinite(Number(fallbackElevation))
+        ? Number(fallbackElevation)
+        : 0;
+    if (!state.map || typeof state.map.queryTerrainElevation !== "function") {
+        return fallback;
+    }
+
+    const terrainElevation = Number(state.map.queryTerrainElevation(position));
+    return Number.isFinite(terrainElevation) && (terrainElevation !== 0 || fallback === 0)
+        ? terrainElevation
+        : fallback;
+}
+
+function isValidLngLat(position) {
+    return Array.isArray(position) &&
+        position.length === 2 &&
+        Number.isFinite(position[0]) &&
+        Number.isFinite(position[1]) &&
+        position[0] >= -180 &&
+        position[0] <= 180 &&
+        position[1] >= -90 &&
+        position[1] <= 90;
+}
+
+function normalizeLngLat(position) {
+    if (Array.isArray(position)) {
+        const lng = Number(position[0]);
+        const lat = Number(position[1]);
+        return Number.isFinite(lng) && Number.isFinite(lat)
+            ? [lng, lat]
+            : null;
+    }
+    if (position && typeof position === "object") {
+        const lng = Number(
+            position.lng ?? position.lon ?? position.longitude,
+        );
+        const lat = Number(position.lat ?? position.latitude);
+        return Number.isFinite(lng) && Number.isFinite(lat)
+            ? [lng, lat]
+            : null;
+    }
+    return null;
+}
+
+function startFpvCameraLoop() {
+    stopFpvCameraLoop();
+
+    if (
+        !state.map ||
+        typeof state.map.getFreeCameraOptions !== "function" ||
+        typeof state.map.setFreeCameraOptions !== "function"
+    ) {
+        return;
+    }
+
+    const render = () => {
+        fpvAnimationFrame = null;
+        if (state.mapViewMode !== "3D_FPV" || !state.map) return;
+        if (state.routePoints.length === 0) {
+            fpvAnimationFrame = requestAnimationFrame(render);
+            return;
+        }
+        if (!isMapReady(state.map)) {
+            fpvAnimationFrame = requestAnimationFrame(render);
+            return;
+        }
+
+        const point = state.routePoints[state.currentRouteIndex];
+        if (!point) {
+            fpvAnimationFrame = requestAnimationFrame(render);
+            return;
+        }
+        const nextPoint = state.routePoints[
+            Math.min(state.currentRouteIndex + 1, state.routePoints.length - 1)
+        ] || point;
+        updateFpvCamera(
+            [point.lon, point.lat],
+            [nextPoint.lon, nextPoint.lat],
+            state.isMapFollowingRoute,
+        );
+        fpvAnimationFrame = requestAnimationFrame(render);
+    };
+
+    fpvAnimationFrame = requestAnimationFrame(render);
+}
+
+function stopFpvCameraLoop() {
+    if (fpvAnimationFrame !== null) {
+        cancelAnimationFrame(fpvAnimationFrame);
+        fpvAnimationFrame = null;
+    }
+}
+
+function offsetLngLat([lng, lat], bearingRadians, distanceMeters) {
+    const earthRadiusMeters = 6371000;
+    const latitudeRadians = (lat * Math.PI) / 180;
+    const deltaLat = (distanceMeters * Math.cos(bearingRadians)) / earthRadiusMeters;
+    const deltaLng =
+        (distanceMeters * Math.sin(bearingRadians)) /
+        (earthRadiusMeters * Math.cos(latitudeRadians));
+
+    return [
+        lng + (deltaLng * 180) / Math.PI,
+        lat + (deltaLat * 180) / Math.PI,
+    ];
+}
 
 async function handleSessionExport() {
   if (!state.currentSessionId && !state.lastSavedSessionId) return;
@@ -2948,3 +3363,22 @@ async function loadProgressStats() {
     console.error(e);
   }
 }
+
+window.changeFpvZoom = function(delta) {
+    // Ajustar valor entre 1 y 22
+    fpvZoomLevel = Math.max(1, Math.min(32, fpvZoomLevel + delta));
+    console.log("Nuevo nivel de zoom:", fpvZoomLevel);
+
+    // Si estamos en FPV y el mapa está activo, forzar actualización de la vista
+    if (state.map && typeof state.map.setZoom === 'function') {
+        state.map.setZoom(fpvZoomLevel);
+    }
+};
+
+window.addEventListener('keydown', (e) => {
+    if (e.key === '+') {
+        changeFpvZoom(1);
+    } else if (e.key === '-') {
+        changeFpvZoom(-1);
+    }
+});

@@ -49,6 +49,7 @@ export const state = {
   clockInterval: null,
   realismFactor: 1.0,
   mapType: 'maplibre',
+  mapViewMode: '3D_AEREO',
   workoutLayout: 'auto',
   workoutLayouts: {},
   workoutPanels: { virtual: true, progress: true, elevation: true, upcoming: true, remote: true },
@@ -65,6 +66,8 @@ export const state = {
   targetWatts: 150,
   virtualGear: DEFAULT_VIRTUAL_GEAR,
   virtualGearByUser: {},
+  virtualGearsEnabled: true,
+  initialVirtualGear: DEFAULT_VIRTUAL_GEAR,
 };
 
 export function saveStateToLocalStorage() {
@@ -80,6 +83,7 @@ export function saveStateToLocalStorage() {
     currentMode: state.currentMode,
     realismFactor: state.realismFactor,
     mapType: state.mapType,
+    mapViewMode: state.mapViewMode,
     workoutLayout: state.workoutLayout,
     workoutLayouts: state.workoutLayouts,
     workoutPanelsByUser: state.workoutPanelsByUser,
@@ -93,6 +97,8 @@ export function saveStateToLocalStorage() {
     manualMode: state.manualMode,
     targetWatts: state.targetWatts,
     virtualGearByUser: state.virtualGearByUser,
+    virtualGearsEnabled: state.virtualGearsEnabled,
+    initialVirtualGear: state.initialVirtualGear,
   };
   localStorage.setItem("rodilloint_state", JSON.stringify(persistableState));
 }
@@ -105,6 +111,9 @@ export function loadStateFromLocalStorage() {
     state.currentMode = parsed.currentMode;
     state.realismFactor = parsed.realismFactor || 1.0;
     state.mapType = parsed.mapType || 'maplibre';
+    state.mapViewMode = ['2D', '3D_AEREO', '3D_FPV'].includes(parsed.mapViewMode)
+      ? parsed.mapViewMode
+      : state.mapType === 'leaflet' ? '2D' : '3D_AEREO';
     state.workoutLayout = parsed.workoutLayout || 'auto';
     state.workoutLayouts = parsed.workoutLayouts || {};
     state.workoutPanelsByUser = parsed.workoutPanelsByUser || {};
@@ -130,6 +139,10 @@ export function loadStateFromLocalStorage() {
     state.manualMode = parsed.manualMode || 'SLOPE';
     state.targetWatts = parsed.targetWatts || 150;
     state.virtualGearByUser = parsed.virtualGearByUser || {};
+    state.virtualGearsEnabled = parsed.virtualGearsEnabled !== false;
+    state.initialVirtualGear = Number.isFinite(Number(parsed.initialVirtualGear))
+      ? Math.max(1, Math.min(24, Number(parsed.initialVirtualGear)))
+      : DEFAULT_VIRTUAL_GEAR;
     state.virtualGear = state.virtualGearByUser[userKey] || DEFAULT_VIRTUAL_GEAR;
   }
 }

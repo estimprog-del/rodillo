@@ -36,6 +36,8 @@ export class RemoteRoomClient {
       this.client.connection.once("connected", onConnected);
       this.client.connection.once("failed", onFailed);
     });
+
+    await this.channel.attach();
   }
 
   on(eventName, handler) {
@@ -43,6 +45,23 @@ export class RemoteRoomClient {
     this.channel.subscribe(eventName, (message) => handler(message.data));
     this.unsubscribe = () => this.channel?.unsubscribe(eventName);
     return this.unsubscribe;
+  }
+
+  async enterPresence(clientId = "remote") {
+    if (!this.channel) return;
+    await this.channel.presence.enter(clientId);
+  }
+
+  onPresence(eventName, handler) {
+    if (!this.channel) return () => {};
+    const listener = (member) => handler(member);
+    this.channel.presence.subscribe(eventName, listener);
+    void this.channel.presence.get().then((members) => {
+      members
+        .filter((member) => member.action === "present" || member.action === "enter")
+        .forEach(handler);
+    });
+    return () => this.channel?.presence.unsubscribe(eventName, listener);
   }
 
   async emit(eventName, payload) {

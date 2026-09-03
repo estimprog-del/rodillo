@@ -83,7 +83,15 @@ export function bindEvents(handlers) {
       if (id === "btn-dashboard-settings") {
         openSettingsModal();
         setTimeout(() => {
-          document.getElementById("setting-map-type").value = state.mapType || 'maplibre';
+          // Determinar la opción de mapa correcta para el desplegable
+          let mapTypeValue = "maplibre";
+          if (state.mapType === "leaflet") {
+            mapTypeValue = "leaflet";
+          } else if (state.mapType === "maplibre" && state.mapViewMode === "3D_FPV") {
+            mapTypeValue = "mapFPV";
+          }
+          
+          document.getElementById("setting-map-type").value = mapTypeValue;
           document.getElementById("setting-workout-layout").value = state.workoutLayout || 'auto';
           document.getElementById("setting-font-scale").value = state.fontScale || 1.0;
           
@@ -96,7 +104,9 @@ export function bindEvents(handlers) {
 
   	        document.getElementById("setting-power-zones").value = state.powerZones ? state.powerZones.join(',') : "55,75,88,95,106";
   	        document.getElementById("setting-countdown-duration").value = state.countdownDuration || 3;
-  	        document.getElementById("setting-start-on-movement").checked = state.startOnMovement || false;
+          document.getElementById("setting-start-on-movement").checked = state.startOnMovement || false;
+          document.getElementById("setting-virtual-gears-enabled").checked = state.virtualGearsEnabled !== false;
+          document.getElementById("setting-initial-virtual-gear").value = state.initialVirtualGear || 12;
   	        
   	        document.querySelectorAll('.btn-smoothing').forEach(btn => {
             btn.style.background = btn.getAttribute('data-val') == (state.sensorSmoothing || 3000) ? '#10b981' : '#333';
@@ -117,7 +127,18 @@ export function bindEvents(handlers) {
         hideModal('settings');
       }
       if (id === "btn-save-settings") {
-        state.mapType = document.getElementById("setting-map-type").value;
+        const selectedMapType = document.getElementById("setting-map-type").value;
+        state.mapType = selectedMapType === "leaflet" ? "leaflet" : "maplibre";
+        
+        // Sincronizar el modo de vista según la opción seleccionada
+        if (selectedMapType === "leaflet") {
+          state.mapViewMode = "2D";
+        } else if (selectedMapType === "mapFPV") {
+          state.mapViewMode = "3D_FPV";
+        } else {
+          state.mapViewMode = "3D_AEREO";
+        }
+
         state.workoutLayout = document.getElementById("setting-workout-layout").value;
         state.fontScale = parseFloat(document.getElementById("setting-font-scale").value);
         state.realismFactor = parseInt(document.getElementById("setting-realism").value) / 100;
@@ -125,7 +146,9 @@ export function bindEvents(handlers) {
         
         state.countdownDuration = parseInt(document.getElementById("setting-countdown-duration").value) || 3;
         state.startOnMovement = document.getElementById("setting-start-on-movement").checked;
-        
+        state.virtualGearsEnabled = document.getElementById("setting-virtual-gears-enabled").checked;
+        const initialVirtualGear = Number(document.getElementById("setting-initial-virtual-gear").value);
+        state.initialVirtualGear = Number.isFinite(initialVirtualGear) ? Math.max(1, Math.min(24, Math.round(initialVirtualGear))) : 12;
         saveStateToLocalStorage();
         if (typeof window.applyWorkoutLayout === "function") {
           window.applyWorkoutLayout();
