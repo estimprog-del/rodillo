@@ -3118,6 +3118,30 @@ async function handleSessionExport() {
 }
 window.handleSessionExport = handleSessionExport;
 
+async function handleSessionCsvExport() {
+  if (!state.currentSessionId && !state.lastSavedSessionId) return;
+  const sessionId = state.lastSavedSessionId || state.currentSessionId;
+
+  try {
+    const session = await DbManager.getSessionById(sessionId);
+    const data = await DbManager.getSensorDataForSession(sessionId);
+
+    if (!session || data.length === 0) {
+      alert("Error: No hay datos de telemetría válidos para exportar.");
+      return;
+    }
+
+    const userName = state.currentUser ? state.currentUser.name : "Usuario";
+    if (!GpxManager.exportSessionCsv(session, data, userName)) {
+      alert("No se pudo generar el archivo CSV de esta sesión.");
+    }
+  } catch (error) {
+    console.error("Error exportando CSV de la sesión:", error);
+    alert("No se pudo exportar el CSV de la sesión.");
+  }
+}
+window.handleSessionCsvExport = handleSessionCsvExport;
+
 // --- HISTORY AND STATISTICS SCREENS ---
 async function loadHistoryList() {
   if (!state.currentUser) return;
@@ -3186,6 +3210,7 @@ async function loadHistoryList() {
           ${Array.isArray(s.routePoints) && s.routePoints.length > 0
             ? `<button class="btn btn-primary history-repeat-route" id="btn-repeat-${s.id}">Repetir ruta</button>`
             : ""}
+          <button class="btn btn-secondary" id="btn-export-csv-${s.id}">CSV</button>
           <button class="btn btn-danger" style="padding: 6px 12px; font-size: 11px; border-radius: 8px;" id="btn-del-${s.id}">❌</button>
           </div>
         `;
@@ -3201,6 +3226,11 @@ async function loadHistoryList() {
           repeatRouteFromHistory(s.id);
         };
       }
+      const csvButton = card.querySelector(`#btn-export-csv-${s.id}`);
+      csvButton.onclick = (e) => {
+        e.stopPropagation();
+        downloadSpecificHistoryCsv(s.id);
+      };
 
       // Open the same summary screen used after finishing a live session
       card.onclick = () => openHistoricalSessionSummary(s.id);
@@ -3381,6 +3411,26 @@ async function downloadSpecificHistoryGpx(id) {
     console.error(e);
   }
 }
+
+async function downloadSpecificHistoryCsv(id) {
+  try {
+    const session = await DbManager.getSessionById(id);
+    const data = await DbManager.getSensorDataForSession(id);
+    if (!session || data.length === 0) {
+      alert("Esta sesión no posee datos de telemetría exportables.");
+      return;
+    }
+
+    const userName = state.currentUser ? state.currentUser.name : "Usuario";
+    if (!GpxManager.exportSessionCsv(session, data, userName)) {
+      alert("No se pudo generar el archivo CSV de esta sesión.");
+    }
+  } catch (error) {
+    console.error("Error exportando CSV histórico:", error);
+    alert("No se pudo exportar el CSV de esta sesión.");
+  }
+}
+window.downloadSpecificHistoryCsv = downloadSpecificHistoryCsv;
 
 async function checkPendingSessions() {
   if (!state.currentUser) return;

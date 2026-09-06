@@ -47,7 +47,7 @@ export function bindEvents(handlers) {
 
   document.body.addEventListener("click", (e) => {
     const target = e.target.closest(
-      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-cycle-layout, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-toggle-3d, #btn-toggle-manual-mode",
+      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-cycle-layout, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, #btn-export-csv, [id^='btn-export-csv-'], [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-toggle-3d, #btn-toggle-manual-mode",
     );
 
     if (!target) return;
@@ -285,6 +285,23 @@ export function bindEvents(handlers) {
           window.handleSessionExport();
         } else {
           console.error("handleSessionExport no está disponible");
+        }
+      }
+
+      if (id === "btn-export-csv") {
+        if (typeof window.handleSessionCsvExport === 'function') {
+          window.handleSessionCsvExport();
+        } else {
+          console.error("handleSessionCsvExport no está disponible");
+        }
+      }
+
+      if (id && id.startsWith("btn-export-csv-")) {
+        const sessionId = id.replace("btn-export-csv-", "");
+        if (typeof window.downloadSpecificHistoryCsv === 'function') {
+          window.downloadSpecificHistoryCsv(sessionId);
+        } else {
+          console.error("downloadSpecificHistoryCsv no está disponible");
         }
       }
 

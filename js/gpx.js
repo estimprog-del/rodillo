@@ -197,6 +197,94 @@ function exportSession(session, sensorData, userName = 'Usuario') {
 }
 
 /**
+ * Exports session telemetry as a semicolon-separated CSV compatible with Excel.
+ */
+function exportSessionCsv(session, sensorData, userName = 'Usuario') {
+  try {
+    if (!Array.isArray(sensorData) || sensorData.length === 0) {
+      return false;
+    }
+
+    const escapeCsvValue = (value) => {
+      if (value === null || value === undefined) return '';
+      const text = String(value);
+      return /[;"\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const formatNumber = (value, decimals = 2) => {
+      const number = Number(value);
+      return Number.isFinite(number) ? number.toFixed(decimals) : '';
+    };
+    const formatTimestamp = (value) => {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+    };
+
+    const headers = [
+      'Sesión',
+      'Usuario',
+      'Fecha y hora',
+      'Tiempo desde inicio (s)',
+      'Velocidad (km/h)',
+      'Potencia (W)',
+      'Cadencia (rpm)',
+      'Pulso (bpm)',
+      'Pendiente (%)',
+      'Marcha virtual',
+      'Relación',
+      'Elevación (m)',
+      'Latitud',
+      'Longitud',
+      'Distancia (km)',
+    ];
+
+    const startTime = Number(session.startTime);
+    const rows = sensorData.map((point) => {
+      const timestamp = Number(point.timestamp);
+      const elapsedSeconds =
+        Number.isFinite(startTime) && Number.isFinite(timestamp)
+          ? Math.max(0, (timestamp - startTime) / 1000)
+          : '';
+
+      return [
+        session.id,
+        userName,
+        formatTimestamp(point.timestamp),
+        formatNumber(elapsedSeconds, 1),
+        formatNumber(point.speed, 2),
+        formatNumber(point.power, 0),
+        formatNumber(point.cadence, 0),
+        formatNumber(point.heartRate, 0),
+        formatNumber(point.slope, 2),
+        formatNumber(point.virtualGear, 0),
+        formatNumber(point.gearRatio, 2),
+        formatNumber(point.elevation, 1),
+        formatNumber(point.latitude, 6),
+        formatNumber(point.longitude, 6),
+        formatNumber(point.distance, 3),
+      ].map(escapeCsvValue).join(';');
+    });
+
+    const csv = `\uFEFF${headers.map(escapeCsvValue).join(';')}\r\n${rows.join('\r\n')}\r\n`;
+    const dateString = new Date(session.startTime).toISOString().slice(0, 10);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Entrenamiento_RodilloInt_${session.id}_${dateString}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    console.log(`CSV exported successfully for session: ${session.id}`);
+    return true;
+  } catch (error) {
+    console.error('Error exporting session to CSV:', error);
+    return false;
+  }
+}
+
+/**
  * Parses a GPX/TCX file asynchronously using a Web Worker to avoid blocking the main UI thread.
  */
 function parseRouteAsync(fileText) {
@@ -339,5 +427,6 @@ function parseRouteAsync(fileText) {
 window.GpxManager = {
   parseRoute,
   parseRouteAsync,
-  exportSession
+  exportSession,
+  exportSessionCsv
 };
