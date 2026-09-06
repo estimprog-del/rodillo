@@ -195,8 +195,12 @@ function decodeCSC(dataView) {
           const speedKph = speedMps * 3.6;
 
           if (dataListener && dataListener.onSpeedReceived) {
-            dataListener.onSpeedReceived(speedKph);
+            dataListener.onSpeedReceived(speedKph, true);
           }
+        } else if (timeDiff > 0 && dataListener?.onSpeedReceived) {
+          // Keep the app informed that the wheel sample arrived without a
+          // new revolution, so it can apply its inactivity timeout.
+          dataListener.onSpeedReceived(0, false);
         }
       }
       lastWheelRevs = wheelRevs;
@@ -244,7 +248,7 @@ function decodeIndoorBike(dataView) {
       const speed = dataView.getUint16(offset, true) / 100.0;
       offset += 2;
       if (dataListener && dataListener.onSpeedReceived) {
-        dataListener.onSpeedReceived(speed);
+        dataListener.onSpeedReceived(speed, speed > 0);
       }
     }
   }
@@ -1005,7 +1009,7 @@ function startSimulator(userWeight = 75.0) {
       if (dataListener.onHeartRateReceived)
         dataListener.onHeartRateReceived(currentHr);
       if (dataListener.onSpeedReceived)
-        dataListener.onSpeedReceived(currentSpeed);
+        dataListener.onSpeedReceived(currentSpeed, currentSpeed > 0);
     }
   }, 1000);
 

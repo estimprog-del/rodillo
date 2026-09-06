@@ -157,6 +157,10 @@ async function insertSession(session) {
       maxHeartRate: 0,
       virtualGear: null,
       gearRatio: null,
+      routePoints: null,
+      routeElevations: null,
+      routeDistances: null,
+      routeTotalAscent: 0,
       ...session
     };
 

@@ -13,6 +13,7 @@ import {
 } from "../ui/modals.js";
 import { state, saveStateToLocalStorage } from "./state.js";
 import { exportAllData, importAllData } from "../db.js";
+import { DEFAULT_VIRTUAL_GEAR, clampVirtualGear } from "./virtualGears.js";
 
 export function bindEvents(handlers) {
   const {
@@ -106,7 +107,9 @@ export function bindEvents(handlers) {
   	        document.getElementById("setting-countdown-duration").value = state.countdownDuration || 3;
           document.getElementById("setting-start-on-movement").checked = state.startOnMovement || false;
           document.getElementById("setting-virtual-gears-enabled").checked = state.virtualGearsEnabled !== false;
-          document.getElementById("setting-initial-virtual-gear").value = state.initialVirtualGear || 12;
+          document.getElementById("setting-initial-virtual-gear").value = state.initialVirtualGear || DEFAULT_VIRTUAL_GEAR;
+          document.getElementById("setting-virtual-slope-min").value = state.virtualSlopeMin;
+          document.getElementById("setting-virtual-slope-max").value = state.virtualSlopeMax;
   	        
   	        document.querySelectorAll('.btn-smoothing').forEach(btn => {
             btn.style.background = btn.getAttribute('data-val') == (state.sensorSmoothing || 3000) ? '#10b981' : '#333';
@@ -148,7 +151,23 @@ export function bindEvents(handlers) {
         state.startOnMovement = document.getElementById("setting-start-on-movement").checked;
         state.virtualGearsEnabled = document.getElementById("setting-virtual-gears-enabled").checked;
         const initialVirtualGear = Number(document.getElementById("setting-initial-virtual-gear").value);
-        state.initialVirtualGear = Number.isFinite(initialVirtualGear) ? Math.max(1, Math.min(24, Math.round(initialVirtualGear))) : 12;
+        state.initialVirtualGear = Number.isFinite(initialVirtualGear)
+          ? clampVirtualGear(initialVirtualGear)
+          : DEFAULT_VIRTUAL_GEAR;
+        const virtualSlopeMin = Number(document.getElementById("setting-virtual-slope-min").value);
+        const virtualSlopeMax = Number(document.getElementById("setting-virtual-slope-max").value);
+        if (
+          !Number.isFinite(virtualSlopeMin) ||
+          !Number.isFinite(virtualSlopeMax) ||
+          virtualSlopeMin < -15 ||
+          virtualSlopeMax > 20 ||
+          virtualSlopeMin >= virtualSlopeMax
+        ) {
+          alert("Los límites deben estar entre -15% y 20%, y el mínimo debe ser menor que el máximo.");
+          return;
+        }
+        state.virtualSlopeMin = virtualSlopeMin;
+        state.virtualSlopeMax = virtualSlopeMax;
         saveStateToLocalStorage();
         if (typeof window.applyWorkoutLayout === "function") {
           window.applyWorkoutLayout();
@@ -346,7 +365,12 @@ export function bindEvents(handlers) {
         const hasSpeed = ble?.connections?.CSC?.status === "CONECTADO";
         if (isVirtual || hasControllable || hasPower || hasSpeed) {
           if (state.currentMode === "ROUTE") {
-            openRouteModal();
+            if (state.routeLoadedFromHistory && state.routePoints.length > 0) {
+              navigateTo("workout");
+              if (!state.isSessionActive) startSession();
+            } else {
+              openRouteModal();
+            }
           } else {
             navigateTo("workout");
           }

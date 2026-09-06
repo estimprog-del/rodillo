@@ -1,6 +1,9 @@
 /* state.js - Gestión del estado de la aplicación */
 
-import { DEFAULT_VIRTUAL_GEAR } from "./virtualGears.js";
+import {
+  DEFAULT_VIRTUAL_GEAR,
+  clampVirtualGear,
+} from "./virtualGears.js";
 
 export const state = {
   currentUser: null,
@@ -36,6 +39,7 @@ export const state = {
   speedHistory: [],
   elevationHistory: [],
   lastSpeedUpdateTime: 0,
+  lastWheelRevolutionTime: 0,
   lastMovementTime: 0,
 
   timeInPowerZones: [0, 0, 0, 0, 0, 0],
@@ -45,6 +49,7 @@ export const state = {
   routeDistances: [],
   routeTotalAscent: 0,
   currentRouteIndex: 0,
+  routeLoadedFromHistory: false,
   map: null,
   clockInterval: null,
   realismFactor: 1.0,
@@ -68,6 +73,8 @@ export const state = {
   virtualGearByUser: {},
   virtualGearsEnabled: true,
   initialVirtualGear: DEFAULT_VIRTUAL_GEAR,
+  virtualSlopeMin: -15,
+  virtualSlopeMax: 20,
 };
 
 export function saveStateToLocalStorage() {
@@ -99,6 +106,8 @@ export function saveStateToLocalStorage() {
     virtualGearByUser: state.virtualGearByUser,
     virtualGearsEnabled: state.virtualGearsEnabled,
     initialVirtualGear: state.initialVirtualGear,
+    virtualSlopeMin: state.virtualSlopeMin,
+    virtualSlopeMax: state.virtualSlopeMax,
   };
   localStorage.setItem("rodilloint_state", JSON.stringify(persistableState));
 }
@@ -141,9 +150,21 @@ export function loadStateFromLocalStorage() {
     state.virtualGearByUser = parsed.virtualGearByUser || {};
     state.virtualGearsEnabled = parsed.virtualGearsEnabled !== false;
     state.initialVirtualGear = Number.isFinite(Number(parsed.initialVirtualGear))
-      ? Math.max(1, Math.min(24, Number(parsed.initialVirtualGear)))
+      ? clampVirtualGear(parsed.initialVirtualGear)
       : DEFAULT_VIRTUAL_GEAR;
-    state.virtualGear = state.virtualGearByUser[userKey] || DEFAULT_VIRTUAL_GEAR;
+    state.virtualGear = userKey && state.virtualGearByUser[userKey]
+      ? clampVirtualGear(state.virtualGearByUser[userKey])
+      : DEFAULT_VIRTUAL_GEAR;
+    state.virtualSlopeMin = Number.isFinite(Number(parsed.virtualSlopeMin))
+      ? Math.max(-15, Math.min(20, Number(parsed.virtualSlopeMin)))
+      : -15;
+    state.virtualSlopeMax = Number.isFinite(Number(parsed.virtualSlopeMax))
+      ? Math.max(-15, Math.min(20, Number(parsed.virtualSlopeMax)))
+      : 20;
+    if (state.virtualSlopeMin >= state.virtualSlopeMax) {
+      state.virtualSlopeMin = -15;
+      state.virtualSlopeMax = 20;
+    }
   }
 }
 
@@ -159,5 +180,7 @@ export function loadWorkoutLayoutForUser(user) {
     ...((userKey && state.workoutPanelsByUser[userKey]) || {}),
   };
   state.fullscreenPreference = (userKey && state.fullscreenByUser[userKey]) === true;
-  state.virtualGear = (userKey && state.virtualGearByUser[userKey]) || DEFAULT_VIRTUAL_GEAR;
+  state.virtualGear = userKey && state.virtualGearByUser[userKey]
+    ? clampVirtualGear(state.virtualGearByUser[userKey])
+    : DEFAULT_VIRTUAL_GEAR;
 }

@@ -34,6 +34,7 @@ import {
 const SLOPE_AVERAGE_METERS = 10;
 const SLOPE_PREVIEW_LONG_METERS = 500;
 const MAX_SLOPE_CHANGE_PER_SEC = 0.5;
+const WHEEL_INACTIVITY_TIMEOUT_MS = 10000;
 const MAPTILER_API_KEY = import.meta.env.VITE_MAPTILER_API_KEY || "";
 const MAP_VIEW_MODES = ["2D", "3D_AEREO", "3D_FPV"];
 let fpvZoomLevel = 25;
@@ -1120,37 +1121,26 @@ function onCadenceReceived(cad) {
   setElText("metrics-cadence", cad);
 }
 
-function onSpeedReceived(speedKph) {
-  // Ya no retornamos si el modo es ROUTE, permitimos que la velocidad del rodillo sea la principal
-
-  // Filtro simple: Si recibimos 0 km/h pero estábamos en movimiento,
-  // probablemente es un error de lectura o un pico. Suavizamos ignorándolo.
-  if (speedKph === 0 && state.currentSpeed > 0.5) return;
-
+function onSpeedReceived(speedKph, hasWheelRevolution = speedKph > 0) {
   state.currentSpeed = speedKph;
   setElText("metrics-speed", speedKph.toFixed(1));
 
   const now = Date.now();
+  state.lastSpeedUpdateTime = now;
+  if (hasWheelRevolution && speedKph > 0) {
+    state.lastWheelRevolutionTime = now;
+  }
 
-  // Auto-pause detection logic
+  // Positive wheel movement can resume an automatic pause.
   if (state.isSessionActive) {
-    if (speedKph > 0.5) {
+    if (hasWheelRevolution && speedKph > 0.5) {
       state.lastMovementTime = now;
       if (state.isAutoPaused) {
         state.isAutoPaused = false;
         resumeTimer();
       }
-    } else if (now - state.lastMovementTime > 3000) {
-      // 3 seconds timeout
-      if (!state.isPaused && !state.isAutoPaused) {
-        state.isAutoPaused = true;
-        pauseTimer();
-      }
     }
-
   }
-
-  state.lastSpeedUpdateTime = now;
 }
 
 
@@ -1186,12 +1176,13 @@ function calculateNormalizedPowerFromValues(values) {
 function startCountdown(onComplete, duration) {
   // Reset forzado antes de empezar para evitar bloqueos
   state.isCountdownActive = true;
-  toggleRemoteRoomPanel(false);
+  toggleRemoteRoomPanel(true);
 
   const countdownOverlay = document.getElementById("workout-countdown-overlay");
   const countdownText = document.getElementById("countdown-text");
 
   if (!countdownOverlay || !countdownText) {
+    toggleRemoteRoomPanel(false);
     if (onComplete) onComplete();
     state.isCountdownActive = false;
     return;
@@ -1235,6 +1226,7 @@ function startCountdown(onComplete, duration) {
       playBeep(1200);
       setTimeout(() => {
         countdownOverlay.style.display = "none";
+        toggleRemoteRoomPanel(false);
         state.isCountdownActive = false;
         audioCtx.close();
         if (onComplete) onComplete();
@@ -1386,6 +1378,7 @@ async function handleGpxUpload(e) {
   }
 
   state.gpxFilename = file.name;
+  state.routeLoadedFromHistory = false;
   const label = document.getElementById("gpx-filename-label");
   const btnPick = document.getElementById("btn-trigger-gpx-pick");
 
@@ -1587,13 +1580,14 @@ function initializeRemoteRoomPanel() {
       });
       activeRemoteRoomClient?.on("STOP_SESSION", () => {
         toggleRemoteRoomPanel(false);
+        if (state.isSessionActive && !state.isPaused) {
+          pauseTimer();
+        }
         void stopSessionFlow();
       });
       activeRemoteRoomClient?.onPresence("enter", (member) => {
-        if (member?.data === "remote" || member?.clientId === "remote") {
-          toggleRemoteRoomPanel(false);
-          status.textContent = "Mando conectado";
-        }
+        toggleRemoteRoomPanel(false);
+        status.textContent = "Mando conectado";
       });
       status.textContent = "Ably: conectado";
     })
@@ -1622,6 +1616,12 @@ function toggleRemoteRoomPanel(isOpen = null) {
 
 window.toggleRemoteRoomPanel = toggleRemoteRoomPanel;
 
+function disconnectRemoteRoom() {
+  activeRemoteRoomClient?.disconnect();
+  activeRemoteRoomClient = null;
+  toggleRemoteRoomPanel(false);
+}
+
 // --- SESSION WORKFLOW CONTROL ---
 function togglePause() {
   if (!state.isSessionActive) {
@@ -1648,6 +1648,21 @@ async function startSession() {
       userId: state.currentUser.id,
       startTime: Date.now(),
       gpxPath: state.currentMode === "ROUTE" ? state.gpxFilename : null,
+      routePoints: state.currentMode === "ROUTE"
+        ? state.routePoints.map((point) => ({
+            lat: Number(point.lat),
+            lon: Number(point.lon),
+          }))
+        : null,
+      routeElevations: state.currentMode === "ROUTE"
+        ? [...state.routeElevations]
+        : null,
+      routeDistances: state.currentMode === "ROUTE"
+        ? [...state.routeDistances]
+        : null,
+      routeTotalAscent: state.currentMode === "ROUTE"
+        ? state.routeTotalAscent
+        : 0,
       virtualGear: state.virtualGear,
       gearRatio: getVirtualGearRatio(state.virtualGear),
     });
@@ -1659,6 +1674,7 @@ async function startSession() {
     state.sessionStartTime = Date.now();
     state.lastSpeedUpdateTime = Date.now();
     state.lastMovementTime = Date.now();
+    state.lastWheelRevolutionTime = Date.now();
     state.lastTelemetryTimestamp = Date.now(); // for centralized distance accumulation
     state.lastTelemetrySpeed = state.currentSpeed || 0.0;
 
@@ -1755,14 +1771,14 @@ function startTimerInterval() {
           state.speedHistory.push(state.currentSpeed);
         }
 
-        // Auto-pause detection logic based on real speed
-        if (state.currentSpeed > 0.5) {
-          state.lastMovementTime = now;
-          if (state.isAutoPaused) {
-            state.isAutoPaused = false;
-            resumeTimer();
-          }
-        } else if (now - state.lastMovementTime > 3000) {
+        // Auto-pause is based on the last detected wheel revolution, not on
+        // residual speed values reported by a trainer or its motor.
+        if (
+          state.lastWheelRevolutionTime &&
+          now - state.lastWheelRevolutionTime >= WHEEL_INACTIVITY_TIMEOUT_MS
+        ) {
+          state.currentSpeed = 0;
+          setElText("metrics-speed", "0.0");
           if (!state.isPaused && !state.isAutoPaused) {
             state.isAutoPaused = true;
             pauseTimer();
@@ -2001,6 +2017,7 @@ function setSessionSaveStatus(message, color = "var(--text-secondary)") {
 
 async function stopSessionFlow() {
   if (!state.isSessionActive) {
+    disconnectRemoteRoom();
     navigateTo("dashboard");
     return;
   }
@@ -2010,6 +2027,7 @@ async function stopSessionFlow() {
   );
   if (!confirmStop) return;
 
+  disconnectRemoteRoom();
   if (state.timerInterval) {
     clearInterval(state.timerInterval);
     state.timerInterval = null;
@@ -2328,7 +2346,15 @@ function updateRouteSimulation(currentDistKm) {
   }
 
 function coerceSlope(slope) {
-  return Math.max(-15.0, Math.min(20.0, slope));
+  const minSlope = Number.isFinite(state.virtualSlopeMin)
+    ? state.virtualSlopeMin
+    : -15.0;
+  const maxSlope = Number.isFinite(state.virtualSlopeMax)
+    ? state.virtualSlopeMax
+    : 20.0;
+  const safeMin = Math.min(minSlope, maxSlope);
+  const safeMax = Math.max(minSlope, maxSlope);
+  return Math.max(safeMin, Math.min(safeMax, slope));
 }
 
 function setRouteTargetSlope(currentDistKm) {
@@ -3157,6 +3183,9 @@ async function loadHistoryList() {
             <span class="history-stat-label">Pot. Media</span>
             <span class="history-stat-value">${s.averagePower} W</span>
           </div>
+          ${Array.isArray(s.routePoints) && s.routePoints.length > 0
+            ? `<button class="btn btn-primary history-repeat-route" id="btn-repeat-${s.id}">Repetir ruta</button>`
+            : ""}
           <button class="btn btn-danger" style="padding: 6px 12px; font-size: 11px; border-radius: 8px;" id="btn-del-${s.id}">❌</button>
           </div>
         `;
@@ -3165,6 +3194,13 @@ async function loadHistoryList() {
         e.stopPropagation();
         deleteHistorySession(s.id);
       };
+      const repeatButton = card.querySelector(`#btn-repeat-${s.id}`);
+      if (repeatButton) {
+        repeatButton.onclick = (e) => {
+          e.stopPropagation();
+          repeatRouteFromHistory(s.id);
+        };
+      }
 
       // Open the same summary screen used after finishing a live session
       card.onclick = () => openHistoricalSessionSummary(s.id);
@@ -3173,6 +3209,36 @@ async function loadHistoryList() {
     });
   } catch (e) {
     console.error(e);
+  }
+}
+
+async function repeatRouteFromHistory(id) {
+  try {
+    const session = await DbManager.getSessionById(id);
+    if (!session || !Array.isArray(session.routePoints) || session.routePoints.length === 0) {
+      alert("Esta sesión no contiene una copia reutilizable de la ruta.");
+      return;
+    }
+
+    state.currentMode = "ROUTE";
+    state.gpxFilename = session.gpxPath || `Ruta histórica ${id}.gpx`;
+    state.routePoints = session.routePoints.map((point) => ({
+      lat: Number(point.lat),
+      lon: Number(point.lon),
+    }));
+    state.routeElevations = Array.isArray(session.routeElevations)
+      ? session.routeElevations.map(Number)
+      : state.routePoints.map(() => 0);
+    state.routeDistances = Array.isArray(session.routeDistances)
+      ? session.routeDistances.map(Number)
+      : [];
+    state.routeTotalAscent = Number(session.routeTotalAscent) || calculateTotalRouteAscent();
+    state.currentRouteIndex = 0;
+    state.routeLoadedFromHistory = true;
+    navigateTo("connections");
+  } catch (error) {
+    console.error("Error al repetir la ruta histórica:", error);
+    alert("No se pudo cargar la ruta seleccionada.");
   }
 }
 

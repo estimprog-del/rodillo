@@ -12,7 +12,7 @@ export class RemoteRoomClient {
     this.roomId = roomId;
     this.client = null;
     this.channel = null;
-    this.unsubscribe = null;
+    this.cleanups = [];
   }
 
   async connect() {
@@ -43,8 +43,9 @@ export class RemoteRoomClient {
   on(eventName, handler) {
     if (!SUPPORTED_EVENTS.has(eventName) || !this.channel) return () => {};
     this.channel.subscribe(eventName, (message) => handler(message.data));
-    this.unsubscribe = () => this.channel?.unsubscribe(eventName);
-    return this.unsubscribe;
+    const unsubscribe = () => this.channel?.unsubscribe(eventName);
+    this.cleanups.push(unsubscribe);
+    return unsubscribe;
   }
 
   async enterPresence(clientId = "remote") {
@@ -58,10 +59,11 @@ export class RemoteRoomClient {
     this.channel.presence.subscribe(eventName, listener);
     void this.channel.presence.get().then((members) => {
       members
-        .filter((member) => member.action === "present" || member.action === "enter")
         .forEach(handler);
     });
-    return () => this.channel?.presence.unsubscribe(eventName, listener);
+    const unsubscribe = () => this.channel?.presence.unsubscribe(eventName, listener);
+    this.cleanups.push(unsubscribe);
+    return unsubscribe;
   }
 
   async emit(eventName, payload) {
@@ -70,8 +72,8 @@ export class RemoteRoomClient {
   }
 
   disconnect() {
-    if (this.unsubscribe) this.unsubscribe();
-    this.unsubscribe = null;
+    this.cleanups.forEach((cleanup) => cleanup());
+    this.cleanups = [];
     this.channel?.detach();
     this.client?.close();
     this.channel = null;
