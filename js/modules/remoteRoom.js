@@ -1,7 +1,7 @@
 import * as Ably from "ably";
 
 const ABLY_API_KEY = import.meta.env.VITE_ABLY_API_KEY || "";
-const GEAR_EVENT = "CHANGE_GEAR";
+const SUPPORTED_EVENTS = new Set(["CHANGE_GEAR", "TOGGLE_PAUSE", "STOP_SESSION"]);
 
 /**
  * Ably-backed room client. The public browser key must be restricted in Ably
@@ -41,7 +41,7 @@ export class RemoteRoomClient {
   }
 
   on(eventName, handler) {
-    if (eventName !== GEAR_EVENT || !this.channel) return () => {};
+    if (!SUPPORTED_EVENTS.has(eventName) || !this.channel) return () => {};
     this.channel.subscribe(eventName, (message) => handler(message.data));
     this.unsubscribe = () => this.channel?.unsubscribe(eventName);
     return this.unsubscribe;
@@ -65,7 +65,7 @@ export class RemoteRoomClient {
   }
 
   async emit(eventName, payload) {
-    if (eventName !== GEAR_EVENT || !this.channel) return;
+    if (!SUPPORTED_EVENTS.has(eventName) || !this.channel) return;
     await this.channel.publish(eventName, payload);
   }
 

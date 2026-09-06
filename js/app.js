@@ -283,6 +283,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (label) label.textContent = roomId ? `Sala: ${roomId}` : "Falta el identificador de sala";
     if (status) status.textContent = client ? "Mando preparado" : "Enlace de sala no válido";
 
+    const emitGearCommand = async (eventName) => { if (client) await client.emit(eventName, {}); };
     const emitGearChange = async (direction) => {
       if (!client) return;
       try {
@@ -296,6 +297,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     document.getElementById("btn-remote-gear-up")?.addEventListener("click", () => emitGearChange("up"));
     document.getElementById("btn-remote-gear-down")?.addEventListener("click", () => emitGearChange("down"));
+    document.getElementById("btn-remote-pause")?.addEventListener("click", () => emitGearCommand("TOGGLE_PAUSE"));
+    document.getElementById("btn-remote-stop")?.addEventListener("click", () => {
+      if (window.confirm("¿Finalizar la sesión?")) void emitGearCommand("STOP_SESSION");
+    });
     void client?.connect().then(() => client.enterPresence("remote")).catch((error) => {
       if (status) {
         status.textContent = error?.message?.includes("Falta configurar")
@@ -1181,6 +1186,7 @@ function calculateNormalizedPowerFromValues(values) {
 function startCountdown(onComplete, duration) {
   // Reset forzado antes de empezar para evitar bloqueos
   state.isCountdownActive = true;
+  toggleRemoteRoomPanel(false);
 
   const countdownOverlay = document.getElementById("workout-countdown-overlay");
   const countdownText = document.getElementById("countdown-text");
@@ -1574,6 +1580,14 @@ function initializeRemoteRoomPanel() {
       activeRemoteRoomClient?.on("CHANGE_GEAR", ({ direction }) => {
         toggleRemoteRoomPanel(false);
         changeVirtualGear(direction === "up" ? 1 : -1);
+      });
+      activeRemoteRoomClient?.on("TOGGLE_PAUSE", () => {
+        toggleRemoteRoomPanel(false);
+        togglePause();
+      });
+      activeRemoteRoomClient?.on("STOP_SESSION", () => {
+        toggleRemoteRoomPanel(false);
+        void stopSessionFlow();
       });
       activeRemoteRoomClient?.onPresence("enter", (member) => {
         if (member?.data === "remote" || member?.clientId === "remote") {
