@@ -1,0 +1,9 @@
+{
+  "uuid": "dce8aa97-5263-4f03-a4e6-aac4de15799d",
+  "name": "DR",
+  "weight": 120,
+  "ftp": 200,
+  "maxHeartRate": 190,
+  "age": 49,
+  "height": 192
+}
