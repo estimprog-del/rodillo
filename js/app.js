@@ -43,6 +43,7 @@ let fpvAnimationFrame = null;
 let fpvDebugCalls = 0;
 let lastFpvDebugState = "";
 let mapReadyInstance = null;
+let workoutHudResizeObserver = null;
 
 function logFpvDebug(message, details = {}) {
   const stateKey = `${message}:${JSON.stringify(details)}`;
@@ -271,6 +272,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   function initializeRemoteController() {
+    document.documentElement.classList.add("remote-route");
+    document.body.classList.add("remote-route");
     document.querySelectorAll(".screen").forEach((screen) => {
       screen.classList.remove("active");
     });
@@ -280,6 +283,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     const status = document.getElementById("remote-status");
     const label = document.getElementById("remote-room-label");
     const client = roomId ? new RemoteRoomClient(roomId) : null;
+    let remoteWakeLock = null;
+    const requestRemoteWakeLock = async () => {
+      if (!("wakeLock" in navigator) || document.visibilityState !== "visible") return;
+      try {
+        remoteWakeLock = await navigator.wakeLock.request("screen");
+        remoteWakeLock.addEventListener("release", () => {
+          remoteWakeLock = null;
+        }, { once: true });
+      } catch (error) {
+        console.warn("[Mando móvil] No se pudo mantener la pantalla activa:", error);
+      }
+    };
+    void requestRemoteWakeLock();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") void requestRemoteWakeLock();
+    });
+    const requestRemoteFullscreen = () => {
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        void document.documentElement.requestFullscreen().catch(() => {});
+      }
+    };
+    requestRemoteFullscreen();
+    document.addEventListener("click", requestRemoteFullscreen, { once: true });
 
     if (label) label.textContent = roomId ? `Sala: ${roomId}` : "Falta el identificador de sala";
     if (status) status.textContent = client ? "Mando preparado" : "Enlace de sala no válido";
@@ -296,13 +322,42 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     };
 
+    const showRemoteSummary = (summary) => {
+      const controls = document.getElementById("remote-controls");
+      const panel = document.getElementById("remote-summary");
+      if (!controls || !panel) return;
+      controls.hidden = true;
+      panel.hidden = false;
+      const values = {
+        "remote-summary-duration": summary.duration || "--",
+        "remote-summary-distance": `${Number(summary.distance || 0).toFixed(2)} km`,
+        "remote-summary-speed": `${Number(summary.avgSpeed || 0).toFixed(1)} km/h`,
+        "remote-summary-max-speed": `${Number(summary.maxSpeed || 0).toFixed(1)} km/h`,
+        "remote-summary-power": `${Math.round(Number(summary.avgPower || 0))} W`,
+        "remote-summary-max-power": `${Math.round(Number(summary.maxPower || 0))} W`,
+        "remote-summary-hr": `${Math.round(Number(summary.avgHr || 0))} bpm`,
+        "remote-summary-max-hr": `${Math.round(Number(summary.maxHr || 0))} bpm`,
+        "remote-summary-ascent": `${Math.round(Number(summary.ascent || 0))} m`,
+        "remote-summary-calories": `${Math.round(Number(summary.calories || 0))} kcal`,
+        "remote-summary-training-load": `${Math.round(Number(summary.np || 0))} W / ${Math.round(Number(summary.tss || 0))}`,
+      };
+      Object.entries(values).forEach(([id, value]) => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = value;
+      });
+      if (status) status.textContent = "Sesión finalizada";
+    };
+
     document.getElementById("btn-remote-gear-up")?.addEventListener("click", () => emitGearChange("up"));
     document.getElementById("btn-remote-gear-down")?.addEventListener("click", () => emitGearChange("down"));
     document.getElementById("btn-remote-pause")?.addEventListener("click", () => emitGearCommand("TOGGLE_PAUSE"));
     document.getElementById("btn-remote-stop")?.addEventListener("click", () => {
       if (window.confirm("¿Finalizar la sesión?")) void emitGearCommand("STOP_SESSION");
     });
-    void client?.connect().then(() => client.enterPresence("remote")).catch((error) => {
+    void client?.connect().then(async () => {
+      client.on("SESSION_SUMMARY", showRemoteSummary);
+      await client.enterPresence("remote");
+    }).catch((error) => {
       if (status) {
         status.textContent = error?.message?.includes("Falta configurar")
           ? "Ably: no configurado"
@@ -595,6 +650,32 @@ function setWorkoutFontScale(increment) {
   // Aplicar
   viewport.style.setProperty("--workout-text-multiplier", newScale);
   localStorage.setItem("rodilloint_fontSize", newScale);
+  syncWorkoutSlopePosition();
+}
+
+function syncWorkoutSlopePosition() {
+  const viewport = document.querySelector(".workout-viewport");
+  const hud = document.getElementById("hud-top-bar");
+  if (!viewport || !hud) return;
+
+  viewport.style.setProperty(
+    "--workout-hud-height",
+    `${Math.ceil(hud.getBoundingClientRect().height)}px`,
+  );
+}
+
+function observeWorkoutHudSize() {
+  workoutHudResizeObserver?.disconnect();
+  const hud = document.getElementById("hud-top-bar");
+  if (!hud) return;
+
+  syncWorkoutSlopePosition();
+  if (typeof ResizeObserver === "undefined") return;
+
+  workoutHudResizeObserver = new ResizeObserver(() => {
+    syncWorkoutSlopePosition();
+  });
+  workoutHudResizeObserver.observe(hud);
 }
 
 // --- Funciones UI movidas a modules/ui.js ---
@@ -1240,6 +1321,7 @@ function enterWorkoutScreen() {
   initializeRemoteRoomPanel();
   applyWorkoutLayout();
   setElDisplay("hud-top-bar", "flex");
+  observeWorkoutHudSize();
   setElDisplay("hud-bottom-left", "flex");
   setElDisplay("hud-bottom-right-group", "flex");
   setElDisplay("elevation-chart-cursor", "none");
@@ -1251,6 +1333,7 @@ function enterWorkoutScreen() {
   state.totalDistance = 0.0;
   state.totalAscent = 0.0;
   state.currentRouteIndex = 0;
+  state.isMapFollowingRoute = state.mapInitialOrientation === "RUTA";
   state.currentSlope = 0.0;
   state.targetSlope = 0.0;
   state.virtualGear = state.virtualGearsEnabled
@@ -2027,7 +2110,6 @@ async function stopSessionFlow() {
   );
   if (!confirmStop) return;
 
-  disconnectRemoteRoom();
   if (state.timerInterval) {
     clearInterval(state.timerInterval);
     state.timerInterval = null;
@@ -2140,6 +2222,24 @@ async function stopSessionFlow() {
       timeInPowerZones: state.timeInPowerZones,
     });
 
+    if (activeRemoteRoomClient) {
+      await activeRemoteRoomClient.emit("SESSION_SUMMARY", {
+        duration,
+        distance: finalDistance,
+        avgSpeed,
+        maxSpeed,
+        avgPower,
+        maxPower,
+        avgHr,
+        maxHr,
+        ascent: state.totalAscent,
+        calories: state.calories,
+        np,
+        tss,
+      });
+    }
+    disconnectRemoteRoom();
+
     // Initial zones chart rendering
     ChartsManager.initZonesChart("summary-zones-chart", state.timeInPowerZones);
 
@@ -2190,6 +2290,7 @@ async function stopSessionFlow() {
 
     navigateTo("summary");
   } catch (e) {
+    disconnectRemoteRoom();
     setSessionSaveStatus("Error al guardar la sesión", "var(--accent-red)");
     console.error("Failed to close session", e);
     navigateTo("dashboard");

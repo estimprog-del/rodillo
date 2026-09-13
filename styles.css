@@ -83,6 +83,24 @@ body {
     overflow-x: hidden;
 }
 
+html.remote-route,
+body.remote-route {
+    width: 100%;
+    height: 100%;
+    min-height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+
+body.remote-route .screen {
+    width: 100%;
+    max-width: none;
+    min-height: 100dvh;
+    height: 100dvh;
+    padding: 0;
+    overflow: hidden;
+}
+
 /* SPA Screens Transitions */
 .screen {
     opacity: 0;
@@ -1636,7 +1654,7 @@ h4 {
         rgba(0, 0, 0, 0) 100%
     );
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     gap: 16px;
     padding: 10px 16px;
@@ -1671,6 +1689,28 @@ h4 {
     align-items: center;
     gap: 16px;
     flex-wrap: wrap;
+    justify-content: center;
+    margin: 0 auto;
+}
+
+/* Keep the metrics centered in the space left by the clock and sensor status. */
+.workout-viewport.layout-horizontal-1 .hud-top-bar {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: start;
+}
+
+.workout-viewport.layout-horizontal-1 .hud-left-group {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.workout-viewport.layout-horizontal-1 .hud-right-group {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: center;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .hud-top-bar .hud-sensor-bar {
@@ -1798,11 +1838,6 @@ h4 {
     filter: drop-shadow(0 0 5px #ffffff);
 }
 
-/* Push the HORA clock to the far left of the horizontal bar */
-.hud-top > .clock-session:first-child {
-    margin-right: auto;
-}
-
 .clock-session-time {
     background: rgba(0, 255, 204, 0.1);
     border: 1px solid rgba(0, 255, 204, 0.3);
@@ -1914,6 +1949,15 @@ h4 {
     color: white;
 }
 
+.workout-viewport #metrics-slope {
+    position: absolute;
+    top: calc(var(--workout-hud-height, 64px) + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 12;
+    margin: 0 !important;
+}
+
 .virtual-gear-control {
     display: flex;
     align-items: center;
@@ -1991,23 +2035,40 @@ h4 {
 
 .remote-controller {
     width: min(100%, 440px);
-    margin: auto;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0 auto;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    justify-content: center;
+    gap: clamp(8px, 2vh, 18px);
     text-align: center;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: manipulation;
 }
 
 .remote-controller h1 {
-    font-size: clamp(28px, 8vw, 48px);
+    margin: 0;
+    font-size: clamp(24px, 7vw, 42px);
 }
 
 .remote-controller p {
+    margin: 0;
     color: var(--text-secondary);
 }
 
+#remote-controls {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(8px, 2vh, 18px);
+    min-height: 0;
+}
+
 .remote-gear-button {
-    min-height: 28vh;
+    min-height: clamp(100px, 28vh, 260px);
     border: 0;
     border-radius: 24px;
     color: #ffffff;
@@ -2066,6 +2127,35 @@ h4 {
 
 .remote-status {
     min-height: 1.5em;
+}
+
+.remote-summary {
+    width: 100%;
+    padding: 18px;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 18px;
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.remote-summary h2 {
+    margin: 0 0 14px;
+    font-size: clamp(22px, 6vw, 32px);
+}
+
+.remote-summary-grid {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px 16px;
+    text-align: left;
+}
+
+.remote-summary-grid span {
+    color: var(--text-secondary);
+}
+
+.remote-summary-grid strong {
+    text-align: right;
 }
 
 .mini-profile-card {

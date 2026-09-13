@@ -55,6 +55,7 @@ export const state = {
   realismFactor: 1.0,
   mapType: 'maplibre',
   mapViewMode: '3D_AEREO',
+  mapInitialOrientation: 'NORTE',
   workoutLayout: 'auto',
   workoutLayouts: {},
   workoutPanels: { virtual: true, progress: true, elevation: true, upcoming: true, remote: true },
@@ -91,6 +92,7 @@ export function saveStateToLocalStorage() {
     realismFactor: state.realismFactor,
     mapType: state.mapType,
     mapViewMode: state.mapViewMode,
+    mapInitialOrientation: state.mapInitialOrientation,
     workoutLayout: state.workoutLayout,
     workoutLayouts: state.workoutLayouts,
     workoutPanelsByUser: state.workoutPanelsByUser,
@@ -123,6 +125,9 @@ export function loadStateFromLocalStorage() {
     state.mapViewMode = ['2D', '3D_AEREO', '3D_FPV'].includes(parsed.mapViewMode)
       ? parsed.mapViewMode
       : state.mapType === 'leaflet' ? '2D' : '3D_AEREO';
+    state.mapInitialOrientation = ['NORTE', 'RUTA'].includes(parsed.mapInitialOrientation)
+      ? parsed.mapInitialOrientation
+      : 'NORTE';
     state.workoutLayout = parsed.workoutLayout || 'auto';
     state.workoutLayouts = parsed.workoutLayouts || {};
     state.workoutPanelsByUser = parsed.workoutPanelsByUser || {};

@@ -20,8 +20,8 @@
 
         <!-- MapLibre 3D CSS -->
         <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-      <script type="module" crossorigin src="./assets/index-YhiXAAds.js"></script>
-      <link rel="stylesheet" crossorigin href="./assets/index-CayfVsLS.css">
+      <script type="module" crossorigin src="./assets/index-CRlh3GMF.js"></script>
+      <link rel="stylesheet" crossorigin href="./assets/index-BgNdip7E.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -500,13 +500,6 @@
                                 🗺️ 3D Aéreo
                             </button>
 
-                            <div
-                                class="slope-box glass-card"
-                                id="metrics-slope"
-                                style="margin-top: 5px;"
-                            >
-                                ⛰️ 0.0%
-                            </div>
                             <div class="virtual-gear-control glass-card" id="virtual-gear-control">
                                 <button class="btn-control remote-room-open-button" id="btn-open-remote-room" title="Mostrar mando móvil">📱</button>
                                 <button class="btn-control virtual-gear-button" id="btn-gear-down" title="Bajar marcha">− Marcha</button>
@@ -555,6 +548,13 @@
                                 <div id="elevation-chart"></div>
                                 <div id="elevation-chart-cursor"></div>
                             </div>
+                        </div>
+
+                        <div
+                            class="slope-box glass-card"
+                            id="metrics-slope"
+                        >
+                            ⛰️ 0.0%
                         </div>
                     </div>
 
@@ -756,11 +756,29 @@
                 <div class="remote-controller">
                     <h1>Mando virtual</h1>
                     <p id="remote-room-label">Sala: --</p>
-                    <button class="remote-gear-button remote-gear-up" id="btn-remote-gear-up">Subir Marcha</button>
-                    <button class="remote-gear-button remote-gear-down" id="btn-remote-gear-down">Bajar Marcha</button>
-                    <div class="remote-session-actions">
-                        <button class="remote-session-button remote-pause-button" id="btn-remote-pause">Pausa / Reanudar</button>
-                        <button class="remote-session-button remote-stop-button" id="btn-remote-stop">Finalizar sesión</button>
+                    <div id="remote-controls">
+                        <button class="remote-gear-button remote-gear-up" id="btn-remote-gear-up">Subir Marcha</button>
+                        <button class="remote-gear-button remote-gear-down" id="btn-remote-gear-down">Bajar Marcha</button>
+                        <div class="remote-session-actions">
+                            <button class="remote-session-button remote-pause-button" id="btn-remote-pause">Pausa / Reanudar</button>
+                            <button class="remote-session-button remote-stop-button" id="btn-remote-stop">Finalizar sesión</button>
+                        </div>
+                    </div>
+                    <div class="remote-summary" id="remote-summary" hidden>
+                        <h2>Sesión finalizada</h2>
+                        <div class="remote-summary-grid">
+                            <span>Tiempo</span><strong id="remote-summary-duration">--</strong>
+                            <span>Distancia</span><strong id="remote-summary-distance">--</strong>
+                            <span>Velocidad media</span><strong id="remote-summary-speed">--</strong>
+                            <span>Velocidad máxima</span><strong id="remote-summary-max-speed">--</strong>
+                            <span>Potencia media</span><strong id="remote-summary-power">--</strong>
+                            <span>Potencia máxima</span><strong id="remote-summary-max-power">--</strong>
+                            <span>Pulso medio</span><strong id="remote-summary-hr">--</strong>
+                            <span>Pulso máximo</span><strong id="remote-summary-max-hr">--</strong>
+                            <span>Desnivel</span><strong id="remote-summary-ascent">--</strong>
+                            <span>Calorías</span><strong id="remote-summary-calories">--</strong>
+                            <span>NP / TSS</span><strong id="remote-summary-training-load">--</strong>
+                        </div>
                     </div>
                     <p class="remote-status" id="remote-status">Conexión pendiente</p>
                 </div>
@@ -1533,14 +1551,22 @@
             <button id="btn-close-settings" style="background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 5px 15px; border-radius: 8px; cursor: pointer; font-size: 0.9rem;">Cerrar</button>
           </div>
           <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-              <label style="font-size: 0.9rem; opacity: 0.8;">Mapa por defecto:</label>
-              <select id="setting-map-type" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
-                <option value="leaflet">Leaflet (2D)</option>
-                <option value="maplibre">MapLibre (3D)</option>
-                <option value="mapFPV">MapFPV (3D)</option>
-
-              </select>
+            <div style="display: flex; gap: 10px;">
+              <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
+                <label style="font-size: 0.9rem; opacity: 0.8;">Mapa por defecto:</label>
+                <select id="setting-map-type" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+                  <option value="leaflet">Leaflet (2D)</option>
+                  <option value="maplibre">MapLibre (3D)</option>
+                  <option value="mapFPV">MapFPV (3D)</option>
+                </select>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
+                <label for="setting-map-orientation" style="font-size: 0.9rem; opacity: 0.8;">Orientación inicial:</label>
+                <select id="setting-map-orientation" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+                  <option value="NORTE">Norte</option>
+                  <option value="RUTA">Ruta</option>
+                </select>
+              </div>
             </div>
             <div style="display: flex; flex-direction: column; gap: 8px;">
               <label for="setting-workout-layout" style="font-size: 0.9rem; opacity: 0.8;">Diseño de pantalla de entrenamiento:</label>

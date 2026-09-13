@@ -1,7 +1,12 @@
 import * as Ably from "ably";
 
 const ABLY_API_KEY = import.meta.env.VITE_ABLY_API_KEY || "";
-const SUPPORTED_EVENTS = new Set(["CHANGE_GEAR", "TOGGLE_PAUSE", "STOP_SESSION"]);
+const SUPPORTED_EVENTS = new Set([
+  "CHANGE_GEAR",
+  "TOGGLE_PAUSE",
+  "STOP_SESSION",
+  "SESSION_SUMMARY",
+]);
 
 /**
  * Ably-backed room client. The public browser key must be restricted in Ably

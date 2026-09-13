@@ -93,6 +93,8 @@ export function bindEvents(handlers) {
           }
           
           document.getElementById("setting-map-type").value = mapTypeValue;
+          document.getElementById("setting-map-orientation").value =
+            state.mapInitialOrientation || "NORTE";
           document.getElementById("setting-workout-layout").value = state.workoutLayout || 'auto';
           document.getElementById("setting-font-scale").value = state.fontScale || 1.0;
           
@@ -141,6 +143,10 @@ export function bindEvents(handlers) {
         } else {
           state.mapViewMode = "3D_AEREO";
         }
+        state.mapInitialOrientation =
+          document.getElementById("setting-map-orientation").value === "RUTA"
+            ? "RUTA"
+            : "NORTE";
 
         state.workoutLayout = document.getElementById("setting-workout-layout").value;
         state.fontScale = parseFloat(document.getElementById("setting-font-scale").value);
