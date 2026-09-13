@@ -47,7 +47,7 @@ export function bindEvents(handlers) {
 
   document.body.addEventListener("click", (e) => {
     const target = e.target.closest(
-      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-cycle-layout, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, #btn-export-csv, [id^='btn-export-csv-'], [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-toggle-3d, #btn-toggle-manual-mode",
+      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-cycle-layout, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, #btn-export-csv, [id^='btn-export-csv-'], [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-history-back-top, #btn-stats-back-top, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-toggle-3d, #btn-toggle-manual-mode",
     );
 
     if (!target) return;
@@ -196,10 +196,12 @@ export function bindEvents(handlers) {
       }
       if (id === "btn-go-history") navigateTo("history");
       if (id === "btn-history-back") navigateTo("dashboard");
+      if (id === "btn-history-back-top") navigateTo("dashboard");
       if (id === "btn-go-progress") navigateTo("stats");
       if (id === "btn-logout") handleLogout();
       if (id === "btn-connections-back") navigateTo("dashboard");
       if (id === "btn-stats-back") navigateTo("dashboard");
+      if (id === "btn-stats-back-top") navigateTo("dashboard");
 
       // Modos
       if (id === "mode-route") {

@@ -143,6 +143,7 @@ async function insertSession(session) {
       startTime: session.startTime || Date.now(),
       endTime: null,
       gpxPath: session.gpxPath || null,
+      routeName: session.routeName || session.gpxPath || null,
       totalDistance: 0.0,
       averageSpeed: 0.0,
       averagePower: 0,

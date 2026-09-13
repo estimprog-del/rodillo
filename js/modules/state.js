@@ -50,6 +50,7 @@ export const state = {
   routeTotalAscent: 0,
   currentRouteIndex: 0,
   routeLoadedFromHistory: false,
+  routeName: "",
   map: null,
   clockInterval: null,
   realismFactor: 1.0,
@@ -100,7 +101,6 @@ export function saveStateToLocalStorage() {
     fontScale: state.fontScale,
     sensorSmoothing: state.sensorSmoothing,
     powerZones: state.powerZones,
-    powerZones: state.powerZones,
     countdownDuration: state.countdownDuration,
     startOnMovement: state.startOnMovement,
     manualMode: state.manualMode,
@@ -147,7 +147,12 @@ export function loadStateFromLocalStorage() {
       : false;
     state.fontScale = parsed.fontScale || 1.0;
     state.sensorSmoothing = parsed.sensorSmoothing || 3000;
-    state.powerZones = parsed.powerZones || [55, 75, 88, 95, 106];
+    const defaultPowerZones = [55, 75, 88, 95, 106];
+    state.powerZones = Array.isArray(parsed.powerZones) &&
+      parsed.powerZones.length === defaultPowerZones.length &&
+      parsed.powerZones.every((value) => Number.isFinite(Number(value)))
+      ? parsed.powerZones.map(Number)
+      : defaultPowerZones;
     state.countdownDuration = parsed.countdownDuration || 3;
     state.startOnMovement = parsed.startOnMovement !== undefined ? parsed.startOnMovement : false;
     state.manualMode = parsed.manualMode || 'SLOPE';

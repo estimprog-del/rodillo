@@ -118,6 +118,25 @@ body.remote-route .screen {
     opacity: 1;
 }
 
+.page-heading-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 6px;
+}
+
+.page-heading-row h2 {
+    margin: 0;
+    font-size: 28px;
+}
+
+.page-heading-back {
+    flex: 0 0 auto;
+    padding: 9px 14px;
+    white-space: nowrap;
+}
+
 /* General Layout Elements */
 h1,
 h2,

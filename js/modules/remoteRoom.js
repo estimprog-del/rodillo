@@ -6,6 +6,7 @@ const SUPPORTED_EVENTS = new Set([
   "TOGGLE_PAUSE",
   "STOP_SESSION",
   "SESSION_SUMMARY",
+  "REMOTE_ACCESS_DENIED",
 ]);
 
 /**
@@ -13,8 +14,9 @@ const SUPPORTED_EVENTS = new Set([
  * to publish/subscribe only on channels matching `rodilloint:*`.
  */
 export class RemoteRoomClient {
-  constructor(roomId) {
+  constructor(roomId, clientId = "rodilloint-client") {
     this.roomId = roomId;
+    this.clientId = clientId;
     this.client = null;
     this.channel = null;
     this.cleanups = [];
@@ -25,7 +27,10 @@ export class RemoteRoomClient {
       throw new Error("Falta configurar VITE_ABLY_API_KEY.");
     }
 
-    this.client = new Ably.Realtime({ key: ABLY_API_KEY });
+    this.client = new Ably.Realtime({
+      key: ABLY_API_KEY,
+      clientId: this.clientId,
+    });
     this.channel = this.client.channels.get(`rodilloint:${this.roomId}`);
 
     await new Promise((resolve, reject) => {
@@ -47,7 +52,7 @@ export class RemoteRoomClient {
 
   on(eventName, handler) {
     if (!SUPPORTED_EVENTS.has(eventName) || !this.channel) return () => {};
-    this.channel.subscribe(eventName, (message) => handler(message.data));
+    this.channel.subscribe(eventName, (message) => handler(message.data, message));
     const unsubscribe = () => this.channel?.unsubscribe(eventName);
     this.cleanups.push(unsubscribe);
     return unsubscribe;
@@ -73,7 +78,12 @@ export class RemoteRoomClient {
 
   async emit(eventName, payload) {
     if (!SUPPORTED_EVENTS.has(eventName) || !this.channel) return;
-    await this.channel.publish(eventName, payload);
+    const senderId = this.client?.connection?.id || null;
+    await this.channel.publish(eventName, { ...payload, senderId });
+  }
+
+  getConnectionId() {
+    return this.client?.connection?.id || null;
   }
 
   disconnect() {

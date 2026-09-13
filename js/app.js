@@ -44,12 +44,35 @@ let fpvDebugCalls = 0;
 let lastFpvDebugState = "";
 let mapReadyInstance = null;
 let workoutHudResizeObserver = null;
+let countdownTimer = null;
+let countdownFinishTimer = null;
+let movementWaitTimer = null;
 
 function logFpvDebug(message, details = {}) {
   const stateKey = `${message}:${JSON.stringify(details)}`;
   if (stateKey === lastFpvDebugState) return;
   lastFpvDebugState = stateKey;
   console.debug(`[FPV] ${message}`, details);
+}
+
+async function renameHistoryRoute(id) {
+  try {
+    const session = await DbManager.getSessionById(id);
+    if (!session || !session.gpxPath) return;
+    const currentName = session.routeName || session.gpxPath;
+    const newName = prompt("Nombre de la ruta:", currentName);
+    if (newName === null) return;
+    const routeName = newName.trim();
+    if (!routeName) {
+      alert("El nombre de la ruta no puede estar vacío.");
+      return;
+    }
+    await DbManager.updateSession({ ...session, routeName });
+    await loadHistoryList();
+  } catch (error) {
+    console.error("Error renombrando la ruta histórica:", error);
+    alert("No se pudo cambiar el nombre de la ruta.");
+  }
 }
 
 function getMapSdk() {
@@ -282,7 +305,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const roomId = getRemoteRoomId();
     const status = document.getElementById("remote-status");
     const label = document.getElementById("remote-room-label");
-    const client = roomId ? new RemoteRoomClient(roomId) : null;
+    const client = roomId ? new RemoteRoomClient(roomId, "remote") : null;
+    let authorizedRemoteId = null;
     let remoteWakeLock = null;
     const requestRemoteWakeLock = async () => {
       if (!("wakeLock" in navigator) || document.visibilityState !== "visible") return;
@@ -348,22 +372,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (status) status.textContent = "Sesión finalizada";
     };
 
+    const showRemoteAccessDenied = (payload) => {
+      if (payload?.targetSenderId &&
+          payload.targetSenderId !== client?.getConnectionId()) {
+        return;
+      }
+      document.getElementById("remote-controls")?.setAttribute("hidden", "");
+      if (status) status.textContent = "Mando no autorizado: ya hay otro conectado";
+    };
+
     document.getElementById("btn-remote-gear-up")?.addEventListener("click", () => emitGearChange("up"));
     document.getElementById("btn-remote-gear-down")?.addEventListener("click", () => emitGearChange("down"));
     document.getElementById("btn-remote-pause")?.addEventListener("click", () => emitGearCommand("TOGGLE_PAUSE"));
     document.getElementById("btn-remote-stop")?.addEventListener("click", () => {
       if (window.confirm("¿Finalizar la sesión?")) void emitGearCommand("STOP_SESSION");
-    });
-    void client?.connect().then(async () => {
-      client.on("SESSION_SUMMARY", showRemoteSummary);
-      await client.enterPresence("remote");
-    }).catch((error) => {
-      if (status) {
-        status.textContent = error?.message?.includes("Falta configurar")
-          ? "Ably: no configurado"
-          : "Ably: credencial rechazada";
-      }
-      console.error("[Mando móvil] No se pudo conectar con Ably:", error);
     });
   }
 
@@ -693,6 +715,7 @@ async function loadProfilesGrid() {
         <span style="font-size: 13px;">Crea tu primer perfil deportista para comenzar.</span>
       </div>
     `;
+
     return;
   }
 
@@ -720,6 +743,9 @@ async function loadProfilesGrid() {
       <div class="user-name">${u.name}</div>
       <div class="user-meta">${u.weight} kg • FTP ${u.ftp}W</div>
     `;
+
+      const routeNameElement = card.querySelector(`#history-route-name-${s.id}`);
+      if (routeNameElement) routeNameElement.textContent = `(${routeName})`;
 
     const deleteBtn = card.querySelector(".user-card-delete");
     deleteBtn.onclick = (e) => {
@@ -1090,6 +1116,8 @@ function onPowerReceived(power) {
     console.log("Movimiento detectado, iniciando cuenta atrás...");
     state.isWaitingForMovement = false;
     startCountdown(() => {
+      state.lastTelemetryTimestamp = Date.now();
+      state.lastTelemetrySpeed = state.currentSpeed || 0;
       startTimerInterval();
       updatePauseButton("⏸ Pausa");
     }, state.countdownDuration || 3);
@@ -1255,6 +1283,7 @@ function calculateNormalizedPowerFromValues(values) {
 
 // --- Countdown Timer ---
 function startCountdown(onComplete, duration) {
+  cancelCountdown();
   // Reset forzado antes de empezar para evitar bloqueos
   state.isCountdownActive = true;
   toggleRemoteRoomPanel(true);
@@ -1294,18 +1323,20 @@ function startCountdown(onComplete, duration) {
   };
 
   // Intervalo solo para actualizar la UI
-  const timer = setInterval(() => {
+  countdownTimer = setInterval(() => {
     count--;
     if (count > 0) {
       countdownText.textContent = count;
       // Pitido para 3, 2, 1
       if (count <= 3) playBeep(880);
     } else {
-      clearInterval(timer);
+      clearInterval(countdownTimer);
+      countdownTimer = null;
       countdownText.textContent = "¡Listo!";
       // Pitido final
       playBeep(1200);
-      setTimeout(() => {
+      countdownFinishTimer = setTimeout(() => {
+        countdownFinishTimer = null;
         countdownOverlay.style.display = "none";
         toggleRemoteRoomPanel(false);
         state.isCountdownActive = false;
@@ -1313,7 +1344,27 @@ function startCountdown(onComplete, duration) {
         if (onComplete) onComplete();
       }, 1000);
     }
+
   }, 1000);
+}
+
+function cancelCountdown() {
+  if (countdownTimer !== null) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+  if (countdownFinishTimer !== null) {
+    clearTimeout(countdownFinishTimer);
+    countdownFinishTimer = null;
+  }
+  if (movementWaitTimer !== null) {
+    clearTimeout(movementWaitTimer);
+    movementWaitTimer = null;
+  }
+  state.isCountdownActive = false;
+  const overlay = document.getElementById("workout-countdown-overlay");
+  if (overlay) overlay.style.display = "none";
+  toggleRemoteRoomPanel(false);
 }
 
 // --- WORKOUT SCREEN ACTIVATION ---
@@ -1461,6 +1512,7 @@ async function handleGpxUpload(e) {
   }
 
   state.gpxFilename = file.name;
+  state.routeName = file.name.replace(/\.(gpx|tcx)$/i, "");
   state.routeLoadedFromHistory = false;
   const label = document.getElementById("gpx-filename-label");
   const btnPick = document.getElementById("btn-trigger-gpx-pick");
@@ -1649,19 +1701,26 @@ function initializeRemoteRoomPanel() {
   activeRemoteRoomClient?.disconnect();
   const roomId = createRoomId();
   const remoteUrl = buildRemoteUrl(roomId);
-  activeRemoteRoomClient = new RemoteRoomClient(roomId);
+  activeRemoteRoomClient = new RemoteRoomClient(roomId, "host");
+  let authorizedRemoteId = null;
   status.textContent = "Ably: conectando...";
   void activeRemoteRoomClient.connect()
     .then(() => {
-      activeRemoteRoomClient?.on("CHANGE_GEAR", ({ direction }) => {
+      const isAuthorized = (payload) =>
+        payload?.senderId && payload.senderId === authorizedRemoteId;
+      activeRemoteRoomClient?.on("CHANGE_GEAR", (payload) => {
+        if (!isAuthorized(payload)) return;
+        const { direction } = payload;
         toggleRemoteRoomPanel(false);
         changeVirtualGear(direction === "up" ? 1 : -1);
       });
-      activeRemoteRoomClient?.on("TOGGLE_PAUSE", () => {
+      activeRemoteRoomClient?.on("TOGGLE_PAUSE", (payload) => {
+        if (!isAuthorized(payload)) return;
         toggleRemoteRoomPanel(false);
         togglePause();
       });
-      activeRemoteRoomClient?.on("STOP_SESSION", () => {
+      activeRemoteRoomClient?.on("STOP_SESSION", (payload) => {
+        if (!isAuthorized(payload)) return;
         toggleRemoteRoomPanel(false);
         if (state.isSessionActive && !state.isPaused) {
           pauseTimer();
@@ -1669,9 +1728,22 @@ function initializeRemoteRoomPanel() {
         void stopSessionFlow();
       });
       activeRemoteRoomClient?.onPresence("enter", (member) => {
+        if (member.clientId !== "remote") return;
+        const remoteId = member.connectionId || member.key || member.clientId;
+        if (!authorizedRemoteId) {
+          authorizedRemoteId = remoteId;
+          status.textContent = "Mando conectado";
+          toggleRemoteRoomPanel(false);
+          return;
+        }
+        if (remoteId !== authorizedRemoteId) {
+          void activeRemoteRoomClient?.emit("REMOTE_ACCESS_DENIED", {
+            targetSenderId: remoteId,
+          });
+        }
         toggleRemoteRoomPanel(false);
-        status.textContent = "Mando conectado";
       });
+      void activeRemoteRoomClient.enterPresence("host");
       status.textContent = "Ably: conectado";
     })
     .catch((error) => {
@@ -1746,6 +1818,9 @@ async function startSession() {
       routeTotalAscent: state.currentMode === "ROUTE"
         ? state.routeTotalAscent
         : 0,
+      routeName: state.currentMode === "ROUTE"
+        ? (state.routeName || state.gpxFilename || "Ruta")
+        : null,
       virtualGear: state.virtualGear,
       gearRatio: getVirtualGearRatio(state.virtualGear),
     });
@@ -1803,11 +1878,12 @@ async function startSession() {
 
         // Usamos una función para comprobar el estado
         const checkMovement = () => {
+          movementWaitTimer = null;
           if (state.currentPower > 5 || state.currentSpeed > 0.5) {
             runCountdown();
           } else {
             // Reintentar en 1 segundo si aún no hay movimiento
-            setTimeout(checkMovement, 1000);
+            movementWaitTimer = setTimeout(checkMovement, 1000);
           }
         };
 
@@ -1925,6 +2001,8 @@ function pauseTimer() {
   state.isPaused = true;
   state.lastPauseTime = Date.now(); // Marcamos cuándo empezamos a pausar
   state.lastSlopeRampTime = Date.now();
+  state.lastTelemetryTimestamp = Date.now();
+  state.lastTelemetrySpeed = state.currentSpeed || 0;
 
   updatePauseButton("▶ Reanudar", "resume");
   if (state.isAutoPaused) {
@@ -1944,6 +2022,8 @@ function resumeTimer() {
   state.lastSpeedUpdateTime = Date.now();
   state.lastMovementTime = Date.now();
   state.lastSlopeRampTime = Date.now();
+  state.lastTelemetryTimestamp = Date.now();
+  state.lastTelemetrySpeed = state.currentSpeed || 0;
 
   updatePauseButton("⏸ Pausa");
   setElDisplay("workout-autopause-label", "none");
@@ -2099,6 +2179,7 @@ function setSessionSaveStatus(message, color = "var(--text-secondary)") {
 }
 
 async function stopSessionFlow() {
+  cancelCountdown();
   if (!state.isSessionActive) {
     disconnectRemoteRoom();
     navigateTo("dashboard");
@@ -3281,6 +3362,7 @@ async function loadHistoryList() {
 
       const modeText = s.gpxPath ? "Ruta" : "Manual";
       const modeClass = s.gpxPath ? "route" : "manual";
+      const routeName = s.routeName || s.gpxPath || "Ruta";
 
       const card = document.createElement("div");
       card.className = "glass-card history-item";
@@ -3288,7 +3370,7 @@ async function loadHistoryList() {
       card.innerHTML = `
         <div class="history-date-box">
           <span class="history-date">${date}</span>
-          <span class="history-type ${modeClass}">Modo: ${modeText} ${s.gpxPath ? `(${s.gpxPath})` : ""}</span>
+          <span class="history-type ${modeClass}">Modo: ${modeText} <span class="history-route-name" id="history-route-name-${s.id}"></span></span>
         </div>
 
         <div class="history-stats-row">
@@ -3311,6 +3393,7 @@ async function loadHistoryList() {
           ${Array.isArray(s.routePoints) && s.routePoints.length > 0
             ? `<button class="btn btn-primary history-repeat-route" id="btn-repeat-${s.id}">Repetir ruta</button>`
             : ""}
+          ${s.gpxPath ? `<button class="btn btn-dark history-rename-route" id="btn-rename-${s.id}">Renombrar</button>` : ""}
           <button class="btn btn-secondary" id="btn-export-csv-${s.id}">CSV</button>
           <button class="btn btn-danger" style="padding: 6px 12px; font-size: 11px; border-radius: 8px;" id="btn-del-${s.id}">❌</button>
           </div>
@@ -3332,6 +3415,13 @@ async function loadHistoryList() {
         e.stopPropagation();
         downloadSpecificHistoryCsv(s.id);
       };
+      const renameButton = card.querySelector(`#btn-rename-${s.id}`);
+      if (renameButton) {
+        renameButton.onclick = (e) => {
+          e.stopPropagation();
+          renameHistoryRoute(s.id);
+        };
+      }
 
       // Open the same summary screen used after finishing a live session
       card.onclick = () => openHistoricalSessionSummary(s.id);
@@ -3353,6 +3443,7 @@ async function repeatRouteFromHistory(id) {
 
     state.currentMode = "ROUTE";
     state.gpxFilename = session.gpxPath || `Ruta histórica ${id}.gpx`;
+    state.routeName = session.routeName || session.gpxPath || `Ruta histórica ${id}`;
     state.routePoints = session.routePoints.map((point) => ({
       lat: Number(point.lat),
       lon: Number(point.lon),

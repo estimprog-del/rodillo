@@ -20,8 +20,8 @@
 
         <!-- MapLibre 3D CSS -->
         <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-      <script type="module" crossorigin src="./assets/index-CRlh3GMF.js"></script>
-      <link rel="stylesheet" crossorigin href="./assets/index-BgNdip7E.css">
+      <script type="module" crossorigin src="./assets/index-D-yIR0Nc.js"></script>
+      <link rel="stylesheet" crossorigin href="./assets/index-DG1iMQCV.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -1128,9 +1128,12 @@
 
         <!-- 6. SCREEN: HISTORY -->
         <div id="screen-history" class="screen">
-            <h2 style="font-size: 28px; margin-bottom: 6px">
-                Historial de Entrenamientos
-            </h2>
+            <div class="page-heading-row">
+                <h2>Historial de Entrenamientos</h2>
+                <button class="btn btn-dark page-heading-back" id="btn-history-back-top">
+                    ← Volver
+                </button>
+            </div>
             <p style="color: var(--text-secondary); margin-bottom: 20px">
                 Revisa las sesiones de rodillo registradas con tu perfil.
             </p>
@@ -1165,9 +1168,12 @@
 
         <!-- 7. SCREEN: STATS -->
         <div id="screen-stats" class="screen">
-            <h2 style="font-size: 28px; margin-bottom: 6px">
-                Progreso de Entrenamiento
-            </h2>
+            <div class="page-heading-row">
+                <h2>Progreso de Entrenamiento</h2>
+                <button class="btn btn-dark page-heading-back" id="btn-stats-back-top">
+                    ← Volver
+                </button>
+            </div>
             <p style="color: var(--text-secondary); margin-bottom: 24px">
                 Analíticas consolidadas de rendimiento del usuario.
             </p>
