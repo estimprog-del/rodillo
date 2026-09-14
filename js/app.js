@@ -251,8 +251,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  // Cargar estado guardado
-  loadStateFromLocalStorage();
+  // Cargar estado guardado sin bloquear el arranque si existe un valor corrupto.
+  try {
+    loadStateFromLocalStorage();
+  } catch (error) {
+    console.error("No se pudo restaurar el estado guardado:", error);
+    localStorage.removeItem("rodilloint_state");
+  }
 
   // Initialize Navigation
   const navigationCallbacks = {
@@ -421,6 +426,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   } catch (e) {
     console.error("Failed to init IndexedDB", e);
+    const container = document.getElementById("users-grid-container");
+    if (container) {
+      container.innerHTML = `
+        <div class="glass-card" style="text-align:center;padding:30px;color:var(--accent-red);">
+          No se pudieron cargar los perfiles guardados.
+        </div>
+      `;
+    }
   }
 
   // Expose state globally for easier debugging in DevTools console
@@ -1706,21 +1719,24 @@ function initializeRemoteRoomPanel() {
   status.textContent = "Ably: conectando...";
   void activeRemoteRoomClient.connect()
     .then(() => {
-      const isAuthorized = (payload) =>
-        payload?.senderId && payload.senderId === authorizedRemoteId;
-      activeRemoteRoomClient?.on("CHANGE_GEAR", (payload) => {
-        if (!isAuthorized(payload)) return;
+      const isAuthorized = (payload, message) =>
+        message?.clientId === "remote" &&
+        (!authorizedRemoteId ||
+          !payload?.senderId ||
+          payload.senderId === authorizedRemoteId);
+      activeRemoteRoomClient?.on("CHANGE_GEAR", (payload, message) => {
+        if (!isAuthorized(payload, message)) return;
         const { direction } = payload;
         toggleRemoteRoomPanel(false);
         changeVirtualGear(direction === "up" ? 1 : -1);
       });
-      activeRemoteRoomClient?.on("TOGGLE_PAUSE", (payload) => {
-        if (!isAuthorized(payload)) return;
+      activeRemoteRoomClient?.on("TOGGLE_PAUSE", (payload, message) => {
+        if (!isAuthorized(payload, message)) return;
         toggleRemoteRoomPanel(false);
         togglePause();
       });
-      activeRemoteRoomClient?.on("STOP_SESSION", (payload) => {
-        if (!isAuthorized(payload)) return;
+      activeRemoteRoomClient?.on("STOP_SESSION", (payload, message) => {
+        if (!isAuthorized(payload, message)) return;
         toggleRemoteRoomPanel(false);
         if (state.isSessionActive && !state.isPaused) {
           pauseTimer();
