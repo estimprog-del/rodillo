@@ -757,9 +757,6 @@ async function loadProfilesGrid() {
       <div class="user-meta">${u.weight} kg • FTP ${u.ftp}W</div>
     `;
 
-      const routeNameElement = card.querySelector(`#history-route-name-${s.id}`);
-      if (routeNameElement) routeNameElement.textContent = `(${routeName})`;
-
     const deleteBtn = card.querySelector(".user-card-delete");
     deleteBtn.onclick = (e) => {
       e.stopPropagation(); // Evita que se active el onclick de la tarjeta
@@ -3414,6 +3411,9 @@ async function loadHistoryList() {
           <button class="btn btn-danger" style="padding: 6px 12px; font-size: 11px; border-radius: 8px;" id="btn-del-${s.id}">❌</button>
           </div>
         `;
+
+      const routeNameElement = card.querySelector(`#history-route-name-${s.id}`);
+      if (routeNameElement) routeNameElement.textContent = `(${routeName})`;
 
       card.querySelector(`#btn-del-${s.id}`).onclick = (e) => {
         e.stopPropagation();
