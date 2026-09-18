@@ -392,6 +392,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-remote-stop")?.addEventListener("click", () => {
       if (window.confirm("¿Finalizar la sesión?")) void emitGearCommand("STOP_SESSION");
     });
+
+    if (client) {
+      void client.connect()
+        .then(() => {
+          client.on("SESSION_SUMMARY", showRemoteSummary);
+          client.on("REMOTE_ACCESS_DENIED", showRemoteAccessDenied);
+          if (status) status.textContent = "Mando conectado";
+        })
+        .catch((error) => {
+          console.error("[Mando móvil] No se pudo conectar con Ably:", error);
+          if (status) {
+            status.textContent = error?.message?.includes("Falta configurar")
+              ? "Ably: no configurado"
+              : "Ably: credencial rechazada";
+          }
+        });
+    }
   }
 
   // Init Database and listeners
@@ -1716,11 +1733,17 @@ function initializeRemoteRoomPanel() {
   status.textContent = "Ably: conectando...";
   void activeRemoteRoomClient.connect()
     .then(() => {
-      const isAuthorized = (payload, message) =>
-        message?.clientId === "remote" &&
-        (!authorizedRemoteId ||
-          !payload?.senderId ||
-          payload.senderId === authorizedRemoteId);
+      const isAuthorized = (payload, message) => {
+        if (message?.clientId !== "remote") return false;
+        const remoteId = message.connectionId || payload?.senderId || "remote";
+        if (!authorizedRemoteId) {
+          authorizedRemoteId = remoteId;
+          status.textContent = "Mando conectado";
+          toggleRemoteRoomPanel(false);
+          return true;
+        }
+        return remoteId === authorizedRemoteId;
+      };
       activeRemoteRoomClient?.on("CHANGE_GEAR", (payload, message) => {
         if (!isAuthorized(payload, message)) return;
         const { direction } = payload;
@@ -1740,23 +1763,6 @@ function initializeRemoteRoomPanel() {
         }
         void stopSessionFlow();
       });
-      activeRemoteRoomClient?.onPresence("enter", (member) => {
-        if (member.clientId !== "remote") return;
-        const remoteId = member.connectionId || member.key || member.clientId;
-        if (!authorizedRemoteId) {
-          authorizedRemoteId = remoteId;
-          status.textContent = "Mando conectado";
-          toggleRemoteRoomPanel(false);
-          return;
-        }
-        if (remoteId !== authorizedRemoteId) {
-          void activeRemoteRoomClient?.emit("REMOTE_ACCESS_DENIED", {
-            targetSenderId: remoteId,
-          });
-        }
-        toggleRemoteRoomPanel(false);
-      });
-      void activeRemoteRoomClient.enterPresence("host");
       status.textContent = "Ably: conectado";
     })
     .catch((error) => {
