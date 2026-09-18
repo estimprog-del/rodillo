@@ -2618,7 +2618,7 @@ h4 {
 
 /* Make the lower workout cards grow with the HUD text scale. */
 .workout-viewport .hud-bottom-left {
-    height: auto;
+    height: max(180px, calc(145px + 35px * var(--workout-text-multiplier))) !important;
     min-height: 0;
     box-sizing: border-box;
 }
