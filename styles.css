@@ -2644,6 +2644,58 @@ h4 {
     line-height: 1.15;
 }
 
+.help-intro {
+    max-width: 900px;
+    margin: -8px 0 24px;
+    color: var(--text-secondary);
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+.help-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    padding-bottom: 24px;
+}
+
+.help-card {
+    padding: 20px;
+    color: var(--text-primary);
+}
+
+.help-card h3 {
+    margin: 0 0 12px;
+    color: var(--accent-green);
+    font-size: 18px;
+}
+
+.help-card p,
+.help-card li {
+    color: var(--text-secondary);
+    line-height: 1.55;
+}
+
+.help-card p {
+    margin: 0 0 10px;
+}
+
+.help-card p:last-child {
+    margin-bottom: 0;
+}
+
+.help-card ol,
+.help-card ul {
+    margin: 0;
+    padding-left: 22px;
+}
+
+@media (max-width: 700px) {
+    .help-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .workout-viewport .elevation-profile-title > span,
 .workout-viewport .upcoming-profile-chart-title > span {
     min-width: 0;

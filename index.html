@@ -91,6 +91,13 @@
                     </button>
                     <button
                         class="btn btn-dark"
+                        id="btn-open-help"
+                        style="padding: 10px 14px"
+                    >
+                        ❓ Ayuda
+                    </button>
+                    <button
+                        class="btn btn-dark"
                         id="btn-logout"
                         style="
                             padding: 10px 14px;
@@ -214,7 +221,72 @@
                 </div>
             </div>
 
-            <!-- 3. SCREEN: CONNECTIONS -->
+        <!-- 3. SCREEN: HELP -->
+        <div id="screen-help" class="screen">
+            <div class="page-heading-row">
+                <h2>Ayuda y guía de uso</h2>
+                <button class="btn btn-dark page-heading-back" id="btn-help-back">← Volver</button>
+            </div>
+            <p class="help-intro">
+                RodilloInt es una aplicación web para entrenar en interior,
+                simular rutas y guardar la evolución de tus sesiones.
+            </p>
+            <div class="help-grid">
+                <article class="glass-card help-card">
+                    <h3>¿Para qué sirve?</h3>
+                    <p>Permite registrar velocidad, distancia, potencia, cadencia, pulso, desnivel y tiempo durante el entrenamiento.</p>
+                    <p>Los datos se guardan en este navegador y se asocian al perfil activo.</p>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Tipos de uso</h3>
+                    <p><strong>Nueva sesión:</strong> carga un GPX/TCX y sigue la ruta con el cambio automático de pendiente.</p>
+                    <p><strong>Sesión manual:</strong> entrena sin ruta y ajusta pendiente o potencia.</p>
+                    <p><strong>Rodillo tradicional:</strong> registra los sensores sin controlar la resistencia.</p>
+                    <p><strong>Rodillo Virtual:</strong> prueba la aplicación sin sensores físicos.</p>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Primeros pasos</h3>
+                    <ol>
+                        <li>Crea o selecciona un perfil.</li>
+                        <li>Revisa peso, FTP y frecuencia cardíaca máxima.</li>
+                        <li>Elige un modo de entrenamiento.</li>
+                        <li>Conecta los sensores o activa el Rodillo Virtual.</li>
+                        <li>Inicia la sesión y espera la cuenta atrás si está configurada.</li>
+                    </ol>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Ajustes importantes</h3>
+                    <p>En <strong>⚙️ Ajustes</strong> puedes elegir el mapa 2D/3D/FPV, la orientación Norte/Ruta, el diseño de pantalla y el tamaño del texto.</p>
+                    <p>También puedes configurar marchas virtuales, límites de pendiente, realismo, zonas de potencia y el inicio al detectar movimiento.</p>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Durante la sesión</h3>
+                    <p>La ficha <strong>Progreso Ruta</strong> muestra lo recorrido, lo restante y el desnivel. <strong>Prox 500m</strong> sirve de referencia para la pendiente próxima.</p>
+                    <p>Puedes pausar, reanudar, finalizar y cambiar de marcha desde la pantalla. La distancia y la velocidad media se calculan con el tiempo activo.</p>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Historial y progreso</h3>
+                    <p>Desde el historial puedes consultar sesiones, repetir rutas, renombrarlas y exportarlas a CSV. La pantalla Progreso muestra la evolución acumulada del perfil.</p>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Mando remoto</h3>
+                    <p>Abre el mando desde el botón 📱 de la sesión y escanea el código QR con otro dispositivo. Permite subir o bajar marcha, pausar, reanudar y finalizar.</p>
+                    <p>El mando necesita conexión a Internet y debe mantenerse abierta la pantalla de la sala.</p>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Si algo no funciona</h3>
+                    <ul>
+                        <li>Usa Chrome o Edge para Bluetooth.</li>
+                        <li>Comprueba los permisos Bluetooth del navegador.</li>
+                        <li>Activa el Rodillo Virtual para comprobar la aplicación sin sensores.</li>
+                        <li>Si el mando no responde, abre una sala nueva y recarga ambos dispositivos.</li>
+                        <li>No borres los datos del sitio si quieres conservar perfiles e historial.</li>
+                    </ul>
+                </article>
+            </div>
+        </div>
+
+            <!-- 4. SCREEN: CONNECTIONS -->
             <div id="screen-connections" class="screen">
                 <h2 style="font-size: 28px; margin-bottom: 6px">
                     Conexiones Bluetooth
@@ -1639,6 +1711,7 @@
             </div>
           </div>
           <div class="modal-footer" style="margin-top: 24px; display: flex; justify-content: flex-end;">
+            <button id="btn-settings-help" class="btn btn-dark" style="margin-right: auto; padding: 10px 16px; border-radius: 8px;">❓ Ayuda</button>
             <button id="btn-save-settings" class="btn btn-primary" style="padding: 10px 24px; border-radius: 8px; background: #10b981; border: none; color: white; font-weight: 600; cursor: pointer;">Guardar Cambios</button>
           </div>
         </div>

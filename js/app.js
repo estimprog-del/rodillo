@@ -479,6 +479,7 @@ function cacheUiElements() {
     "summary",
     "history",
     "stats",
+    "help",
   ].forEach((s) => {
     UI.screens[s] = document.getElementById(`screen-${s}`);
   });
