@@ -1243,6 +1243,173 @@ h4 {
     overflow-y: auto;
 }
 
+#modal-settings .modal-content {
+    width: min(760px, 94vw) !important;
+    max-width: 760px;
+}
+
+#modal-settings .modal-body {
+    max-height: min(72vh, 760px);
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+.backup-settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+    padding: 16px;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.65);
+}
+
+.backup-settings-heading h4 {
+    margin: 0 0 4px;
+    color: var(--text-primary);
+    font-size: 17px;
+}
+
+.backup-settings-heading p,
+.backup-help-text {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.backup-destination-card {
+    padding: 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.backup-destination-disabled {
+    opacity: 0.72;
+}
+
+.backup-destination-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+}
+
+.backup-availability {
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(16, 185, 129, 0.14);
+    color: var(--accent-green);
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.backup-destination-disabled .backup-availability {
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--text-secondary);
+}
+
+.backup-option-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.45;
+    cursor: pointer;
+}
+
+.backup-option-row input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    flex: 0 0 auto;
+    accent-color: var(--accent-green);
+}
+
+.backup-destination-card .backup-help-text {
+    margin-top: 8px;
+}
+
+.backup-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.backup-actions .btn,
+.backup-export-grid .btn {
+    min-width: 0;
+    white-space: normal;
+}
+
+.backup-last-status {
+    padding: 10px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.backup-advanced-options {
+    padding: 10px 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    color: var(--text-primary);
+}
+
+.backup-advanced-options summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.backup-export-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.backup-export-grid select {
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid #374151;
+    border-radius: 6px;
+    background: #1f2937;
+    color: white;
+}
+
+.backup-export-session {
+    grid-column: 1 / -1;
+}
+
+.backup-restore-note {
+    padding-top: 4px;
+}
+
+@media (max-width: 560px) {
+    .backup-settings-section {
+        padding: 12px;
+    }
+
+    .backup-actions,
+    .backup-export-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .backup-export-session {
+        grid-column: auto;
+    }
+}
+
 .fullscreen-recovery-content {
     text-align: center;
 }
@@ -1312,7 +1479,7 @@ h4 {
     font-family: var(--font-body);
 }
 .workout-map-fullscreen .leaflet-top {
-    top: 80px !important; /* Desplaza el control de zoom por debajo de la barra de métricas superior */
+    top: 80px;
 }
 .leaflet-bar {
     border: 1px solid var(--glass-border) !important;
@@ -1958,14 +2125,43 @@ h4 {
 }
 
 .slope-box {
-    background: rgba(255, 68, 68, 0.9);
-    padding: 10px 10px;
-    border-radius: 10px;
-    font-size: 25px;
-    font-weight: bold;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-    width: fit-content;
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    width: max-content;
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
     color: white;
+}
+
+.slope-reading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 112px;
+    padding: 7px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.slope-reading-label {
+    margin-bottom: 1px;
+    font-size: 10px;
+    line-height: 1.1;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+
+.slope-reading strong {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 25px;
+    line-height: 1.15;
 }
 
 .workout-viewport #metrics-slope {
@@ -2146,6 +2342,35 @@ h4 {
 
 .remote-status {
     min-height: 1.5em;
+}
+
+.remote-status[data-connection-state="connected"] {
+    color: var(--accent-green);
+}
+
+.remote-status[data-connection-state="disconnected"],
+.remote-status[data-connection-state="suspended"],
+.remote-status[data-connection-state="failed"],
+.remote-status[data-connection-state="closed"] {
+    color: var(--accent-red);
+}
+
+.remote-reconnect-button {
+    min-height: 44px;
+    padding: 8px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.remote-reconnect-button:disabled {
+    opacity: 0.65;
+    cursor: wait;
 }
 
 .remote-summary {
@@ -2772,6 +2997,21 @@ h4 {
 /* Ajuste fino para los controles de MapLibre en modo 3D */
 .maplibregl-ctrl-top-right {
     z-index: 1000 !important;
-    top: 70px !important;
-    right: 10px !important;
+    top: 70px;
+    right: 10px;
+}
+
+@media (max-width: 700px) {
+    .slope-reading {
+        min-width: 88px;
+        padding: 6px 8px;
+    }
+
+    .slope-reading strong {
+        font-size: 20px;
+    }
+
+    .slope-reading-label {
+        font-size: 8px;
+    }
 }

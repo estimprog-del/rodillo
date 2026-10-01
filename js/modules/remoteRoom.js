@@ -19,7 +19,9 @@ export class RemoteRoomClient {
     this.clientId = clientId;
     this.client = null;
     this.channel = null;
-    this.cleanups = [];
+    this.handlers = new Map();
+    this.connectionStateHandlers = new Set();
+    this.subscriptions = new Map();
   }
 
   async connect() {
@@ -27,11 +29,22 @@ export class RemoteRoomClient {
       throw new Error("Falta configurar VITE_ABLY_API_KEY.");
     }
 
-    this.client = new Ably.Realtime({
-      key: ABLY_API_KEY,
-      clientId: this.clientId,
-    });
-    this.channel = this.client.channels.get(`rodilloint:${this.roomId}`);
+    if (!this.client) {
+      this.client = new Ably.Realtime({
+        key: ABLY_API_KEY,
+        clientId: this.clientId,
+      });
+      this.channel = this.client.channels.get(`rodilloint:${this.roomId}`);
+      this.client.connection.on("state", (change) => {
+        this.connectionStateHandlers.forEach((handler) => handler(change));
+      });
+    }
+
+    if (this.client.connection.state === "connected") {
+      await this.channel.attach();
+      this.attachSubscriptions();
+      return;
+    }
 
     await new Promise((resolve, reject) => {
       const onConnected = () => {
@@ -45,21 +58,59 @@ export class RemoteRoomClient {
 
       this.client.connection.once("connected", onConnected);
       this.client.connection.once("failed", onFailed);
+      if (this.client.connection.state === "connected") onConnected();
     });
 
     await this.channel.attach();
+    this.attachSubscriptions();
+  }
+
+  async reconnect() {
+    this.closeConnection();
+    await this.connect();
+  }
+
+  onConnectionStateChange(handler) {
+    this.connectionStateHandlers.add(handler);
+    return () => this.connectionStateHandlers.delete(handler);
   }
 
   on(eventName, handler) {
-    if (!SUPPORTED_EVENTS.has(eventName) || !this.channel) return () => {};
-    this.channel.subscribe(eventName, (message) => handler(message.data, message));
-    const unsubscribe = () => this.channel?.unsubscribe(eventName);
-    this.cleanups.push(unsubscribe);
-    return unsubscribe;
+    if (!SUPPORTED_EVENTS.has(eventName)) return () => {};
+    if (!this.handlers.has(eventName)) this.handlers.set(eventName, new Set());
+    this.handlers.get(eventName).add(handler);
+    this.attachEventSubscription(eventName);
+    return () => {
+      this.handlers.get(eventName)?.delete(handler);
+      if (this.handlers.get(eventName)?.size === 0) {
+        const listener = this.subscriptions.get(eventName);
+        if (listener) this.channel?.unsubscribe(eventName, listener);
+        this.subscriptions.delete(eventName);
+        this.handlers.delete(eventName);
+      }
+    };
+  }
+
+  attachEventSubscription(eventName) {
+    if (!this.channel || this.subscriptions.has(eventName)) return;
+    const listener = (message) => {
+      this.handlers.get(eventName)?.forEach((handler) => handler(message.data, message));
+    };
+    this.channel.subscribe(eventName, listener);
+    this.subscriptions.set(eventName, listener);
+  }
+
+  attachSubscriptions() {
+    this.handlers.forEach((_, eventName) => this.attachEventSubscription(eventName));
   }
 
   async emit(eventName, payload) {
-    if (!SUPPORTED_EVENTS.has(eventName) || !this.channel) return;
+    if (!SUPPORTED_EVENTS.has(eventName)) {
+      throw new Error(`Evento remoto no permitido: ${eventName}`);
+    }
+    if (!this.channel || this.client?.connection?.state !== "connected") {
+      throw new Error("El mando no está conectado. Pulsa Reconectar e inténtalo de nuevo.");
+    }
     const senderId = this.client?.connection?.id || null;
     await this.channel.publish(eventName, { ...payload, senderId });
   }
@@ -68,13 +119,25 @@ export class RemoteRoomClient {
     return this.client?.connection?.id || null;
   }
 
-  disconnect() {
-    this.cleanups.forEach((cleanup) => cleanup());
-    this.cleanups = [];
+  getConnectionState() {
+    return this.client?.connection?.state || "initialized";
+  }
+
+  closeConnection() {
+    this.subscriptions.forEach((listener, eventName) => {
+      this.channel?.unsubscribe(eventName, listener);
+    });
+    this.subscriptions.clear();
     this.channel?.detach();
     this.client?.close();
     this.channel = null;
     this.client = null;
+  }
+
+  disconnect() {
+    this.closeConnection();
+    this.handlers.clear();
+    this.connectionStateHandlers.clear();
   }
 }
 

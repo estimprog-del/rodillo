@@ -77,6 +77,7 @@ export const state = {
   initialVirtualGear: DEFAULT_VIRTUAL_GEAR,
   virtualSlopeMin: -15,
   virtualSlopeMax: 20,
+  autoBackupOnSessionEnd: true,
 };
 
 export function saveStateToLocalStorage() {
@@ -110,6 +111,7 @@ export function saveStateToLocalStorage() {
     initialVirtualGear: state.initialVirtualGear,
     virtualSlopeMin: state.virtualSlopeMin,
     virtualSlopeMax: state.virtualSlopeMax,
+    autoBackupOnSessionEnd: state.autoBackupOnSessionEnd,
   };
   localStorage.setItem("rodilloint_state", JSON.stringify(persistableState));
 }
@@ -171,6 +173,7 @@ export function loadStateFromLocalStorage() {
     state.virtualSlopeMax = Number.isFinite(Number(parsed.virtualSlopeMax))
       ? Math.max(-15, Math.min(20, Number(parsed.virtualSlopeMax)))
       : 20;
+    state.autoBackupOnSessionEnd = parsed.autoBackupOnSessionEnd !== false;
     if (state.virtualSlopeMin >= state.virtualSlopeMax) {
       state.virtualSlopeMin = -15;
       state.virtualSlopeMax = 20;

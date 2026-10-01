@@ -12,8 +12,69 @@ import {
   closeRouteModal,
 } from "../ui/modals.js";
 import { state, saveStateToLocalStorage } from "./state.js";
-import { exportAllData, importAllData } from "../db.js";
+import {
+  exportAllData,
+  exportAllDataCsv,
+  getBackupStatus,
+  importAllData,
+  previewImportData,
+} from "../db.js";
 import { DEFAULT_VIRTUAL_GEAR, clampVirtualGear } from "./virtualGears.js";
+
+function formatBackupStatus(status) {
+  const container = document.getElementById("backup-last-status");
+  if (!container) return;
+  if (!status) {
+    container.textContent = "No hay backups registrados todavía.";
+    return;
+  }
+  const date = new Date(status.initiatedAt || status.createdAt);
+  const dateText = Number.isNaN(date.getTime())
+    ? "Fecha desconocida"
+    : date.toLocaleString("es-ES");
+  const sizeText = Number.isFinite(status.sizeBytes)
+    ? `${(status.sizeBytes / (1024 * 1024)).toFixed(2)} MB`
+    : "tamaño desconocido";
+  const scopeNames = {
+    all: "Backup completo",
+    users: "Solo perfiles",
+    history: "Historial",
+    session: "Sesión individual",
+    csv: "Telemetría CSV",
+  };
+  const source = status.automatic ? "automático" : "manual";
+  container.textContent = `Última descarga iniciada: ${dateText} · ${source} · ${scopeNames[status.scope] || status.scope} · ${status.sessionsCount ?? 0} sesiones · ${sizeText}. Archivo: ${status.filename || "desconocido"}. El navegador no confirma que se haya guardado.`;
+}
+
+async function populateBackupSessionPicker() {
+  const select = document.getElementById("setting-backup-session");
+  if (!select) return;
+  const sessions = await DbManager.getAllSessions();
+  const selectedValue = select.value;
+  select.replaceChildren(new Option("Selecciona una sesión", ""));
+  sessions
+    .sort((a, b) => Number(b.startTime) - Number(a.startTime))
+    .forEach((session) => {
+      const date = new Date(session.startTime).toLocaleString("es-ES");
+      const label = `${date} · ${session.routeName || session.gpxPath || "Sesión manual"} · ${Number(session.totalDistance || 0).toFixed(2)} km`;
+      select.add(new Option(label, String(session.id)));
+    });
+  if (selectedValue && [...select.options].some((option) => option.value === selectedValue)) {
+    select.value = selectedValue;
+  }
+}
+
+async function startBackupDownload(options = {}) {
+  try {
+    const status = await exportAllData(options);
+    formatBackupStatus(status);
+    return status;
+  } catch (error) {
+    console.error("No se pudo iniciar la descarga del backup:", error);
+    alert(`No se pudo generar el backup: ${error.message}`);
+    return null;
+  }
+}
 
 export function bindEvents(handlers) {
   const {
@@ -109,9 +170,14 @@ export function bindEvents(handlers) {
   	        document.getElementById("setting-countdown-duration").value = state.countdownDuration || 3;
           document.getElementById("setting-start-on-movement").checked = state.startOnMovement || false;
           document.getElementById("setting-virtual-gears-enabled").checked = state.virtualGearsEnabled !== false;
+          document.getElementById("setting-auto-backup").checked = state.autoBackupOnSessionEnd !== false;
           document.getElementById("setting-initial-virtual-gear").value = state.initialVirtualGear || DEFAULT_VIRTUAL_GEAR;
           document.getElementById("setting-virtual-slope-min").value = state.virtualSlopeMin;
           document.getElementById("setting-virtual-slope-max").value = state.virtualSlopeMax;
+          formatBackupStatus(getBackupStatus());
+          void populateBackupSessionPicker().catch((error) => {
+            console.error("No se pudo cargar la lista de sesiones para backup:", error);
+          });
   	        
   	        document.querySelectorAll('.btn-smoothing').forEach(btn => {
             btn.style.background = btn.getAttribute('data-val') == (state.sensorSmoothing || 3000) ? '#10b981' : '#333';
@@ -136,6 +202,14 @@ export function bindEvents(handlers) {
         navigateTo("help");
       }
       if (id === "btn-save-settings") {
+        const enablingAutoBackup =
+          !state.autoBackupOnSessionEnd &&
+          document.getElementById("setting-auto-backup").checked;
+        if (enablingAutoBackup && !confirm(
+          "Al finalizar cada sesión, RodilloInt iniciará la descarga de un backup. El navegador puede pedir permiso para descargas múltiples y la aplicación no puede confirmar que el archivo se haya guardado. ¿Activar esta opción?",
+        )) {
+          document.getElementById("setting-auto-backup").checked = false;
+        }
         const selectedMapType = document.getElementById("setting-map-type").value;
         state.mapType = selectedMapType === "leaflet" ? "leaflet" : "maplibre";
         
@@ -160,6 +234,7 @@ export function bindEvents(handlers) {
         state.countdownDuration = parseInt(document.getElementById("setting-countdown-duration").value) || 3;
         state.startOnMovement = document.getElementById("setting-start-on-movement").checked;
         state.virtualGearsEnabled = document.getElementById("setting-virtual-gears-enabled").checked;
+        state.autoBackupOnSessionEnd = document.getElementById("setting-auto-backup").checked;
         const initialVirtualGear = Number(document.getElementById("setting-initial-virtual-gear").value);
         state.initialVirtualGear = Number.isFinite(initialVirtualGear)
           ? clampVirtualGear(initialVirtualGear)
@@ -191,7 +266,35 @@ export function bindEvents(handlers) {
         });
       }
       if (id === "btn-backup-data") {
-        exportAllData();
+        void startBackupDownload();
+      }
+      if (id === "btn-backup-profiles") {
+        void startBackupDownload({ scope: "users" });
+      }
+      if (id === "btn-backup-history") {
+        void startBackupDownload({ scope: "history" });
+      }
+      if (id === "btn-backup-session") {
+        const sessionId = document.getElementById("setting-backup-session").value;
+        if (!sessionId) {
+          alert("Selecciona primero una sesión.");
+        } else {
+          void startBackupDownload({ scope: "session", sessionId });
+        }
+      }
+      if (id === "btn-backup-csv") {
+        void exportAllDataCsv()
+          .then((status) => {
+            formatBackupStatus(status);
+            alert(`Descarga CSV iniciada con ${status.rows} puntos de telemetría.`);
+          })
+          .catch((error) => {
+            console.error("No se pudo exportar la telemetría CSV:", error);
+            alert(`No se pudo exportar el CSV: ${error.message}`);
+          });
+      }
+      if (id === "btn-summary-backup") {
+        void startBackupDownload();
       }
 
       if (id === "btn-dashboard-connections") navigateTo("connections");
@@ -474,15 +577,47 @@ export function bindEvents(handlers) {
   // Restaurar backup
   const backupInput = document.getElementById("backup-file-input");
   const backupTrigger = document.getElementById("btn-trigger-import-backup");
-  if (backupTrigger && backupInput) {
-    backupTrigger.onclick = () => {
+  const settingsBackupTrigger = document.getElementById("btn-settings-import-backup");
+  if (backupInput) {
+    const openBackupPicker = () => {
       backupInput.value = "";
       backupInput.click();
     };
+    if (backupTrigger) backupTrigger.onclick = openBackupPicker;
+    if (settingsBackupTrigger) settingsBackupTrigger.onclick = openBackupPicker;
     backupInput.addEventListener("change", (e) => {
       if (e.target.files.length > 0) {
-        importAllData(e.target.files[0]);
+        const file = e.target.files[0];
+        void (async () => {
+          try {
+            const preview = await previewImportData(file);
+            const previewLines = Object.entries(preview)
+              .map(([storeName, counts]) =>
+                `${storeName}: ${counts.incoming} incluidos, ${counts.overwrites} se reemplazarán, ${counts.additions} se añadirán`)
+              .join("\n");
+            const downloadCurrentBackup = confirm(
+              "Antes de restaurar, ¿quieres descargar una copia de los datos actuales como protección?",
+            );
+            if (downloadCurrentBackup && !(await startBackupDownload())) return;
+            const confirmed = confirm(
+              `Vista previa de restauración:\n${previewLines}\n\nLos registros con el mismo ID se reemplazarán; los nuevos se añadirán. Los registros que no estén en el archivo se conservarán. ¿Continuar?`,
+            );
+            if (confirmed) await importAllData(file);
+          } catch (error) {
+            console.error("No se pudo preparar la restauración del backup:", error);
+            alert(`No se pudo preparar la restauración: ${error.message}`);
+          }
+        })();
       }
     });
   }
+
+  formatBackupStatus(getBackupStatus());
+  window.addEventListener("rodilloint:backup-started", (event) => {
+    formatBackupStatus(event.detail);
+    const summaryStatus = document.getElementById("session-save-status");
+    if (summaryStatus) {
+      summaryStatus.textContent = `Descarga iniciada: ${event.detail.filename}. Comprueba la carpeta de descargas del navegador.`;
+    }
+  });
 }

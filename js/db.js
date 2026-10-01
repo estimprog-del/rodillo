@@ -196,13 +196,15 @@ async function getSessionById(id) {
   });
 }
 
-async function getAllSessions(userId) {
+async function getAllSessions(userId = null) {
   const db = await initDb();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(['sessions'], 'readonly');
     const store = transaction.objectStore('sessions');
     const index = store.index('userId');
-    const request = index.getAll(Number(userId));
+    const request = userId === null || userId === undefined
+      ? index.getAll()
+      : index.getAll(Number(userId));
 
     request.onsuccess = () => {
       // Sort sessions descending by startTime
@@ -358,55 +360,231 @@ async function insertSensorDataBulk(pointsArray) {
 }
 
 // --- EXPORT/IMPORT ---
-export async function exportAllData() {
+const BACKUP_STORES = ['users', 'sessions', 'sensor_data'];
+const BACKUP_STATUS_KEY = 'rodilloint_last_backup';
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function getBackupStatus() {
+  try {
+    const saved = localStorage.getItem(BACKUP_STATUS_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch (error) {
+    console.warn('No se pudo leer el estado del backup:', error);
+    return null;
+  }
+}
+
+function recordBackupStarted(metadata) {
+  const status = { ...metadata, initiatedAt: new Date().toISOString() };
+  try {
+    localStorage.setItem(BACKUP_STATUS_KEY, JSON.stringify(status));
+  } catch (error) {
+    console.warn('No se pudo guardar el estado del backup en el navegador:', error);
+  }
+  window.dispatchEvent(new CustomEvent('rodilloint:backup-started', { detail: status }));
+  return status;
+}
+
+export async function exportAllData({ automatic = false, scope = 'all', sessionId = null } = {}) {
   const db = await initDb();
-  const stores = ['users', 'sessions', 'sensor_data'];
-  const exportData = {};
+  if (!['all', 'users', 'history', 'session'].includes(scope)) {
+    throw new Error('Tipo de backup no válido.');
+  }
+  if (scope === 'session' && (sessionId === null || !Number.isFinite(Number(sessionId)))) {
+    throw new Error('Selecciona una sesión válida.');
+  }
+  const stores = scope === 'all'
+    ? BACKUP_STORES
+    : scope === 'users'
+      ? ['users']
+      : scope === 'history'
+        ? ['sessions', 'sensor_data']
+        : ['sessions', 'sensor_data'];
+  const localStorageData = {};
+  if (scope === 'all') {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith('rodilloint_')) {
+        localStorageData[key] = localStorage.getItem(key);
+      }
+    }
+  }
+  const exportData = {
+    format: 'RodilloInt backup',
+    version: 2,
+    createdAt: new Date().toISOString(),
+    automatic,
+    scope,
+    localStorage: localStorageData,
+  };
 
   for (const storeName of stores) {
     const transaction = db.transaction([storeName], 'readonly');
     const store = transaction.objectStore(storeName);
     exportData[storeName] = await new Promise((resolve, reject) => {
       const request = store.getAll();
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        let result = request.result;
+        if (scope === 'session' && storeName === 'sessions') {
+          result = result.filter((session) => session.id === Number(sessionId));
+        } else if (scope === 'session' && storeName === 'sensor_data') {
+          result = result.filter((point) => point.sessionId === Number(sessionId));
+        }
+        resolve(result);
+      };
       request.onerror = () => reject(request.error);
     });
   }
+  exportData.recordCounts = {
+    users: exportData.users?.length || 0,
+    sessions: exportData.sessions?.length || 0,
+    sensorDataPoints: exportData.sensor_data?.length || 0,
+  };
 
   const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `RodilloInt_Backup_${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const timestamp = new Date().toISOString().replace(/[.:]/g, '-').replace('T', '_').slice(0, 19);
+  const filename = `RodilloInt_Backup_${scope}_${timestamp}.json`;
+  downloadBlob(blob, filename);
+  const sessionsCount = exportData.sessions?.length || 0;
+  return recordBackupStarted({
+    filename,
+    scope,
+    automatic,
+    sessionsCount,
+    sizeBytes: blob.size,
+  });
+}
+
+export async function exportAllDataCsv() {
+  const db = await initDb();
+  const [users, sessions, sensorData] = await Promise.all(
+    BACKUP_STORES.map((storeName) => new Promise((resolve, reject) => {
+      const request = db.transaction([storeName], 'readonly')
+        .objectStore(storeName)
+        .getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    })),
+  );
+  const usersById = new Map(users.map((user) => [Number(user.id), user.name]));
+  const sessionsById = new Map(sessions.map((session) => [Number(session.id), session]));
+  const headers = ['sesion_id', 'usuario', 'inicio', 'modo', 'ruta', 'timestamp', 'velocidad_kmh', 'potencia_w', 'cadencia_rpm', 'pulso_bpm', 'pendiente_pct', 'elevacion_m', 'latitud', 'longitud', 'distancia_km', 'marcha', 'relacion'];
+  const quote = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const rows = sensorData.map((point) => {
+    const session = sessionsById.get(Number(point.sessionId));
+    return [
+      point.sessionId,
+      usersById.get(Number(session?.userId)) || '',
+      session?.startTime ? new Date(session.startTime).toISOString() : '',
+      session?.gpxPath ? 'Ruta' : 'Manual',
+      session?.routeName || session?.gpxPath || '',
+      point.timestamp ? new Date(point.timestamp).toISOString() : '',
+      point.speed,
+      point.power,
+      point.cadence,
+      point.heartRate,
+      point.slope,
+      point.elevation,
+      point.latitude,
+      point.longitude,
+      point.distance,
+      point.virtualGear,
+      point.gearRatio,
+    ].map(quote).join(';');
+  });
+  const blob = new Blob(['\uFEFF', [headers.join(';'), ...rows].join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const timestamp = new Date().toISOString().replace(/[.:]/g, '-').replace('T', '_').slice(0, 19);
+  const filename = `RodilloInt_Telemetria_${timestamp}.csv`;
+  downloadBlob(blob, filename);
+  const status = recordBackupStarted({
+    filename,
+    scope: 'csv',
+    automatic: false,
+    sessionsCount: sessions.length,
+    sizeBytes: blob.size,
+    telemetryPoints: rows.length,
+  });
+  return { ...status, rows: rows.length };
+}
+
+export async function previewImportData(file) {
+  const data = JSON.parse(await file.text());
+  if (!data || !BACKUP_STORES.some((storeName) => Array.isArray(data[storeName]))) {
+    throw new Error('El archivo no contiene un backup válido de RodilloInt.');
+  }
+  const db = await initDb();
+  const preview = {};
+  for (const storeName of BACKUP_STORES) {
+    if (!Array.isArray(data[storeName])) continue;
+    const existing = await new Promise((resolve, reject) => {
+      const request = db.transaction([storeName], 'readonly')
+        .objectStore(storeName)
+        .getAllKeys();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+    const existingIds = new Set(existing.map(String));
+    const overwrites = data[storeName].filter((item) =>
+      item?.id !== undefined && existingIds.has(String(item.id))).length;
+    preview[storeName] = {
+      incoming: data[storeName].length,
+      overwrites,
+      additions: data[storeName].length - overwrites,
+    };
+  }
+  return preview;
 }
 
 // Restaurar desde un archivo JSON de Backup
 export async function importAllData(file) {
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    try {
-      const data = JSON.parse(e.target.result);
-      const db = await initDb();
-      
-      for (const storeName of ['users', 'sessions', 'sensor_data']) {
-        if (data[storeName]) {
-          const transaction = db.transaction([storeName], 'readwrite');
-          const store = transaction.objectStore(storeName);
-          for (const item of data[storeName]) {
-            store.put(item); // Usamos put para sobreescribir si ya existe
-          }
-        }
-      }
-      alert("Backup restaurado correctamente. Recargando...");
-      location.reload();
-    } catch (err) {
-      console.error("Error al restaurar backup:", err);
-      alert("Error al restaurar el archivo de backup.");
+  try {
+    const data = JSON.parse(await file.text());
+    if (!data || !BACKUP_STORES.some((storeName) => Array.isArray(data[storeName]))) {
+      throw new Error('El archivo no contiene un backup válido de RodilloInt.');
     }
-  };
-  reader.readAsText(file);
+    for (const storeName of BACKUP_STORES) {
+      if (data[storeName] && (!Array.isArray(data[storeName]) ||
+          data[storeName].some((item) => !item || typeof item !== 'object'))) {
+        throw new Error(`La sección ${storeName} del backup no es válida.`);
+      }
+    }
+
+    const db = await initDb();
+    const storesToRestore = BACKUP_STORES.filter((storeName) => Array.isArray(data[storeName]));
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(storesToRestore, 'readwrite');
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error || new Error('Transacción cancelada.'));
+      for (const storeName of storesToRestore) {
+        const store = transaction.objectStore(storeName);
+        data[storeName].forEach((item) => store.put(item));
+      }
+    });
+
+    if (data.localStorage && typeof data.localStorage === 'object') {
+      Object.entries(data.localStorage).forEach(([key, value]) => {
+        if (key.startsWith('rodilloint_') && typeof value === 'string') {
+          localStorage.setItem(key, value);
+        }
+      });
+    }
+    alert("Backup restaurado correctamente. Recargando...");
+    location.reload();
+    return true;
+  } catch (err) {
+    console.error("Error al restaurar backup:", err);
+    alert(`Error al restaurar el archivo de backup: ${err.message}`);
+    return false;
+  }
 }
 // Export database functions globally
 window.DbManager = {
@@ -427,5 +605,8 @@ window.DbManager = {
   getSensorDataForSession,
   deleteDataForSession,
   exportAllData,
+  exportAllDataCsv,
+  getBackupStatus,
+  previewImportData,
   importAllData
 };

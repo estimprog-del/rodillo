@@ -30,6 +30,7 @@ import {
   getVirtualGearRatio,
   calculateVirtualResistanceSlope,
 } from "./modules/virtualGears.js";
+import { exportAllData, getBackupStatus } from "./db.js";
 
 const SLOPE_AVERAGE_METERS = 10;
 const SLOPE_PREVIEW_LONG_METERS = 500;
@@ -44,6 +45,9 @@ let fpvDebugCalls = 0;
 let lastFpvDebugState = "";
 let mapReadyInstance = null;
 let workoutHudResizeObserver = null;
+let mapControlsResizeObserver = null;
+let observedMapControls = null;
+let observedMapHudGroup = null;
 let countdownTimer = null;
 let countdownFinishTimer = null;
 let movementWaitTimer = null;
@@ -112,6 +116,7 @@ function applyWorkoutLayout() {
     if (!state.map) return;
     if (typeof state.map.resize === "function") state.map.resize();
     if (typeof state.map.invalidateSize === "function") state.map.invalidateSize();
+    positionMapNavigationControls();
   });
 
   const layoutLabels = {
@@ -204,7 +209,45 @@ window.cycleWorkoutLayout = cycleWorkoutLayout;
 
 window.addEventListener("resize", () => {
   if (state.workoutLayout === "auto") applyWorkoutLayout();
+  else positionMapNavigationControls();
 });
+
+function positionMapNavigationControls() {
+  const mapContainer = document.getElementById("workout-map");
+  const hudGroup = document.querySelector(".hud-bottom-right-group");
+  const controls = mapContainer?.querySelector(
+    ".maplibregl-ctrl-top-right, .leaflet-top.leaflet-right",
+  );
+  if (!mapContainer || !hudGroup || !controls) return;
+
+  const mapRect = mapContainer.getBoundingClientRect();
+  const hudRect = hudGroup.getBoundingClientRect();
+  const controlsRect = controls.getBoundingClientRect();
+  if (!controlsRect.height || !mapRect.height) return;
+
+  const top = Math.max(
+    80,
+    hudRect.top - mapRect.top - controlsRect.height - 10,
+  );
+  const right = Math.max(8, mapRect.right - hudRect.right);
+  controls.style.setProperty("top", `${top}px`, "important");
+  controls.style.setProperty("right", `${right}px`, "important");
+
+  if (typeof ResizeObserver !== "undefined") {
+    if (!mapControlsResizeObserver) {
+      mapControlsResizeObserver = new ResizeObserver(() => {
+        requestAnimationFrame(positionMapNavigationControls);
+      });
+    }
+    if (controls !== observedMapControls || hudGroup !== observedMapHudGroup) {
+      mapControlsResizeObserver.disconnect();
+      mapControlsResizeObserver.observe(hudGroup);
+      mapControlsResizeObserver.observe(controls);
+      observedMapControls = controls;
+      observedMapHudGroup = hudGroup;
+    }
+  }
+}
 
 function applyWorkoutPanels() {
   const panels = {
@@ -310,9 +353,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     const roomId = getRemoteRoomId();
     const status = document.getElementById("remote-status");
     const label = document.getElementById("remote-room-label");
+    const reconnectButton = document.getElementById("btn-remote-reconnect");
     const client = roomId ? new RemoteRoomClient(roomId, "remote") : null;
-    let authorizedRemoteId = null;
+    let isConnecting = false;
+    let wasHidden = false;
     let remoteWakeLock = null;
+    const setRemoteStatus = (text, state = "") => {
+      if (status) {
+        status.textContent = text;
+        status.dataset.connectionState = state;
+      }
+      if (reconnectButton) {
+        reconnectButton.disabled = isConnecting || !client;
+        reconnectButton.textContent = isConnecting
+          ? "Conectando..."
+          : "↻ Reconectar mando";
+      }
+    };
     const requestRemoteWakeLock = async () => {
       if (!("wakeLock" in navigator) || document.visibilityState !== "visible") return;
       try {
@@ -326,7 +383,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
     void requestRemoteWakeLock();
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") void requestRemoteWakeLock();
+      if (document.visibilityState === "hidden") {
+        wasHidden = true;
+        return;
+      }
+      if (document.visibilityState === "visible") {
+        void requestRemoteWakeLock();
+        if (wasHidden && client) {
+          wasHidden = false;
+          void connectRemote(true);
+        }
+      }
     });
     const requestRemoteFullscreen = () => {
       if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
@@ -337,17 +404,26 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.addEventListener("click", requestRemoteFullscreen, { once: true });
 
     if (label) label.textContent = roomId ? `Sala: ${roomId}` : "Falta el identificador de sala";
-    if (status) status.textContent = client ? "Mando preparado" : "Enlace de sala no válido";
+    setRemoteStatus(client ? "Mando preparado" : "Enlace de sala no válido");
 
-    const emitGearCommand = async (eventName) => { if (client) await client.emit(eventName, {}); };
+    const emitGearCommand = async (eventName) => {
+      if (!client) return;
+      try {
+        await client.emit(eventName, {});
+        setRemoteStatus("Orden enviada a Ably");
+      } catch (error) {
+        console.error(`[Mando móvil] No se pudo enviar ${eventName}:`, error);
+        setRemoteStatus(`No enviada: ${error.message}`, "disconnected");
+      }
+    };
     const emitGearChange = async (direction) => {
       if (!client) return;
       try {
         await client.emit("CHANGE_GEAR", { direction });
-        if (status) status.textContent = `Orden enviada: ${direction === "up" ? "subir" : "bajar"}`;
+        setRemoteStatus(`Orden enviada a Ably: ${direction === "up" ? "subir" : "bajar"}`);
       } catch (error) {
-        if (status) status.textContent = "Ably: error de publicación";
         console.error("[Mando móvil] No se pudo enviar el cambio de marcha:", error);
+        setRemoteStatus(`No enviada: ${error.message}`, "disconnected");
       }
     };
 
@@ -374,7 +450,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const element = document.getElementById(id);
         if (element) element.textContent = value;
       });
-      if (status) status.textContent = "Sesión finalizada";
+      setRemoteStatus("Sesión finalizada");
     };
 
     const showRemoteAccessDenied = (payload) => {
@@ -383,31 +459,58 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
       document.getElementById("remote-controls")?.setAttribute("hidden", "");
-      if (status) status.textContent = "Mando no autorizado: ya hay otro conectado";
+      setRemoteStatus("Mando no autorizado: ya hay otro conectado", "failed");
     };
 
+    const connectRemote = async (forceReconnect = false) => {
+      if (!client || isConnecting) return;
+      isConnecting = true;
+      setRemoteStatus(forceReconnect ? "Reconectando con la sala..." : "Conectando con la sala...");
+      try {
+        if (forceReconnect) await client.reconnect();
+        else await client.connect();
+        setRemoteStatus("Conectado a la sala", "connected");
+      } catch (error) {
+        console.error("[Mando móvil] No se pudo conectar con Ably:", error);
+        setRemoteStatus(
+          error?.message?.includes("Falta configurar")
+            ? "Ably no está configurado"
+            : `Sin conexión: ${error?.message || "error de conexión"}`,
+          "failed",
+        );
+      } finally {
+        isConnecting = false;
+        if (reconnectButton) reconnectButton.disabled = !client;
+      }
+    };
+
+    client?.onConnectionStateChange((change) => {
+      const stateMessages = {
+        connecting: "Conectando con Ably...",
+        connected: "Conectado a la sala",
+        disconnected: "Conexión perdida. Reconectando...",
+        suspended: "Conexión suspendida. Pulsa Reconectar.",
+        closing: "Cerrando conexión...",
+        closed: "Desconectado. Pulsa Reconectar.",
+        failed: `Error de conexión: ${change.reason?.message || "Ably no disponible"}`,
+      };
+      setRemoteStatus(
+        stateMessages[change.current] || `Estado de conexión: ${change.current}`,
+        change.current,
+      );
+    });
     document.getElementById("btn-remote-gear-up")?.addEventListener("click", () => emitGearChange("up"));
     document.getElementById("btn-remote-gear-down")?.addEventListener("click", () => emitGearChange("down"));
     document.getElementById("btn-remote-pause")?.addEventListener("click", () => emitGearCommand("TOGGLE_PAUSE"));
     document.getElementById("btn-remote-stop")?.addEventListener("click", () => {
       if (window.confirm("¿Finalizar la sesión?")) void emitGearCommand("STOP_SESSION");
     });
+    reconnectButton?.addEventListener("click", () => void connectRemote(true));
 
     if (client) {
-      void client.connect()
-        .then(() => {
-          client.on("SESSION_SUMMARY", showRemoteSummary);
-          client.on("REMOTE_ACCESS_DENIED", showRemoteAccessDenied);
-          if (status) status.textContent = "Mando conectado";
-        })
-        .catch((error) => {
-          console.error("[Mando móvil] No se pudo conectar con Ably:", error);
-          if (status) {
-            status.textContent = error?.message?.includes("Falta configurar")
-              ? "Ably: no configurado"
-              : "Ably: credencial rechazada";
-          }
-        });
+      client.on("SESSION_SUMMARY", showRemoteSummary);
+      client.on("REMOTE_ACCESS_DENIED", showRemoteAccessDenied);
+      void connectRemote();
     }
   }
 
@@ -441,6 +544,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const user = await DbManager.getUserById(savedUserId);
       if (user) selectUser(user);
     }
+    checkBackupReminder();
   } catch (e) {
     console.error("Failed to init IndexedDB", e);
     const container = document.getElementById("users-grid-container");
@@ -498,6 +602,27 @@ function cacheUiElements() {
   // Inputs
   UI.inputs.gpxFileInput = document.getElementById("gpx-file-input");
   UI.routeModal = document.getElementById("route-modal");
+}
+
+function checkBackupReminder() {
+  try {
+    const status = getBackupStatus();
+    const lastBackupDate = new Date(status?.initiatedAt || status?.createdAt || 0);
+    const backupIsOld = !status || !Number.isFinite(lastBackupDate.getTime()) ||
+      Date.now() - lastBackupDate.getTime() >= 30 * 24 * 60 * 60 * 1000;
+    if (!backupIsOld) return;
+
+    const dismissedAt = Number(localStorage.getItem("rodilloint_backup_reminder_dismissed") || 0);
+    if (Date.now() - dismissedAt < 30 * 24 * 60 * 60 * 1000) return;
+
+    const message = status
+      ? "El último backup registrado tiene más de 30 días. Descarga uno desde Ajustes para proteger tus perfiles y actividades."
+      : "Todavía no hay ningún backup registrado. Descarga uno desde Ajustes para proteger tus perfiles y actividades.";
+    window.setTimeout(() => alert(message), 800);
+    localStorage.setItem("rodilloint_backup_reminder_dismissed", String(Date.now()));
+  } catch (error) {
+    console.warn("No se pudo comprobar el recordatorio de backup:", error);
+  }
 }
 
 // UI Update throttling to prevent DOM congestion
@@ -621,7 +746,7 @@ function configureWorkoutHudForMode() {
   // Ocultar botones específicos de mapa/ruta
   setElDisplay("btn-toggle-3d", isRoute ? "block" : "none");
   setElDisplay("btn-orient-toggle", isRoute ? "block" : "none");
-  setElDisplay("metrics-slope", isRoute ? "block" : "none");
+  setElDisplay("metrics-slope", isRoute ? "flex" : "none");
   // Usamos el ID correcto que muestra el inspector: upcoming-profile-chart
   setElDisplay("upcoming-profile-chart", isRoute ? "block" : "none");
   setElDisplay("hud-elevation-footer", isRoute ? "block" : "none");
@@ -1398,6 +1523,7 @@ function cancelCountdown() {
 // --- WORKOUT SCREEN ACTIVATION ---
 function enterWorkoutScreen() {
   initializeRemoteRoomPanel();
+  toggleRemoteRoomPanel(true);
   applyWorkoutLayout();
   setElDisplay("hud-top-bar", "flex");
   observeWorkoutHudSize();
@@ -1647,6 +1773,7 @@ function initLeafletMap() {
   // Custom zoom buttons
   const zoomControl = L.control.zoom({ position: "topright" });
   zoomControl.addTo(state.map);
+  requestAnimationFrame(positionMapNavigationControls);
 }
 
 function drawRouteOnMap() {
@@ -1730,24 +1857,32 @@ function initializeRemoteRoomPanel() {
   const roomId = createRoomId();
   const remoteUrl = buildRemoteUrl(roomId);
   activeRemoteRoomClient = new RemoteRoomClient(roomId, "host");
-  let authorizedRemoteId = null;
   status.textContent = "Ably: conectando...";
+  activeRemoteRoomClient.onConnectionStateChange((change) => {
+    const messages = {
+      connecting: "Ably: conectando...",
+      connected: "Ably: conectado",
+      disconnected: "Ably: conexión perdida, reconectando...",
+      suspended: "Ably: conexión suspendida",
+      closed: "Ably: desconectado",
+      failed: `Ably: error de conexión${change.reason?.message ? ` (${change.reason.message})` : ""}`,
+    };
+    status.textContent = messages[change.current] || `Ably: ${change.current}`;
+  });
   void activeRemoteRoomClient.connect()
     .then(() => {
       const isAuthorized = (payload, message) => {
-        if (message?.clientId !== "remote") return false;
-        const remoteId = message.connectionId || payload?.senderId || "remote";
-        if (!authorizedRemoteId) {
-          authorizedRemoteId = remoteId;
+        const authorized = message?.clientId === "remote";
+        if (authorized) {
           status.textContent = "Mando conectado";
           toggleRemoteRoomPanel(false);
-          return true;
         }
-        return remoteId === authorizedRemoteId;
+        return authorized;
       };
       activeRemoteRoomClient?.on("CHANGE_GEAR", (payload, message) => {
         if (!isAuthorized(payload, message)) return;
-        const { direction } = payload;
+        const direction = payload?.direction;
+        if (direction !== "up" && direction !== "down") return;
         toggleRemoteRoomPanel(false);
         changeVirtualGear(direction === "up" ? 1 : -1);
       });
@@ -1764,7 +1899,7 @@ function initializeRemoteRoomPanel() {
         }
         void stopSessionFlow();
       });
-      status.textContent = "Ably: conectado";
+      status.textContent = "Ably: conectado; esperando mando";
     })
     .catch((error) => {
       console.error("[Mando móvil] No se pudo abrir la sala Ably:", error);
@@ -1993,6 +2128,7 @@ function startTimerInterval() {
         updateRouteProgressHud(state);
         updateRouteSimulation(state.totalDistance);
         setRouteTargetSlope(state.totalDistance);
+        syncSlopeDisplayLabels();
       }
 
       updateSessionAverages();
@@ -2304,7 +2440,22 @@ async function stopSessionFlow() {
         averageHeartRate: avgHr,
       });
     }
-    setSessionSaveStatus("Sesión guardada correctamente", "var(--accent-green)");
+    let backupStatusMessage = "Sesión guardada correctamente";
+    if (state.autoBackupOnSessionEnd) {
+      try {
+        await exportAllData({ automatic: true });
+        backupStatusMessage = "Sesión guardada; descarga del backup iniciada";
+      } catch (backupError) {
+        console.error("No se pudo descargar el backup automático:", backupError);
+        backupStatusMessage = "Sesión guardada; no se pudo iniciar el backup";
+      }
+    }
+    setSessionSaveStatus(
+      backupStatusMessage,
+      backupStatusMessage.includes("no se pudo")
+        ? "var(--accent-orange)"
+        : "var(--accent-green)",
+    );
 
     renderSummaryMetrics({
       duration,
@@ -2616,23 +2767,54 @@ function syncSlopeDisplayLabels() {
   // Actualizar etiqueta principal del HUD (metrics-slope)
   // Ahora el usuario ve exactamente lo que el rodillo está aplicando
   const slopeEl = document.getElementById("metrics-slope");
-  if (slopeEl) {
-    slopeEl.textContent = `⛰️ ${formatted}`;
-    const slope = state.currentSlope;
-    if (slope < 0) {
-      slopeEl.style.background = "#10b981"; // Verde (descenso)
-    } else if (slope <= 3) {
-      slopeEl.style.background = "#059669"; // Verde suave (llano)
-    } else if (slope <= 7) {
-      slopeEl.style.background = "#f59e0b"; // Amarillo (moderado)
-    } else if (slope <= 10) {
-      slopeEl.style.background = "#f97316"; // Naranja (media)
-    } else if (slope <= 15) {
-      slopeEl.style.background = "#ef4444"; // Rojo (duro)
-    } else {
-      slopeEl.style.background = "#7f1d1d"; // Negro/Rojo oscuro (>15%)
-    }
+  const trainerSlopeValue = document.getElementById("metrics-trainer-slope");
+  if (trainerSlopeValue) trainerSlopeValue.textContent = formatted;
+
+  const routeSlopeValue = document.getElementById("metrics-route-slope");
+  const routeSlope = getRouteSlopeAtDistance(state.totalDistance);
+  if (routeSlopeValue) {
+    routeSlopeValue.textContent = `${routeSlope >= 0 ? "+" : ""}${routeSlope.toFixed(1)}%`;
   }
+
+  const slopeColor = (slope) => {
+    if (slope < 0) return "#10b981";
+    if (slope <= 3) return "#059669";
+    if (slope <= 7) return "#f59e0b";
+    if (slope <= 10) return "#f97316";
+    if (slope <= 15) return "#ef4444";
+    return "#7f1d1d";
+  };
+  const trainerReading = document.getElementById("trainer-slope-reading");
+  const routeReading = document.getElementById("route-slope-reading");
+  if (trainerReading) trainerReading.style.background = slopeColor(state.currentSlope);
+  if (routeReading) routeReading.style.background = slopeColor(routeSlope);
+  if (slopeEl) {
+    slopeEl.style.display = state.currentMode === "ROUTE" ? "flex" : "none";
+  }
+}
+
+function getRouteSlopeAtDistance(distanceKm) {
+  if (
+    state.currentMode !== "ROUTE" ||
+    state.routeDistances.length < 2 ||
+    state.routeElevations.length !== state.routeDistances.length
+  ) {
+    return 0;
+  }
+
+  const routeStartKm = state.routeDistances[0];
+  const routeEndKm = state.routeDistances[state.routeDistances.length - 1];
+  const distance = Math.max(routeStartKm, Math.min(routeEndKm, Number(distanceKm) || 0));
+  const sampleRadiusKm = 0.005;
+  const startKm = Math.max(routeStartKm, distance - sampleRadiusKm);
+  const endKm = Math.min(routeEndKm, distance + sampleRadiusKm);
+  const distanceMeters = (endKm - startKm) * 1000;
+  if (distanceMeters <= 0) return 0;
+
+  const startElevation = getElevationAtDistance(startKm);
+  const endElevation = getElevationAtDistance(endKm);
+  const slope = ((endElevation - startElevation) / distanceMeters) * 100;
+  return Number.isFinite(slope) ? slope : 0;
 }
 
 function updateTrainerSlope(slope, immediate = false) {
@@ -3044,6 +3226,7 @@ window.toggleMapEngine = function(btn) {
                     state.map.setTerrain({ source: "terrain", exaggeration: 1 });
                 }
                 state.map.resize();
+                requestAnimationFrame(positionMapNavigationControls);
                 drawRouteOnMap();
 
                 // Re-configurar botón de orientación para 3D MapLibre
