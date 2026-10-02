@@ -856,7 +856,10 @@
                             <button class="remote-session-button remote-stop-button" id="btn-remote-stop">Finalizar sesión</button>
                         </div>
                     </div>
-                    <button class="remote-reconnect-button" id="btn-remote-reconnect" type="button">↻ Reconectar mando</button>
+                    <div class="remote-status-row">
+                        <p class="remote-status" id="remote-status" data-connection-state="connecting">Conexión pendiente</p>
+                        <button class="remote-reconnect-button" id="btn-remote-reconnect" type="button" aria-label="Reconectar con la sala" title="Reconectar con la sala" hidden>↻</button>
+                    </div>
                     <div class="remote-summary" id="remote-summary" hidden>
                         <h2>Sesión finalizada</h2>
                         <div class="remote-summary-grid">
@@ -873,7 +876,6 @@
                             <span>NP / TSS</span><strong id="remote-summary-training-load">--</strong>
                         </div>
                     </div>
-                    <p class="remote-status" id="remote-status">Conexión pendiente</p>
                 </div>
             </div>
 

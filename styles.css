@@ -2341,7 +2341,24 @@ h4 {
 }
 
 .remote-status {
+    flex: 1 1 auto;
+    min-width: 0;
     min-height: 1.5em;
+    margin: 0;
+    overflow-wrap: anywhere;
+    text-align: left;
+}
+
+.remote-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 36px;
+}
+
+.remote-status-row button[hidden] {
+    display: none !important;
 }
 
 .remote-status[data-connection-state="connected"] {
@@ -2356,16 +2373,20 @@ h4 {
 }
 
 .remote-reconnect-button {
-    min-height: 44px;
-    padding: 8px 16px;
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0;
     border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 12px;
+    border-radius: 50%;
     background: var(--bg-secondary);
     color: var(--text-primary);
-    font: inherit;
+    font: 700 20px/1 var(--font-body);
     font-weight: 700;
     cursor: pointer;
     touch-action: manipulation;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
 }
 
 .remote-reconnect-button:disabled {
@@ -2374,12 +2395,25 @@ h4 {
 }
 
 .remote-summary {
+    position: relative;
+    z-index: 1;
     width: 100%;
     padding: 18px;
     box-sizing: border-box;
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 18px;
-    background: rgba(0, 0, 0, 0.35);
+    background: #080a0f;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+    backdrop-filter: none;
+}
+
+.remote-summary[hidden],
+#remote-controls[hidden] {
+    display: none !important;
+}
+
+.remote-controller.remote-session-finished {
+    justify-content: center;
 }
 
 .remote-summary h2 {

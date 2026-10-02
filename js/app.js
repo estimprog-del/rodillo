@@ -357,17 +357,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     const client = roomId ? new RemoteRoomClient(roomId, "remote") : null;
     let isConnecting = false;
     let wasHidden = false;
+    let connectionState = "initialized";
+    let sessionFinished = false;
     let remoteWakeLock = null;
     const setRemoteStatus = (text, state = "") => {
       if (status) {
         status.textContent = text;
-        status.dataset.connectionState = state;
+        if (state) connectionState = state;
+        status.dataset.connectionState = connectionState;
       }
       if (reconnectButton) {
         reconnectButton.disabled = isConnecting || !client;
-        reconnectButton.textContent = isConnecting
-          ? "Conectando..."
-          : "↻ Reconectar mando";
+        reconnectButton.hidden = sessionFinished ||
+          connectionState === "connected" ||
+          connectionState === "connecting" ||
+          connectionState === "initialized";
+        reconnectButton.textContent = isConnecting ? "…" : "↻";
       }
     };
     const requestRemoteWakeLock = async () => {
@@ -433,6 +438,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!controls || !panel) return;
       controls.hidden = true;
       panel.hidden = false;
+      sessionFinished = true;
+      document.querySelector(".remote-controller")?.classList.add("remote-session-finished");
       const values = {
         "remote-summary-duration": summary.duration || "--",
         "remote-summary-distance": `${Number(summary.distance || 0).toFixed(2)} km`,
@@ -494,9 +501,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         closed: "Desconectado. Pulsa Reconectar.",
         failed: `Error de conexión: ${change.reason?.message || "Ably no disponible"}`,
       };
+      connectionState = change.current;
       setRemoteStatus(
         stateMessages[change.current] || `Estado de conexión: ${change.current}`,
-        change.current,
+        "",
       );
     });
     document.getElementById("btn-remote-gear-up")?.addEventListener("click", () => emitGearChange("up"));
@@ -1322,23 +1330,14 @@ function onPowerReceived(power) {
     updateSessionAverages();
   }
 
-  // Reanudar automáticamente en modo ROUTE si se empieza a pedalear
-  if (
-    state.currentMode === "ROUTE" &&
-    state.isSessionActive &&
-    state.isAutoPaused &&
-    power > 15
-  ) {
-    const userWeight = state.currentUser ? state.currentUser.weight : 75.0;
-    const vSpeed = BleManager.calculateVirtualSpeed(
-      power,
-      state.currentSlope,
-      userWeight,
-    );
-    if (vSpeed > 0.5) {
-      state.isAutoPaused = false;
-      resumeTimer();
-    }
+  if (state.isSessionActive && power > 15) {
+    const hasPedalingPower = state.currentMode !== "ROUTE" ||
+      BleManager.calculateVirtualSpeed(
+        power,
+        state.currentSlope,
+        state.currentUser ? state.currentUser.weight : 75.0,
+      ) > 0.5;
+    if (hasPedalingPower) resumeSessionOnMovement();
   }
 }
 
@@ -1381,6 +1380,7 @@ function onHeartRateReceived(hr) {
 function onCadenceReceived(cad) {
   state.currentCadence = cad;
   setElText("metrics-cadence", cad);
+  if (state.isSessionActive && cad > 5) resumeSessionOnMovement();
 }
 
 function onSpeedReceived(speedKph, hasWheelRevolution = speedKph > 0) {
@@ -1397,12 +1397,22 @@ function onSpeedReceived(speedKph, hasWheelRevolution = speedKph > 0) {
   if (state.isSessionActive) {
     if (hasWheelRevolution && speedKph > 0.5) {
       state.lastMovementTime = now;
-      if (state.isAutoPaused) {
-        state.isAutoPaused = false;
-        resumeTimer();
-      }
+      resumeSessionOnMovement();
     }
   }
+}
+
+function resumeSessionOnMovement() {
+  if (
+    !state.isSessionActive ||
+    !state.isPaused ||
+    state.isCountdownActive ||
+    BleManager.simulator.isActive
+  ) {
+    return;
+  }
+  state.isAutoPaused = false;
+  resumeTimer();
 }
 
 
