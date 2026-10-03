@@ -757,11 +757,13 @@ function configureWorkoutHudForMode() {
   // Mostrar panel Manual si aplica
   setElDisplay("manual-mode-panel", isManual ? "flex" : "none");
 
-  // Ghost Rider solo en Ruta
+  // Ghost Rider is available for any route mode, regardless of trainer type.
   const ghostBanner = document.getElementById("ghost-banner");
   if (ghostBanner) {
-    if (isRoute) ghostBanner.classList.add("visible");
-    else ghostBanner.classList.remove("visible");
+    ghostBanner.classList.toggle(
+      "visible",
+      isRoute && state.ghostEnabled && (state.ghostPoints?.length || 0) > 0,
+    );
   }
 
 }
@@ -1614,6 +1616,9 @@ function enterWorkoutScreen() {
   if (ghostBanner) ghostBanner.classList.remove("visible");
 
   if (isRouteMode) {
+    if (state.ghostEnabled && state.gpxFilename) {
+      void loadGhostRiderSession();
+    }
     initConfiguredMap();
     ChartsManager.initUpcomingChart("upcoming-chart-inner");
 
@@ -1700,7 +1705,6 @@ async function handleGpxUpload(e) {
         state.routeElevations,
       );
 
-      loadGhostRiderSession();
       if (label) label.textContent = file.name;
       if (shouldRecoverFullscreen) showFullscreenRecovery();
     } else {
@@ -1721,7 +1725,12 @@ async function handleGpxUpload(e) {
 }
 
 async function loadGhostRiderSession() {
-  if (!state.currentUser) return;
+  const ghostBanner = document.getElementById("ghost-banner");
+  if (!state.currentUser || !state.ghostEnabled || !state.gpxFilename) {
+    state.ghostPoints = [];
+    ghostBanner?.classList.remove("visible");
+    return;
+  }
   try {
     const best = await DbManager.getBestSessionForRoute(
       state.currentUser.id,
@@ -1733,11 +1742,23 @@ async function loadGhostRiderSession() {
 
       // Filter valid coordinates
       state.ghostPoints = state.ghostPoints.filter(
-        (p) => p.latitude !== null && p.longitude !== null,
+        (point) =>
+          point.latitude !== null &&
+          point.latitude !== undefined &&
+          point.longitude !== null &&
+          point.longitude !== undefined &&
+          point.distance !== null &&
+          point.distance !== undefined &&
+          point.timestamp !== null &&
+          point.timestamp !== undefined &&
+          Number.isFinite(Number(point.latitude)) &&
+          Number.isFinite(Number(point.longitude)) &&
+          Number.isFinite(Number(point.distance)) &&
+          Number.isFinite(Number(point.timestamp)),
       );
 
       if (state.ghostPoints.length > 0) {
-        document.getElementById("ghost-banner").classList.add("visible");
+        ghostBanner?.classList.add("visible");
         document.getElementById("ghost-time-gap").textContent = "-0:00";
         document.getElementById("ghost-time-gap").className =
           "ghost-value ahead";
@@ -1747,9 +1768,11 @@ async function loadGhostRiderSession() {
       }
     } else {
       state.ghostPoints = [];
-      document.getElementById("ghost-banner").classList.remove("visible");
+      ghostBanner?.classList.remove("visible");
     }
   } catch (e) {
+    state.ghostPoints = [];
+    ghostBanner?.classList.remove("visible");
     console.error("Failed to load ghost session", e);
   }
 }

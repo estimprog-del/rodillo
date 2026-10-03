@@ -182,6 +182,7 @@ export function bindEvents(handlers) {
   	        document.getElementById("setting-power-zones").value = state.powerZones ? state.powerZones.join(',') : "55,75,88,95,106";
   	        document.getElementById("setting-countdown-duration").value = state.countdownDuration || 3;
           document.getElementById("setting-start-on-movement").checked = state.startOnMovement || false;
+          document.getElementById("setting-ghost-enabled").checked = state.ghostEnabled !== false;
           document.getElementById("setting-virtual-gears-enabled").checked = state.virtualGearsEnabled !== false;
           document.getElementById("setting-auto-backup").checked = state.autoBackupOnSessionEnd !== false;
           document.getElementById("setting-initial-virtual-gear").value = state.initialVirtualGear || DEFAULT_VIRTUAL_GEAR;
@@ -246,6 +247,7 @@ export function bindEvents(handlers) {
         
         state.countdownDuration = parseInt(document.getElementById("setting-countdown-duration").value) || 3;
         state.startOnMovement = document.getElementById("setting-start-on-movement").checked;
+        state.ghostEnabled = document.getElementById("setting-ghost-enabled").checked;
         state.virtualGearsEnabled = document.getElementById("setting-virtual-gears-enabled").checked;
         state.autoBackupOnSessionEnd = document.getElementById("setting-auto-backup").checked;
         const initialVirtualGear = Number(document.getElementById("setting-initial-virtual-gear").value);

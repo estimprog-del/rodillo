@@ -51,6 +51,7 @@ export const state = {
   currentRouteIndex: 0,
   routeLoadedFromHistory: false,
   routeName: "",
+  ghostPoints: [],
   map: null,
   clockInterval: null,
   realismFactor: 1.0,
@@ -69,6 +70,7 @@ export const state = {
   powerZones: [55, 75, 88, 95, 106],
   countdownDuration: 3,
   startOnMovement: false,
+  ghostEnabled: true,
   manualMode: 'SLOPE',
   targetWatts: 150,
   virtualGear: DEFAULT_VIRTUAL_GEAR,
@@ -104,6 +106,7 @@ export function saveStateToLocalStorage() {
     powerZones: state.powerZones,
     countdownDuration: state.countdownDuration,
     startOnMovement: state.startOnMovement,
+    ghostEnabled: state.ghostEnabled,
     manualMode: state.manualMode,
     targetWatts: state.targetWatts,
     virtualGearByUser: state.virtualGearByUser,
@@ -157,6 +160,7 @@ export function loadStateFromLocalStorage() {
       : defaultPowerZones;
     state.countdownDuration = parsed.countdownDuration || 3;
     state.startOnMovement = parsed.startOnMovement !== undefined ? parsed.startOnMovement : false;
+    state.ghostEnabled = parsed.ghostEnabled !== false;
     state.manualMode = parsed.manualMode || 'SLOPE';
     state.targetWatts = parsed.targetWatts || 150;
     state.virtualGearByUser = parsed.virtualGearByUser || {};
