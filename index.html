@@ -20,17 +20,8 @@
 
         <!-- MapLibre 3D CSS -->
         <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-C0JZXF45DE"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-
-  gtag('config', 'G-C0JZXF45DE');
-</script>
-      <script type="module" crossorigin src="./assets/index-CRAEnDKr.js"></script>
-      <link rel="stylesheet" crossorigin href="./assets/index-B0CRwhGL.css">
+      <script type="module" crossorigin src="./assets/index-VVBkM10k.js"></script>
+      <link rel="stylesheet" crossorigin href="./assets/index-CZuqbobh.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -105,6 +96,13 @@
                         style="padding: 10px 14px"
                     >
                         ❓ Ayuda
+                    </button>
+                    <button
+                        class="btn btn-dark"
+                        id="btn-open-privacy"
+                        style="padding: 10px 14px"
+                    >
+                        🔒 Privacidad
                     </button>
                     <button
                         class="btn btn-dark"
@@ -628,6 +626,7 @@
                         >
                             <div class="elevation-profile-title">
                                 <span>PERFIL ALTITUD RUTA</span>
+                                <span id="workout-route-name" class="elevation-route-name" hidden></span>
                                 <button class="panel-toggle" data-panel-target="elevation" title="Mostrar u ocultar panel">−</button>
                             </div>
                             <div class="panel-content">
@@ -1179,6 +1178,20 @@
                         style="height: 250px"
                     ></div>
                 </div>
+            </div>
+
+            <div id="summary-route-grid" class="summary-route-grid" hidden>
+                <section id="summary-elevation-card" class="glass-card summary-route-card" hidden>
+                    <h3>Perfil de altitud de la ruta</h3>
+                    <div id="summary-elevation-chart" class="summary-elevation-chart"></div>
+                </section>
+                <section id="summary-map-card" class="glass-card summary-route-card" hidden>
+                    <h3>Recorrido de la ruta</h3>
+                    <div id="summary-route-map" class="summary-route-map" role="img" aria-label="Mapa del recorrido de la sesión"></div>
+                    <p class="summary-route-note">
+                        El trazado procede del archivo de ruta. El progreso es una estimación según la distancia del rodillo, no una posición GPS registrada. El mapa base requiere conexión a Internet.
+                    </p>
+                </section>
             </div>
 
             <div
@@ -1763,7 +1776,7 @@
                 <button id="btn-backup-data" class="btn btn-primary">Descargar backup completo (JSON)</button>
                 <button id="btn-settings-import-backup" class="btn btn-secondary">Restaurar backup...</button>
               </div>
-              <div id="backup-last-status" class="backup-last-status">No hay backups registrados todavía.</div>
+              <div id="backup-last-status" class="backup-last-status">El estado de la descarga aparecerá aquí después del primer backup.</div>
               <p class="backup-help-text">
                 Los backups contienen datos personales y deportivos y no están cifrados. Guárdalos en un lugar seguro y no los compartas públicamente.
               </p>
@@ -1787,9 +1800,93 @@
           </div>
           <div class="modal-footer" style="margin-top: 24px; display: flex; justify-content: flex-end;">
             <button id="btn-settings-help" class="btn btn-dark" style="margin-right: auto; padding: 10px 16px; border-radius: 8px;">❓ Ayuda</button>
+            <button id="btn-settings-privacy" class="btn btn-dark" style="padding: 10px 16px; border-radius: 8px;">🔒 Privacidad</button>
             <button id="btn-save-settings" class="btn btn-primary" style="padding: 10px 24px; border-radius: 8px; background: #10b981; border: none; color: white; font-weight: 600; cursor: pointer;">Guardar Cambios</button>
           </div>
         </div>
+      </div>
+
+      <div id="modal-privacy" class="modal-overlay privacy-overlay" style="display: none;">
+        <section class="modal-content glass-card privacy-dialog" role="dialog" aria-modal="true" aria-labelledby="privacy-title">
+          <header class="privacy-heading">
+            <div>
+              <p class="privacy-eyebrow" id="privacy-eyebrow">BIENVENIDA</p>
+              <h2 id="privacy-title">Bienvenido a RodilloInt</h2>
+            </div>
+            <button id="btn-privacy-close" class="privacy-close-button" type="button" aria-label="Cerrar preferencias de privacidad" hidden>×</button>
+          </header>
+          <div class="privacy-content">
+            <p>
+              RodilloInt permite entrenar con rodillo y sensores, seguir rutas y consultar el historial de tus sesiones.
+            </p>
+            <h3>Datos guardados en este navegador</h3>
+            <p>
+              Los perfiles, entrenamientos, telemetría y preferencias se guardan en el almacenamiento local del navegador (IndexedDB y localStorage). No son cookies, pero pueden borrarse al limpiar los datos del sitio o cambiar de navegador/dispositivo. Puedes descargar backups desde Ajustes.
+            </p>
+            <h3>Servicios externos al usar funciones</h3>
+            <ul>
+              <li>Google Analytics: medición opcional de uso; solo se activa si la aceptas.</li>
+              <li>Mapas: MapTiler/OpenStreetMap y recursos de mapa asociados reciben solicitudes cuando se muestra un mapa.</li>
+              <li>Mando remoto: Ably transmite órdenes entre tus dispositivos; api.qrserver.com genera el QR y recibe el enlace de la sala.</li>
+              <li>Recursos de terceros: algunos componentes se cargan desde CDNs.</li>
+            </ul>
+            <h3>Uso y seguridad</h3>
+            <p>
+              RodilloInt es una herramienta de entrenamiento personal/comunitaria, no un dispositivo médico ni un sistema de seguridad. La app, la conexión y las métricas pueden fallar o ser inexactas; no se garantiza un funcionamiento continuo ni el control fiable del rodillo. Comprueba el montaje y el espacio antes de entrenar, sigue las instrucciones del fabricante y utiliza los controles de parada del propio equipo. Detén el ejercicio si te encuentras mal y no dependas de la app para prevenir caídas o lesiones.
+            </p>
+            <h3>Condiciones básicas y reporte de fallos</h3>
+            <p>
+              El uso es voluntario y bajo el criterio de cada persona. El aviso de seguridad ayuda a informar, pero no elimina derechos ni sustituye las obligaciones legales aplicables. Si detectas un fallo, deja de usar la función afectada y comunícalo a <a href="mailto:estimprog@gmail.com?subject=Incidencia%20en%20RodilloInt">estimprog@gmail.com</a>, indicando los pasos para reproducirlo y el navegador/dispositivo. No incluyas datos personales o de salud innecesarios.
+            </p>
+            <label class="privacy-analytics-choice" for="privacy-analytics-consent">
+              <input id="privacy-analytics-consent" type="checkbox">
+              <span>Permitir Google Analytics opcional para medir el uso de la aplicación.</span>
+            </label>
+            <p class="privacy-footnote">
+              Puedes cambiar esta elección en cualquier momento desde <strong>Dashboard → Privacidad</strong>. La app necesita almacenamiento local para guardar perfiles y sesiones; si retiras el consentimiento analítico, se detienen futuras mediciones, aunque el navegador puede conservar cookies ya creadas por terceros. Para consultas sobre privacidad: <a href="mailto:estimprog@gmail.com">estimprog@gmail.com</a>. Antes del uso público, conviene completar una política de privacidad con los datos del responsable, conservación y derechos aplicables.
+            </p>
+          </div>
+          <footer class="privacy-actions">
+            <button id="btn-privacy-essential" class="btn btn-primary" type="button">Solo esenciales</button>
+            <button id="btn-privacy-save" class="btn btn-secondary" type="button">Guardar elección</button>
+            <button id="btn-privacy-accept" class="btn btn-primary" type="button">Aceptar analítica</button>
+          </footer>
+        </section>
+      </div>
+
+      <div id="modal-session-safety" class="modal-overlay privacy-overlay" style="display: none;">
+        <section class="modal-content glass-card session-safety-dialog" role="dialog" aria-modal="true" aria-labelledby="session-safety-title" aria-describedby="session-safety-description">
+          <header class="privacy-heading">
+            <div>
+              <p class="privacy-eyebrow">ANTES DE ENTRENAR</p>
+              <h2 id="session-safety-title">Entrena con seguridad</h2>
+            </div>
+          </header>
+          <div class="privacy-content" id="session-safety-description">
+            <p>
+              RodilloInt no es un dispositivo médico ni un sistema de seguridad. La app, la conexión o las métricas pueden fallar o ser inexactas y no se garantiza el control fiable del rodillo.
+            </p>
+            <ul>
+              <li>Comprueba el montaje, la estabilidad de la bicicleta y que el área esté despejada.</li>
+              <li>Sigue las instrucciones del fabricante y ten a mano los controles de parada del rodillo.</li>
+              <li>No dependas de la app para prevenir caídas o lesiones. Detente si notas dolor, mareo o malestar.</li>
+            </ul>
+            <p>
+              El entrenamiento es voluntario y queda a tu criterio. Este aviso informa de las precauciones, pero no supone una renuncia a derechos ni una exención de responsabilidad.
+            </p>
+            <p class="privacy-footnote">
+              ¿Has encontrado un problema? Escríbenos a <a href="mailto:estimprog@gmail.com?subject=Incidencia%20en%20RodilloInt">estimprog@gmail.com</a>. Describe cómo reproducirlo y tu navegador/dispositivo; evita enviar datos personales o de salud innecesarios.
+            </p>
+            <label class="privacy-analytics-choice session-safety-choice" for="session-safety-acknowledgement">
+              <input id="session-safety-acknowledgement" type="checkbox">
+              <span>He leído las precauciones, he comprobado el equipo y deseo iniciar la sesión.</span>
+            </label>
+          </div>
+          <footer class="privacy-actions">
+            <button id="btn-session-safety-cancel" class="btn btn-dark" type="button">Cancelar</button>
+            <button id="btn-session-safety-confirm" class="btn btn-primary" type="button" disabled>Continuar a la sesión</button>
+          </footer>
+        </section>
       </div>
 
     </body>
