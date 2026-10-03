@@ -2665,11 +2665,13 @@ h4 {
 .hud-ghost {
     position: absolute;
     top: 65px;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 16px;
+    max-width: min(220px, calc(100vw - 32px));
+    transform: none;
     z-index: 10;
     display: none;
     margin: 0;
+    padding: 8px 12px;
     pointer-events: none;
 }
 
