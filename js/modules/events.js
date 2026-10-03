@@ -25,7 +25,7 @@ function formatBackupStatus(status) {
   const container = document.getElementById("backup-last-status");
   if (!container) return;
   if (!status) {
-    container.textContent = "No hay backups registrados todavía.";
+    container.textContent = "El estado de la descarga aparecerá aquí después del primer backup.";
     return;
   }
   const date = new Date(status.initiatedAt || status.createdAt);
@@ -95,7 +95,20 @@ export function bindEvents(handlers) {
     changeVirtualGear,
     setWorkoutFontScale,
     startSession,
+    confirmSessionSafety,
   } = handlers;
+
+  const safetyAcknowledgement = document.getElementById(
+    "session-safety-acknowledgement",
+  );
+  const safetyConfirmButton = document.getElementById(
+    "btn-session-safety-confirm",
+  );
+  safetyAcknowledgement?.addEventListener("change", () => {
+    if (safetyConfirmButton) {
+      safetyConfirmButton.disabled = !safetyAcknowledgement.checked;
+    }
+  });
 
   // Add user form submission
   const addUserForm = document.getElementById("form-add-user");
@@ -108,7 +121,7 @@ export function bindEvents(handlers) {
 
   document.body.addEventListener("click", (e) => {
     const target = e.target.closest(
-      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-cycle-layout, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, #btn-export-csv, [id^='btn-export-csv-'], [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-history-back-top, #btn-stats-back-top, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-settings-help, #btn-open-help, #btn-help-back, #btn-toggle-3d, #btn-toggle-manual-mode",
+      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-cycle-layout, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, #btn-export-csv, [id^='btn-export-csv-'], [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-history-back-top, #btn-stats-back-top, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-settings-help, #btn-open-help, #btn-help-back, #btn-toggle-3d, #btn-toggle-manual-mode, #btn-session-safety-confirm, #btn-session-safety-cancel",
     );
 
     if (!target) return;
@@ -328,6 +341,8 @@ export function bindEvents(handlers) {
       // Controles entrenamiento
       if (id === "btn-workout-pause") togglePause();
       if (id === "btn-workout-stop") stopSessionFlow();
+      if (id === "btn-session-safety-confirm") confirmSessionSafety();
+      if (id === "btn-session-safety-cancel") hideModal("session-safety");
       if (id === "btn-cycle-layout" && typeof window.cycleWorkoutLayout === "function") {
         window.cycleWorkoutLayout();
       }

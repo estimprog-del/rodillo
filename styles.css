@@ -1108,6 +1108,54 @@ h4 {
     flex-direction: column;
     gap: 16px;
 }
+.summary-route-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.summary-route-grid:not([hidden]) {
+    display: grid;
+}
+
+@media (min-width: 900px) {
+    .summary-route-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.summary-route-card {
+    min-width: 0;
+    padding: 20px;
+}
+
+.summary-route-card h3 {
+    margin: 0 0 12px;
+    color: white;
+    font-size: 16px;
+}
+
+.summary-elevation-chart {
+    width: 100%;
+    height: 300px;
+}
+
+.summary-route-map {
+    width: 100%;
+    height: 300px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--bg-secondary);
+}
+
+.summary-route-note {
+    margin: 10px 0 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
 .summary-zones-card {
     display: flex;
     flex-direction: column;
@@ -1241,6 +1289,112 @@ h4 {
     max-width: 480px;
     max-height: 90vh;
     overflow-y: auto;
+}
+
+.privacy-overlay {
+    z-index: 1200;
+    padding: 16px;
+}
+
+.privacy-dialog {
+    width: min(760px, 94vw);
+    max-width: 760px;
+    max-height: 92vh;
+    padding: clamp(20px, 4vw, 32px);
+}
+
+.session-safety-dialog {
+    width: min(680px, 94vw);
+    max-width: 680px;
+    max-height: 92vh;
+    padding: clamp(20px, 4vw, 32px);
+    border: 1px solid rgba(245, 158, 11, 0.55);
+}
+
+.session-safety-choice {
+    border-color: rgba(245, 158, 11, 0.55);
+}
+
+.session-safety-dialog button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.privacy-heading,
+.privacy-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.privacy-heading h2 {
+    margin: 0;
+}
+
+.privacy-eyebrow {
+    margin: 0 0 6px;
+    color: var(--accent-green, #10b981);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+}
+
+.privacy-close-button {
+    border: 0;
+    background: transparent;
+    color: var(--text-primary, white);
+    font-size: 30px;
+    cursor: pointer;
+}
+
+.privacy-content {
+    margin: 18px 0;
+    color: var(--text-secondary, #cbd5e1);
+    line-height: 1.55;
+}
+
+.privacy-content h3 {
+    margin: 18px 0 6px;
+    color: var(--text-primary, white);
+    font-size: 16px;
+}
+
+.privacy-content p,
+.privacy-content ul {
+    margin-top: 6px;
+}
+
+.privacy-analytics-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 20px;
+    padding: 14px;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    border-radius: 10px;
+    color: var(--text-primary, white);
+}
+
+.privacy-analytics-choice input {
+    margin-top: 4px;
+    accent-color: #10b981;
+}
+
+.privacy-footnote {
+    font-size: 12px;
+}
+
+.privacy-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 560px) {
+    .privacy-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
 }
 
 #modal-settings .modal-content {
@@ -2582,6 +2736,17 @@ h4 {
 
 .workout-viewport .elevation-profile-title {
     font-size: calc(12px * var(--workout-text-multiplier));
+}
+
+.elevation-route-name {
+    flex: 1 1 auto;
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 0.94em;
+    font-weight: 500;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .panel-content {

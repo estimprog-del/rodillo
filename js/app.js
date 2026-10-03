@@ -15,6 +15,7 @@ import { initNavigation } from "./ui/navigation.js";
 import { loadDashboardHeader } from "./ui/dashboard.js";
 import { updateClock, updatePauseButton } from "./ui/uiHelpers.js";
 import { bindEvents } from "./modules/events.js";
+import { initPrivacyConsent } from "./modules/privacyConsent.js";
 import {
   RemoteRoomClient,
   buildQrUrl,
@@ -51,6 +52,9 @@ let observedMapHudGroup = null;
 let countdownTimer = null;
 let countdownFinishTimer = null;
 let movementWaitTimer = null;
+let sessionSafetyAcknowledged = false;
+let summaryRouteMap = null;
+let summaryRouteRenderId = 0;
 
 function logFpvDebug(message, details = {}) {
   const stateKey = `${message}:${JSON.stringify(details)}`;
@@ -340,7 +344,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     setWorkoutFontScale,
     startSession,
     changeVirtualGear,
+    confirmSessionSafety,
   });
+  initPrivacyConsent();
 
   function initializeRemoteController() {
     document.documentElement.classList.add("remote-route");
@@ -552,7 +558,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       const user = await DbManager.getUserById(savedUserId);
       if (user) selectUser(user);
     }
-    checkBackupReminder();
   } catch (e) {
     console.error("Failed to init IndexedDB", e);
     const container = document.getElementById("users-grid-container");
@@ -610,27 +615,6 @@ function cacheUiElements() {
   // Inputs
   UI.inputs.gpxFileInput = document.getElementById("gpx-file-input");
   UI.routeModal = document.getElementById("route-modal");
-}
-
-function checkBackupReminder() {
-  try {
-    const status = getBackupStatus();
-    const lastBackupDate = new Date(status?.initiatedAt || status?.createdAt || 0);
-    const backupIsOld = !status || !Number.isFinite(lastBackupDate.getTime()) ||
-      Date.now() - lastBackupDate.getTime() >= 30 * 24 * 60 * 60 * 1000;
-    if (!backupIsOld) return;
-
-    const dismissedAt = Number(localStorage.getItem("rodilloint_backup_reminder_dismissed") || 0);
-    if (Date.now() - dismissedAt < 30 * 24 * 60 * 60 * 1000) return;
-
-    const message = status
-      ? "El último backup registrado tiene más de 30 días. Descarga uno desde Ajustes para proteger tus perfiles y actividades."
-      : "Todavía no hay ningún backup registrado. Descarga uno desde Ajustes para proteger tus perfiles y actividades.";
-    window.setTimeout(() => alert(message), 800);
-    localStorage.setItem("rodilloint_backup_reminder_dismissed", String(Date.now()));
-  } catch (error) {
-    console.warn("No se pudo comprobar el recordatorio de backup:", error);
-  }
 }
 
 // UI Update throttling to prevent DOM congestion
@@ -744,6 +728,17 @@ function configureWorkoutHudForMode() {
   const isRoute = state.currentMode === "ROUTE";
   const isManual = state.currentMode === "MANUAL";
   const isTraditional = state.currentMode === "TRADITIONAL"; // Suponiendo que este modo existe
+  const routeNameElement = document.getElementById("workout-route-name");
+  if (routeNameElement) {
+    const routeName = (
+      state.routeName ||
+      state.gpxFilename?.replace(/\.(gpx|tcx)$/i, "") ||
+      ""
+    ).trim();
+    routeNameElement.textContent = routeName;
+    routeNameElement.title = routeName;
+    routeNameElement.hidden = !isRoute || !routeName;
+  }
 
   // Ocultar/Mostrar elementos según el modo
   setElDisplay("hud-progress", isRoute ? "block" : "none");
@@ -873,13 +868,6 @@ async function loadProfilesGrid() {
   container.innerHTML = "";
 
   if (users.length === 0) {
-    container.innerHTML = `
-      <div class="glass-card user-card" style="grid-column: span 100%; cursor: default; padding: 30px;">
-        <p style="color: var(--text-secondary); margin-bottom: 8px;">No hay perfiles de usuario creados.</p>
-        <span style="font-size: 13px;">Crea tu primer perfil deportista para comenzar.</span>
-      </div>
-    `;
-
     return;
   }
 
@@ -1962,6 +1950,19 @@ function togglePause() {
 
 async function startSession() {
   if (!state.currentUser) return;
+  if (!sessionSafetyAcknowledged) {
+    const acknowledgement = document.getElementById(
+      "session-safety-acknowledgement",
+    );
+    const confirmButton = document.getElementById(
+      "btn-session-safety-confirm",
+    );
+    if (acknowledgement) acknowledgement.checked = false;
+    if (confirmButton) confirmButton.disabled = true;
+    showModal("session-safety");
+    return;
+  }
+  sessionSafetyAcknowledged = false;
 
   try {
     const sessId = await DbManager.insertSession({
@@ -2064,6 +2065,17 @@ async function startSession() {
     console.error(e);
     alert("No se pudo inicializar la base de datos de entrenamiento.");
   }
+}
+
+function confirmSessionSafety() {
+  const acknowledgement = document.getElementById(
+    "session-safety-acknowledgement",
+  );
+  if (!acknowledgement?.checked) return;
+
+  hideModal("session-safety");
+  sessionSafetyAcknowledged = true;
+  void startSession();
 }
 
 function startTimerInterval() {
@@ -2336,6 +2348,154 @@ function renderSummaryMetrics(metrics) {
   );
 }
 
+function renderSummaryRoute(session, distanceKm = 0) {
+  const renderId = ++summaryRouteRenderId;
+  const grid = document.getElementById("summary-route-grid");
+  const elevationCard = document.getElementById("summary-elevation-card");
+  const mapCard = document.getElementById("summary-map-card");
+  const mapContainer = document.getElementById("summary-route-map");
+  const points = Array.isArray(session?.routePoints)
+    ? session.routePoints.map((point) => ({
+        lat: Number(point?.lat),
+        lon: Number(point?.lon),
+      }))
+    : [];
+  const routePoints = points.filter(
+    (point) =>
+      Number.isFinite(point.lat) &&
+      Number.isFinite(point.lon) &&
+      point.lat >= -90 &&
+      point.lat <= 90 &&
+      point.lon >= -180 &&
+      point.lon <= 180,
+  );
+  const hasRoute = routePoints.length >= 2;
+  const distances = Array.isArray(session?.routeDistances)
+    ? session.routeDistances.map(Number)
+    : [];
+  const elevations = Array.isArray(session?.routeElevations)
+    ? session.routeElevations.map(Number)
+    : [];
+  const hasProfile =
+    hasRoute &&
+    routePoints.length === points.length &&
+    distances.length === routePoints.length &&
+    elevations.length === routePoints.length &&
+    distances.every(Number.isFinite) &&
+    elevations.every(Number.isFinite) &&
+    distances.every((distance, index) => index === 0 || distance >= distances[index - 1]) &&
+    elevations.some((elevation) => elevation !== 0);
+
+  if (!grid || !elevationCard || !mapCard || !mapContainer) return;
+  elevationCard.hidden = !hasProfile;
+  mapCard.hidden = !hasRoute;
+  grid.hidden = !hasRoute && !hasProfile;
+
+  if (summaryRouteMap) {
+    summaryRouteMap.remove();
+    summaryRouteMap = null;
+  }
+  mapContainer.replaceChildren();
+  if (!hasRoute) return;
+
+  requestAnimationFrame(() => {
+    if (
+      renderId !== summaryRouteRenderId ||
+      !document.getElementById("screen-summary")?.classList.contains("active")
+    ) {
+      return;
+    }
+
+    if (hasProfile) {
+      ChartsManager.initElevationChart(
+        "summary-elevation-chart",
+        distances,
+        elevations,
+      );
+    }
+
+    if (typeof L === "undefined") {
+      console.error("Leaflet no está disponible para mostrar el mapa del resumen.");
+      mapContainer.textContent = "No se pudo cargar el mapa en este navegador.";
+      return;
+    }
+
+    try {
+      const latLngs = routePoints.map((point) => [point.lat, point.lon]);
+      summaryRouteMap = L.map(mapContainer, {
+        zoomControl: true,
+        scrollWheelZoom: false,
+        attributionControl: true,
+      });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(summaryRouteMap);
+
+      L.polyline(latLngs, {
+        color: "#3b82f6",
+        opacity: 0.85,
+        weight: 5,
+      }).addTo(summaryRouteMap);
+
+      const startPoint = latLngs[0];
+      const endPoint = latLngs[latLngs.length - 1];
+      L.circleMarker(startPoint, {
+        radius: 7,
+        color: "#ffffff",
+        weight: 2,
+        fillColor: "#10b981",
+        fillOpacity: 1,
+      }).bindTooltip("Inicio").addTo(summaryRouteMap);
+      L.circleMarker(endPoint, {
+        radius: 7,
+        color: "#ffffff",
+        weight: 2,
+        fillColor: "#ef4444",
+        fillOpacity: 1,
+      }).bindTooltip("Fin de la ruta").addTo(summaryRouteMap);
+
+      const routeDistance = Number(distanceKm);
+      if (
+        distances.length === routePoints.length &&
+        distances.every(Number.isFinite) &&
+        Number.isFinite(routeDistance)
+      ) {
+        const nextIndex = distances.findIndex(
+          (distance) => distance >= routeDistance,
+        );
+        const currentIndex = Math.max(
+          0,
+          Math.min(
+            nextIndex < 0 ? distances.length - 1 : nextIndex,
+            routePoints.length - 1,
+          ),
+        );
+        if (currentIndex > 0) {
+          L.polyline(latLngs.slice(0, currentIndex + 1), {
+            color: "#10b981",
+            opacity: 0.95,
+            weight: 6,
+          }).addTo(summaryRouteMap);
+        }
+        L.circleMarker(latLngs[currentIndex], {
+          radius: 8,
+          color: "#ffffff",
+          weight: 3,
+          fillColor: "#f59e0b",
+          fillOpacity: 1,
+        }).bindTooltip("Progreso estimado").addTo(summaryRouteMap);
+      }
+
+      summaryRouteMap.fitBounds(L.latLngBounds(latLngs), { padding: [24, 24] });
+      requestAnimationFrame(() => summaryRouteMap?.invalidateSize());
+    } catch (error) {
+      console.error("No se pudo mostrar el mapa del resumen:", error);
+      mapContainer.textContent = "No se pudo mostrar el mapa de esta ruta.";
+    }
+  });
+}
+
 function setSessionSaveStatus(message, color = "var(--text-secondary)") {
   const status = document.getElementById("session-save-status");
   if (status) {
@@ -2551,6 +2711,14 @@ async function stopSessionFlow() {
       ?.style.setProperty("display", "none");
 
     navigateTo("summary");
+    renderSummaryRoute(
+      currentSession || {
+        routePoints: state.currentMode === "ROUTE" ? state.routePoints : null,
+        routeDistances: state.currentMode === "ROUTE" ? state.routeDistances : null,
+        routeElevations: state.currentMode === "ROUTE" ? state.routeElevations : null,
+      },
+      finalDistance,
+    );
   } catch (e) {
     disconnectRemoteRoom();
     setSessionSaveStatus("Error al guardar la sesión", "var(--accent-red)");
@@ -3778,6 +3946,7 @@ async function openHistoricalSessionSummary(id) {
       timeInPowerZones,
     });
     navigateTo("summary");
+    renderSummaryRoute(session, distance);
   } catch (e) {
     console.error("Error loading historical session summary:", e);
     alert("No se pudo abrir el resumen de la sesión.");

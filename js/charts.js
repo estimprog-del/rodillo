@@ -417,6 +417,7 @@ function initElevationChart(
 
   const container = document.getElementById(containerId);
   if (container) {
+    if (elevationChart) elevationChart.destroy();
     container.innerHTML = "";
     elevationChart = new ApexCharts(container, options);
     elevationChart.render();

@@ -4,7 +4,7 @@ export function showModal(modalId) {
   const modal = document.getElementById(`modal-${modalId}`);
   if (modal) {
     modal.style.display = "flex"; // Forzamos visibilidad
-    modal.className = "modal-overlay active";
+    modal.classList.add("active");
   }
 }
 
@@ -12,7 +12,7 @@ export function hideModal(modalId) {
   const modal = document.getElementById(`modal-${modalId}`);
   if (modal) {
     modal.style.display = "none";
-    modal.className = "modal-overlay";
+    modal.classList.remove("active");
   }
 }
 
