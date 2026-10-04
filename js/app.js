@@ -57,6 +57,15 @@ let summaryRouteMap = null;
 let summaryRouteRenderId = 0;
 let routeOverviewCoordinates = [];
 let routeOverviewLastIndex = -1;
+let routeAlertTimer = null;
+let routeAlertQueue = [];
+let routeHalfwayAnnounced = false;
+let routeThreeQuarterAnnounced = false;
+let routeMaximumAltitudeAnnounced = false;
+let routeMaximumAltitudeCalculated = false;
+let routeMaximumAltitudeIndex = -1;
+let routeMaximumAltitude = null;
+let routeLastAlertedThreshold = null;
 
 function logFpvDebug(message, details = {}) {
   const stateKey = `${message}:${JSON.stringify(details)}`;
@@ -1613,6 +1622,20 @@ function enterWorkoutScreen() {
   state.isAutoPaused = false;
   state.isSessionActive = false;
   state.routeTotalAscent = 0;
+  routeAlertQueue = [];
+  routeHalfwayAnnounced = false;
+  routeThreeQuarterAnnounced = false;
+  routeMaximumAltitudeAnnounced = false;
+  routeMaximumAltitudeCalculated = false;
+  routeMaximumAltitudeIndex = -1;
+  routeMaximumAltitude = null;
+  routeLastAlertedThreshold = null;
+  if (routeAlertTimer !== null) {
+    clearTimeout(routeAlertTimer);
+    routeAlertTimer = null;
+  }
+  const routeAlertBanner = document.getElementById("route-alert-banner");
+  if (routeAlertBanner) routeAlertBanner.style.display = "none";
 
   setElText("workout-timer", "00:00:00");
   setElText("metrics-power", "0");
@@ -2941,6 +2964,87 @@ function updateRouteOverview(distanceKm, routeIndex = state.currentRouteIndex) {
   completed.setAttribute("d", visitedPath);
 }
 
+function showNextRouteAlert() {
+  const banner = document.getElementById("route-alert-banner");
+  if (!banner || routeAlertQueue.length === 0) return;
+
+  banner.textContent = routeAlertQueue.shift();
+  banner.style.display = "block";
+  banner.style.animation = "none";
+  void banner.offsetWidth;
+  banner.style.animation = "";
+  routeAlertTimer = setTimeout(() => {
+    banner.style.display = "none";
+    routeAlertTimer = null;
+    showNextRouteAlert();
+  }, 3000);
+}
+
+function queueRouteAlert(message) {
+  routeAlertQueue.push(message);
+  if (routeAlertTimer === null) showNextRouteAlert();
+}
+
+function announceRouteMilestones(distanceKm) {
+  if (
+    (!routeHalfwayAnnounced || !routeThreeQuarterAnnounced) &&
+    state.routeDistances.length >= 2
+  ) {
+    const routeStartKm = Number(state.routeDistances[0]);
+    const routeEndKm = Number(state.routeDistances.at(-1));
+    if (
+      Number.isFinite(routeStartKm) &&
+      Number.isFinite(routeEndKm) &&
+      routeEndKm > routeStartKm
+    ) {
+      const routeLengthKm = routeEndKm - routeStartKm;
+      const progress = (distanceKm - routeStartKm) / routeLengthKm;
+      if (!routeHalfwayAnnounced && progress >= 0.5) {
+        routeHalfwayAnnounced = true;
+        queueRouteAlert("¡Has hecho la mitad de la ruta!");
+      }
+      if (!routeThreeQuarterAnnounced && progress >= 0.75) {
+        routeThreeQuarterAnnounced = true;
+        queueRouteAlert("¡Último cuarto de ruta!");
+      }
+    }
+  }
+
+  if (
+    !routeMaximumAltitudeAnnounced &&
+    state.routeElevations.length === state.routeDistances.length &&
+    state.routeElevations.length >= 2
+  ) {
+    if (!routeMaximumAltitudeCalculated) {
+      routeMaximumAltitudeCalculated = true;
+      state.routeElevations.forEach((elevation, index) => {
+        const altitude = Number(elevation);
+        if (
+          Number.isFinite(altitude) &&
+          (routeMaximumAltitude === null || altitude > routeMaximumAltitude)
+        ) {
+          routeMaximumAltitude = altitude;
+          routeMaximumAltitudeIndex = index;
+        }
+      });
+    }
+    const maximumDistanceKm = Number(
+      state.routeDistances[routeMaximumAltitudeIndex],
+    );
+    if (
+      routeMaximumAltitudeIndex >= 0 &&
+      Number.isFinite(maximumDistanceKm) &&
+      distanceKm >= maximumDistanceKm
+    ) {
+      routeMaximumAltitudeAnnounced = true;
+      const formattedAltitude = Math.round(routeMaximumAltitude).toLocaleString(
+        "es-ES",
+      );
+      queueRouteAlert(`¡Cima alcanzada! ${formattedAltitude} m`);
+    }
+  }
+}
+
 function updateRouteSimulation(currentDistKm) {
   if (state.currentMode !== "ROUTE" || state.routePoints.length === 0) return;
 
@@ -2949,6 +3053,7 @@ function updateRouteSimulation(currentDistKm) {
   if (index === -1) index = state.routeDistances.length - 1;
   index = Math.max(0, Math.min(state.routePoints.length - 1, index));
   updateRouteOverview(currentDistKm, index);
+  announceRouteMilestones(currentDistKm);
 
   if (index !== state.currentRouteIndex) {
       state.currentRouteIndex = index;
@@ -2980,14 +3085,9 @@ function updateRouteSimulation(currentDistKm) {
     const thresholds = [20, 10, 5, 4, 3, 2, 1];
     const trigger = thresholds.find(t => Math.abs(remaining - t) < 0.05);
 
-    if (trigger && state.lastAlertedThreshold !== trigger) {
-        state.lastAlertedThreshold = trigger;
-        const banner = document.getElementById("route-alert-banner");
-        if (banner) {
-            banner.textContent = `¡Quedan ${trigger} km para el final!`;
-            banner.style.display = "block";
-            setTimeout(() => { banner.style.display = "none"; }, 3000);
-        }
+    if (trigger && routeLastAlertedThreshold !== trigger) {
+        routeLastAlertedThreshold = trigger;
+        queueRouteAlert(`¡Quedan ${trigger} km para el final!`);
     }
 
     // Actualizar posición del usuario en el mapa según el motor
