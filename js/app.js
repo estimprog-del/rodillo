@@ -584,6 +584,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     onSpeedReceived,
     onStatusChanged,
   });
+  initSensorReconnectControls();
 });
 
 function cacheUiElements() {
@@ -1242,6 +1243,30 @@ function onStatusChanged(type, status) {
   targetIds.forEach((id) => {
     const icon = document.getElementById(id);
     if (icon) {
+      const label =
+        id === "indicator-PWR"
+          ? "Potencia"
+          : id === "indicator-HR"
+            ? "Pulso"
+            : id === "indicator-CAD"
+              ? "Cadencia"
+              : id === "indicator-SPD"
+                ? "Velocidad"
+                : type;
+      const isConnected = BleManager.simulator.isActive || status === "CONECTADO";
+      const canReconnect = !isConnected && status === "DESCONECTADO";
+      icon.title = `${label}: ${
+        isConnected
+          ? "conectado"
+          : status === "CONECTANDO" || status === "BUSCANDO"
+            ? "conectando"
+            : "desconectado"
+      }${canReconnect ? ". Pulsa para conectar" : ""}`;
+      icon.setAttribute("aria-label", icon.title);
+      icon.setAttribute("aria-disabled", String(!canReconnect));
+      icon.tabIndex = canReconnect ? 0 : -1;
+      icon.classList.toggle("reconnect-available", canReconnect);
+
       // Si el simulador está activo, forzamos el estado activo (verde)
       if (BleManager.simulator.isActive) {
         icon.className = "indicator-icon active";
@@ -1255,6 +1280,38 @@ function onStatusChanged(type, status) {
         icon.className = "indicator-icon";
       }
     }
+  });
+}
+
+function initSensorReconnectControls() {
+  const sensorButtons = {
+    "indicator-PWR": "POWER",
+    "indicator-HR": "HRM",
+    "indicator-CAD": "CSC",
+    "indicator-SPD": "CSC",
+  };
+
+  Object.entries(sensorButtons).forEach(([id, type]) => {
+    const icon = document.getElementById(id);
+    if (!icon) return;
+    const connect = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const trainerDisconnected =
+        (id === "indicator-PWR" || id === "indicator-SPD") &&
+        BleManager.connections.TRAINER.device &&
+        BleManager.connections.TRAINER.status === "DESCONECTADO";
+      const connectionType = trainerDisconnected ? "TRAINER" : type;
+      if (BleManager.connections[connectionType]?.status !== "DESCONECTADO") return;
+      void triggerBleConnection(connectionType);
+    };
+    icon.addEventListener("click", connect);
+    icon.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      connect(event);
+    });
+    icon.setAttribute("aria-disabled", "true");
+    icon.tabIndex = -1;
   });
 }
 
@@ -2551,6 +2608,7 @@ async function stopSessionFlow() {
   );
   if (!confirmStop) return;
 
+  BleManager.stopAutoReconnect();
   if (state.timerInterval) {
     clearInterval(state.timerInterval);
     state.timerInterval = null;

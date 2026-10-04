@@ -55,6 +55,20 @@ const connections = {
 
 // Escuchador de estado
 let dataListener = null;
+const deviceDisconnectListeners = new WeakMap();
+
+function registerDisconnectListener(device, type) {
+  let registeredTypes = deviceDisconnectListeners.get(device);
+  if (!registeredTypes) {
+    registeredTypes = new Set();
+    deviceDisconnectListeners.set(device, registeredTypes);
+  }
+  if (registeredTypes.has(type)) return;
+  registeredTypes.add(type);
+  device.addEventListener("gattserverdisconnected", () => {
+    handleDisconnect(type);
+  });
+}
 
 // Virtual Simulator Settings
 const simulator = {
@@ -508,7 +522,9 @@ async function connectDevice(type) {
   }
 
   try {
-    isDisconnectingIntentionally = false;
+    intentionalDisconnects[type] = false;
+    clearReconnectTimer(type);
+    reconnectAttempts[type] = 0;
     updateStatus(type, "BUSCANDO");
 
     // Request device
@@ -561,9 +577,7 @@ async function connectDevice(type) {
     connections[type].name = device.name || "Dispositivo Bluetooth";
 
     // Handle Disconnections
-    device.addEventListener("gattserverdisconnected", () => {
-      handleDisconnect(type);
-    });
+    registerDisconnectListener(device, type);
 
     if (isTrainer) {
       // FTMS setup
@@ -605,41 +619,76 @@ async function connectDevice(type) {
   } catch (error) {
     console.error(`Error connecting to ${type}:`, error);
     updateStatus(type, "DESCONECTADO");
+    if (state.isSessionActive && connections[type].device) {
+      scheduleAutoReconnect(type, connections[type].device);
+    }
     throw error;
   }
 }
 
-let isDisconnectingIntentionally = false;
 const reconnectAttempts = {
   TRAINER: 0,
   HRM: 0,
   POWER: 0,
   CSC: 0,
 };
-const MAX_RECONNECT_ATTEMPTS = 3;
+const reconnectTimers = {
+  TRAINER: null,
+  HRM: null,
+  POWER: null,
+  CSC: null,
+};
+const reconnectInProgress = {
+  TRAINER: false,
+  HRM: false,
+  POWER: false,
+  CSC: false,
+};
+const intentionalDisconnects = {
+  TRAINER: false,
+  HRM: false,
+  POWER: false,
+  CSC: false,
+};
+
+function clearReconnectTimer(type) {
+  if (reconnectTimers[type] !== null) {
+    clearTimeout(reconnectTimers[type]);
+    reconnectTimers[type] = null;
+  }
+}
+
+function scheduleAutoReconnect(type, device) {
+  if (
+    !state.isSessionActive ||
+    intentionalDisconnects[type] ||
+    reconnectTimers[type] !== null ||
+    reconnectInProgress[type]
+  ) {
+    return;
+  }
+  const delay = Math.min(2000 * 2 ** Math.min(reconnectAttempts[type], 3), 15000);
+  reconnectTimers[type] = setTimeout(() => {
+    reconnectTimers[type] = null;
+    void attemptAutoReconnect(type, device);
+  }, delay);
+}
 
 async function attemptAutoReconnect(type, device) {
-  if (reconnectAttempts[type] >= MAX_RECONNECT_ATTEMPTS) {
-    console.error(
-      `Reconexión automática fallida para ${type} tras ${MAX_RECONNECT_ATTEMPTS} intentos.`,
-    );
-    reconnectAttempts[type] = 0;
-    connections[type].device = null;
-    connections[type].name = "";
+  if (reconnectInProgress[type]) return;
+  if (!state.isSessionActive || intentionalDisconnects[type] || !device) {
     updateStatus(type, "DESCONECTADO");
     return;
   }
 
+  reconnectInProgress[type] = true;
   reconnectAttempts[type]++;
   updateStatus(type, "CONECTANDO");
   console.log(
-    `[Auto-Reconnect] Intentando reconectar ${type} (Intento ${reconnectAttempts[type]}/${MAX_RECONNECT_ATTEMPTS})...`,
+    `[Auto-Reconnect] Intentando reconectar ${type} (intento ${reconnectAttempts[type]}; reintento indefinido durante la sesión)...`,
   );
 
   try {
-    // Wait 2 seconds before retry
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
     // Connect to GATT with a 12-second timeout
     let server;
     try {
@@ -710,7 +759,11 @@ async function attemptAutoReconnect(type, device) {
       `[Auto-Reconnect] Fallo en intento ${reconnectAttempts[type]} para ${type}:`,
       error,
     );
-    attemptAutoReconnect(type, device);
+    reconnectInProgress[type] = false;
+    updateStatus(type, "DESCONECTADO");
+    scheduleAutoReconnect(type, device);
+  } finally {
+    reconnectInProgress[type] = false;
   }
 }
 
@@ -728,12 +781,17 @@ function handleDisconnect(type) {
     conn.lastSentInclination = null;
   }
 
-  if (isDisconnectingIntentionally || !device) {
+  if (intentionalDisconnects[type] || !device) {
     conn.device = null;
     conn.name = "";
     updateStatus(type, "DESCONECTADO");
   } else {
-    attemptAutoReconnect(type, device);
+    if (state.isSessionActive) {
+      updateStatus(type, "DESCONECTADO");
+      scheduleAutoReconnect(type, device);
+    } else {
+      updateStatus(type, "DESCONECTADO");
+    }
   }
 }
 
@@ -791,7 +849,8 @@ function updateStatus(type, status) {
 }
 
 function disconnectDevice(type) {
-  isDisconnectingIntentionally = true;
+  intentionalDisconnects[type] = true;
+  clearReconnectTimer(type);
   const conn = connections[type];
   if (conn.device && conn.device.gatt.connected) {
     conn.device.gatt.disconnect();
@@ -801,12 +860,20 @@ function disconnectDevice(type) {
 
 async function disconnectAll() {
   stopSimulator();
-  isDisconnectingIntentionally = true;
   for (const type in connections) {
+    intentionalDisconnects[type] = true;
+    clearReconnectTimer(type);
     if (connections[type].device && connections[type].device.gatt.connected) {
       connections[type].device.gatt.disconnect();
     }
     handleDisconnect(type);
+  }
+}
+
+function stopAutoReconnect() {
+  for (const type of Object.keys(reconnectTimers)) {
+    clearReconnectTimer(type);
+    reconnectAttempts[type] = 0;
   }
 }
 
@@ -1121,7 +1188,9 @@ async function silenceConnect(device, type) {
   }
 
   try {
-    isDisconnectingIntentionally = false;
+    intentionalDisconnects[type] = false;
+    clearReconnectTimer(type);
+    reconnectAttempts[type] = 0;
     updateStatus(type, "CONECTANDO");
 
     // Conectar GATT con timeout
@@ -1147,9 +1216,7 @@ async function silenceConnect(device, type) {
     connections[type].server = server;
     connections[type].name = device.name || "Dispositivo Bluetooth";
 
-    device.addEventListener("gattserverdisconnected", () => {
-      handleDisconnect(type);
-    });
+    registerDisconnectListener(device, type);
 
     if (isTrainer) {
       const charRead = await service.getCharacteristic(
@@ -1265,6 +1332,7 @@ window.BleManager = {
   setTargetPower,
   calculateVirtualSpeed,
   autoReconnectSavedDevices,
+  stopAutoReconnect,
   startSimulator,
   stopSimulator,
   setSimulatedMetrics,
