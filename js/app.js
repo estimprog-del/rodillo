@@ -1973,15 +1973,19 @@ function togglePause() {
 
 async function startSession() {
   if (!state.currentUser) return;
-  if (!sessionSafetyAcknowledged) {
+  if (!sessionSafetyAcknowledged && state.sessionSafetyNoticeEnabled) {
     const acknowledgement = document.getElementById(
       "session-safety-acknowledgement",
     );
     const confirmButton = document.getElementById(
       "btn-session-safety-confirm",
     );
+    const skipFutureNotice = document.getElementById(
+      "session-safety-skip-future",
+    );
     if (acknowledgement) acknowledgement.checked = false;
     if (confirmButton) confirmButton.disabled = true;
+    if (skipFutureNotice) skipFutureNotice.checked = false;
     showModal("session-safety");
     return;
   }
@@ -2096,6 +2100,13 @@ function confirmSessionSafety() {
   );
   if (!acknowledgement?.checked) return;
 
+  const skipFutureNotice = document.getElementById(
+    "session-safety-skip-future",
+  );
+  if (skipFutureNotice?.checked) {
+    state.sessionSafetyNoticeEnabled = false;
+    saveStateToLocalStorage();
+  }
   hideModal("session-safety");
   sessionSafetyAcknowledged = true;
   void startSession();

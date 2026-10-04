@@ -179,9 +179,11 @@ export function bindEvents(handlers) {
           
           realismSlider.oninput = (e) => realismDisplay.textContent = e.target.value;
 
-  	        document.getElementById("setting-power-zones").value = state.powerZones ? state.powerZones.join(',') : "55,75,88,95,106";
-  	        document.getElementById("setting-countdown-duration").value = state.countdownDuration || 3;
+          document.getElementById("setting-power-zones").value = state.powerZones ? state.powerZones.join(',') : "55,75,88,95,106";
+          document.getElementById("setting-countdown-duration").value = state.countdownDuration || 3;
           document.getElementById("setting-start-on-movement").checked = state.startOnMovement || false;
+          document.getElementById("setting-session-safety-notice").checked =
+            state.sessionSafetyNoticeEnabled !== false;
           document.getElementById("setting-ghost-enabled").checked = state.ghostEnabled !== false;
           document.getElementById("setting-virtual-gears-enabled").checked = state.virtualGearsEnabled !== false;
           document.getElementById("setting-auto-backup").checked = state.autoBackupOnSessionEnd !== false;
@@ -247,6 +249,9 @@ export function bindEvents(handlers) {
         
         state.countdownDuration = parseInt(document.getElementById("setting-countdown-duration").value) || 3;
         state.startOnMovement = document.getElementById("setting-start-on-movement").checked;
+        state.sessionSafetyNoticeEnabled = document.getElementById(
+          "setting-session-safety-notice",
+        ).checked;
         state.ghostEnabled = document.getElementById("setting-ghost-enabled").checked;
         state.virtualGearsEnabled = document.getElementById("setting-virtual-gears-enabled").checked;
         state.autoBackupOnSessionEnd = document.getElementById("setting-auto-backup").checked;
