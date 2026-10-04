@@ -684,7 +684,7 @@ function updateRouteProgressHud() {
 
   const totalKm = state.routeDistances[state.routeDistances.length - 1];
   const remainingKm = Math.max(0, totalKm - state.totalDistance);
-  setElText("submetrics-remaining", `${remainingKm.toFixed(1)} km`);
+  setElText("submetrics-remaining", `${remainingKm.toFixed(2)} km`);
 
   if (!state.routeTotalAscent) {
     state.routeTotalAscent = calculateTotalRouteAscent();
