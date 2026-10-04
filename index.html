@@ -513,16 +513,29 @@
 
                     <!-- HUD superpuesto -->
                     <div class="workout-hud-overlay">
-                        <!-- HUD progreso (esquina inferior izquierda) -->
-                        <div
-                            class="hud-bottom-left glass-card"
-                            id="hud-progress"
-                        >
-                            <div class="mini-profile-title">
-                                <span>PROGRESO RUTA</span>
-                                <button class="panel-toggle" data-panel-target="progress" title="Mostrar u ocultar panel">−</button>
-                            </div>
-                            <div class="panel-content">
+                        <div id="route-side-stack" class="hud-route-side-stack" style="display: none">
+                            <section id="route-overview-card" class="glass-card route-overview-card">
+                                <div class="mini-profile-title">
+                                    <span>VISTA GENERAL</span>
+                                    <button class="panel-toggle" data-panel-target="routeOverview" title="Mostrar u ocultar vista general">−</button>
+                                </div>
+                                <div class="panel-content route-overview-content">
+                                    <svg id="route-overview-svg" viewBox="0 0 100 100" role="img" aria-label="Vista general esquemática de la ruta">
+                                        <path id="route-overview-track" class="route-overview-track"></path>
+                                        <path id="route-overview-completed" class="route-overview-completed"></path>
+                                        <circle id="route-overview-start" class="route-overview-start" r="3"></circle>
+                                        <circle id="route-overview-end" class="route-overview-end" r="3"></circle>
+                                        <circle id="route-overview-position" class="route-overview-position" r="4"></circle>
+                                    </svg>
+                                </div>
+                            </section>
+                            <!-- HUD progreso (esquina inferior izquierda) -->
+                            <div class="hud-bottom-left glass-card" id="hud-progress">
+                                <div class="mini-profile-title">
+                                    <span>PROGRESO RUTA</span>
+                                    <button class="panel-toggle" data-panel-target="progress" title="Mostrar u ocultar panel">−</button>
+                                </div>
+                                <div class="panel-content">
                               <div class="progress-item">
                                 <span class="progress-label">Recorrido</span>
                                 <span id="submetrics-distance">0.00 km</span>
@@ -541,6 +554,7 @@
                                 <span class="progress-label warn">Faltan</span>
                                 <span id="submetrics-remaining-ascent">--</span>
                               </div>
+                            </div>
                             </div>
                         </div>
 

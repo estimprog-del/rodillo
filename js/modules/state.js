@@ -60,7 +60,7 @@ export const state = {
   mapInitialOrientation: 'NORTE',
   workoutLayout: 'auto',
   workoutLayouts: {},
-  workoutPanels: { virtual: true, progress: true, elevation: true, upcoming: true, remote: true },
+  workoutPanels: { virtual: true, progress: true, elevation: true, upcoming: true, remote: true, routeOverview: true },
   workoutPanelsByUser: {},
   fullscreenPreference: false,
   fullscreenByUser: {},

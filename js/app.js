@@ -55,6 +55,8 @@ let movementWaitTimer = null;
 let sessionSafetyAcknowledged = false;
 let summaryRouteMap = null;
 let summaryRouteRenderId = 0;
+let routeOverviewCoordinates = [];
+let routeOverviewLastIndex = -1;
 
 function logFpvDebug(message, details = {}) {
   const stateKey = `${message}:${JSON.stringify(details)}`;
@@ -257,6 +259,7 @@ function applyWorkoutPanels() {
   const panels = {
     virtual: document.getElementById("virtual-trainer-panel"),
     progress: document.getElementById("hud-progress"),
+    routeOverview: document.getElementById("route-overview-card"),
     elevation: document.getElementById("hud-elevation-footer"),
     upcoming: document.getElementById("upcoming-profile-chart"),
   };
@@ -743,6 +746,7 @@ function configureWorkoutHudForMode() {
 
   // Ocultar/Mostrar elementos según el modo
   setElDisplay("hud-progress", isRoute ? "block" : "none");
+  setElDisplay("route-side-stack", isRoute ? "flex" : "none");
   setElDisplay("hud-profile", isRoute ? "flex" : "none");
   setElDisplay("hud-elevation-footer", isRoute ? "block" : "none");
   setElDisplay("workout-map", isRoute ? "block" : "none");
@@ -1673,6 +1677,7 @@ function enterWorkoutScreen() {
   if (ghostBanner) ghostBanner.classList.remove("visible");
 
   if (isRouteMode) {
+    renderRouteOverview();
     if (state.ghostEnabled && state.gpxFilename) {
       void loadGhostRiderSession();
     }
@@ -1749,6 +1754,7 @@ async function handleGpxUpload(e) {
       state.routeDistances = routeData.distances;
       state.currentRouteIndex = 0;
       state.routeTotalAscent = calculateTotalRouteAscent();
+      renderRouteOverview();
 
       initConfiguredMap();
       drawRouteOnMap();
@@ -2820,6 +2826,121 @@ async function stopSessionFlow() {
 }
 
 // --- GPX ROUTE SIMULATION UPDATES ---
+function renderRouteOverview() {
+  const track = document.getElementById("route-overview-track");
+  const completed = document.getElementById("route-overview-completed");
+  const startMarker = document.getElementById("route-overview-start");
+  const endMarker = document.getElementById("route-overview-end");
+  const position = document.getElementById("route-overview-position");
+  if (!track || !completed || !startMarker || !endMarker || !position) return;
+
+  const points = state.routePoints.map((point) => ({
+    lat: Number(point?.lat),
+    lon: Number(point?.lon),
+  }));
+  if (
+    points.length < 2 ||
+    points.some(
+      (point) =>
+        !Number.isFinite(point.lat) ||
+        !Number.isFinite(point.lon) ||
+        point.lat < -90 ||
+        point.lat > 90 ||
+        point.lon < -180 ||
+        point.lon > 180,
+    )
+  ) {
+    track.setAttribute("d", "");
+    completed.setAttribute("d", "");
+    routeOverviewCoordinates = [];
+    return;
+  }
+
+  const meanLatitude =
+    points.reduce((sum, point) => sum + point.lat, 0) / points.length;
+  const longitudeScale = Math.max(
+    0.01,
+    Math.cos((meanLatitude * Math.PI) / 180),
+  );
+  const projected = points.map((point) => ({
+    x: point.lon * longitudeScale,
+    y: -point.lat,
+  }));
+  const bounds = projected.reduce(
+    (result, point) => ({
+      minX: Math.min(result.minX, point.x),
+      maxX: Math.max(result.maxX, point.x),
+      minY: Math.min(result.minY, point.y),
+      maxY: Math.max(result.maxY, point.y),
+    }),
+    {
+      minX: Infinity,
+      maxX: -Infinity,
+      minY: Infinity,
+      maxY: -Infinity,
+    },
+  );
+  const width = bounds.maxX - bounds.minX || 1;
+  const height = bounds.maxY - bounds.minY || 1;
+  const scale = Math.min(88 / width, 88 / height);
+  const offsetX = (100 - width * scale) / 2;
+  const offsetY = (100 - height * scale) / 2;
+  routeOverviewCoordinates = projected.map((point) => ({
+    x: offsetX + (point.x - bounds.minX) * scale,
+    y: offsetY + (point.y - bounds.minY) * scale,
+  }));
+  routeOverviewLastIndex = -1;
+
+  const routePath = routeOverviewCoordinates
+    .map(
+      (point, index) =>
+        `${index === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`,
+    )
+    .join(" ");
+  track.setAttribute("d", routePath);
+  completed.setAttribute("d", "");
+  startMarker.setAttribute("cx", routeOverviewCoordinates[0].x.toFixed(2));
+  startMarker.setAttribute("cy", routeOverviewCoordinates[0].y.toFixed(2));
+  endMarker.setAttribute(
+    "cx",
+    routeOverviewCoordinates.at(-1).x.toFixed(2),
+  );
+  endMarker.setAttribute(
+    "cy",
+    routeOverviewCoordinates.at(-1).y.toFixed(2),
+  );
+  updateRouteOverview(state.totalDistance, state.currentRouteIndex);
+}
+
+function updateRouteOverview(distanceKm, routeIndex = state.currentRouteIndex) {
+  const position = document.getElementById("route-overview-position");
+  const completed = document.getElementById("route-overview-completed");
+  if (!position || !completed || routeOverviewCoordinates.length < 2) return;
+
+  const distances = state.routeDistances;
+  if (distances.length !== routeOverviewCoordinates.length) return;
+  const distance = Number(distanceKm) || 0;
+  let nextIndex = distances.findIndex((routeDistance) => routeDistance >= distance);
+  if (nextIndex < 0) nextIndex = distances.length - 1;
+  const currentIndex = Math.max(
+    0,
+    Math.min(routeIndex, nextIndex, routeOverviewCoordinates.length - 1),
+  );
+  const current = routeOverviewCoordinates[currentIndex];
+  position.setAttribute("cx", current.x.toFixed(2));
+  position.setAttribute("cy", current.y.toFixed(2));
+  if (currentIndex === routeOverviewLastIndex) return;
+  routeOverviewLastIndex = currentIndex;
+  const visitedPath = routeOverviewCoordinates
+    .slice(0, currentIndex + 1)
+    .map(
+      (point, index) =>
+        `${index === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`,
+    )
+    .join(" ");
+  completed.setAttribute("d", visitedPath);
+}
+
 function updateRouteSimulation(currentDistKm) {
   if (state.currentMode !== "ROUTE" || state.routePoints.length === 0) return;
 
@@ -2827,6 +2948,7 @@ function updateRouteSimulation(currentDistKm) {
   let index = state.routeDistances.findIndex((d) => d >= currentDistKm);
   if (index === -1) index = state.routeDistances.length - 1;
   index = Math.max(0, Math.min(state.routePoints.length - 1, index));
+  updateRouteOverview(currentDistKm, index);
 
   if (index !== state.currentRouteIndex) {
       state.currentRouteIndex = index;

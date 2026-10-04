@@ -1784,6 +1784,10 @@ h4 {
     left: calc(50% + 20px);
 }
 
+.workout-viewport.layout-horizontal-2 .hud-route-side-stack {
+    left: calc(50% + 20px);
+}
+
 .workout-viewport.layout-horizontal-2 .hud-bottom-right-group {
     right: 20px;
 }
@@ -1939,11 +1943,44 @@ h4 {
         column-gap: 4px;
         row-gap: 6px;
     }
+
+    .hud-route-side-stack {
+        left: 12px;
+        bottom: 24px;
+        width: min(210px, calc(50vw - 20px));
+        gap: 6px;
+    }
+
+    .workout-viewport .hud-route-side-stack > .route-overview-card {
+        height: 112px;
+        padding: 6px 9px;
+    }
+
+    .route-overview-content {
+        height: 72px;
+    }
+
+    .workout-viewport .hud-route-side-stack > .hud-bottom-left {
+        height: 155px !important;
+        padding: 8px 10px;
+    }
+
+    .workout-viewport.layout-vertical-2 .hud-route-side-stack {
+        left: 8px;
+        bottom: calc(50% + 8px);
+        width: min(190px, calc(50vw - 16px));
+    }
 }
 
 .workout-viewport.layout-vertical-2 .hud-bottom-left {
     bottom: 20px;
     left: 20px;
+}
+
+.workout-viewport.layout-vertical-2 .hud-route-side-stack {
+    left: 12px;
+    bottom: calc(50% + 12px);
+    width: min(230px, calc(50vw - 24px));
 }
 
 .workout-viewport.layout-vertical-2 .hud-bottom-right-group {
@@ -2955,6 +2992,96 @@ h4 {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
+}
+
+.hud-route-side-stack {
+    position: absolute;
+    left: 20px;
+    bottom: 34px;
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(250px, calc(50vw - 28px));
+    pointer-events: none;
+}
+
+.workout-viewport .hud-route-side-stack > .route-overview-card,
+.workout-viewport .hud-route-side-stack > .hud-bottom-left {
+    position: relative;
+    inset: auto;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    pointer-events: auto;
+    box-sizing: border-box;
+}
+
+.workout-viewport .hud-route-side-stack > .route-overview-card {
+    height: 132px;
+    padding: 8px 12px;
+}
+
+.workout-viewport .hud-route-side-stack > .route-overview-card.workout-panel-collapsed,
+.workout-viewport .hud-route-side-stack > .hud-bottom-left.workout-panel-collapsed {
+    height: auto !important;
+    min-height: 0 !important;
+}
+
+.route-overview-content {
+    height: 88px;
+    min-height: 0;
+}
+
+#route-overview-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.route-overview-track,
+.route-overview-completed {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.route-overview-track {
+    stroke: rgba(255, 255, 255, 0.55);
+    stroke-width: 2;
+}
+
+.route-overview-completed {
+    stroke: #10b981;
+    stroke-width: 2.6;
+}
+
+.route-overview-start {
+    fill: #10b981;
+    stroke: #ffffff;
+    stroke-width: 1;
+}
+
+.route-overview-end {
+    fill: #ef4444;
+    stroke: #ffffff;
+    stroke-width: 1;
+}
+
+.route-overview-position {
+    fill: #3b82f6;
+    stroke: #ffffff;
+    stroke-width: 1.5;
+    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.9));
+}
+
+.workout-viewport .hud-route-side-stack > .hud-bottom-left {
+    height: 180px !important;
+    flex: 0 0 auto;
 }
 
 .hud-bottom-right-group {
