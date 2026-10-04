@@ -20,7 +20,7 @@
 
         <!-- MapLibre 3D CSS -->
         <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-      <script type="module" crossorigin src="./assets/index-CWvvlOV5.js"></script>
+      <script type="module" crossorigin src="./assets/index-DWAij5LS.js"></script>
       <link rel="stylesheet" crossorigin href="./assets/index-DSeQRfDH.css">
     </head>
     <body>
@@ -1721,6 +1721,10 @@
               <label for="setting-start-on-movement" style="font-size: 0.9rem; opacity: 0.8;">Iniciar cuenta atrás al detectar movimiento</label>
             </div>
             <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="checkbox" id="setting-session-safety-notice" style="width: 18px; height: 18px;">
+              <label for="setting-session-safety-notice" style="font-size: 0.9rem; opacity: 0.8;">Mostrar aviso de seguridad antes de cada sesión</label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
               <input type="checkbox" id="setting-ghost-enabled" style="width: 18px; height: 18px;">
               <label for="setting-ghost-enabled" style="font-size: 0.9rem; opacity: 0.8;">Mostrar fantasma de mi mejor sesión en rutas</label>
             </div>
@@ -1880,6 +1884,10 @@
             <label class="privacy-analytics-choice session-safety-choice" for="session-safety-acknowledgement">
               <input id="session-safety-acknowledgement" type="checkbox">
               <span>He leído las precauciones, he comprobado el equipo y deseo iniciar la sesión.</span>
+            </label>
+            <label class="privacy-analytics-choice session-safety-choice" for="session-safety-skip-future">
+              <input id="session-safety-skip-future" type="checkbox">
+              <span>No volver a mostrar este aviso antes de las sesiones. Puedes volver a activarlo en Ajustes.</span>
             </label>
           </div>
           <footer class="privacy-actions">
