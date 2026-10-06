@@ -2086,20 +2086,179 @@ h4 {
 .workout-viewport.layout-horizontal-1 .hud-top-bar {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
-    align-items: start;
+    align-items: center;
+    grid-template-rows: minmax(0, 1fr);
+    flex-wrap: nowrap;
+    gap: clamp(4px, 0.8vw, 12px);
+    padding: 8px clamp(6px, 1vw, 16px);
 }
 
 .workout-viewport.layout-horizontal-1 .hud-left-group {
     grid-column: 1;
     grid-row: 1;
+    flex-direction: row;
+    align-items: center;
+    gap: clamp(4px, 0.6vw, 10px);
+    width: max-content;
+    min-width: 0;
+}
+
+.workout-viewport.layout-horizontal-1 .hud-left-group > .clock-session {
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 5px !important;
+    min-width: 0;
+    margin-right: 0 !important;
+    padding: 2px 4px !important;
+}
+
+.workout-viewport.layout-horizontal-1 .hud-left-group #clock {
+    font-size: clamp(
+        14px,
+        calc(1.05vw * var(--workout-text-multiplier)),
+        26px
+    ) !important;
+    line-height: 1.1;
+}
+
+.workout-viewport.layout-horizontal-1 .hud-left-group .clock-label {
+    font-size: clamp(
+        8px,
+        calc(8px * var(--workout-text-multiplier)),
+        14px
+    ) !important;
+    line-height: 1;
+}
+
+.workout-viewport.layout-horizontal-1 .hud-left-group .hud-sensor-bar {
+    position: static !important;
+    left: auto;
+    top: auto;
+    transform: none;
+    flex: 0 0 auto;
+    gap: 4px;
+}
+
+.workout-viewport.layout-horizontal-1 .hud-left-group .indicator-icon {
+    flex: 0 0 clamp(
+        28px,
+        calc(24px + 6px * var(--workout-text-multiplier)),
+        40px
+    );
+    width: clamp(
+        28px,
+        calc(24px + 6px * var(--workout-text-multiplier)),
+        40px
+    );
+    height: clamp(
+        28px,
+        calc(24px + 6px * var(--workout-text-multiplier)),
+        40px
+    );
+    font-size: clamp(
+        10px,
+        calc(10px * var(--workout-text-multiplier)),
+        16px
+    );
 }
 
 .workout-viewport.layout-horizontal-1 .hud-right-group {
     grid-column: 2;
     grid-row: 1;
-    justify-self: center;
+    justify-self: stretch;
+    width: 100%;
+    margin: 0;
     min-width: 0;
     max-width: 100%;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: clamp(4px, 0.7vw, 12px);
+}
+
+.workout-viewport.layout-horizontal-1 .hud-right-group > .metric-group {
+    gap: clamp(3px, 0.5vw, 10px);
+}
+
+.workout-viewport.layout-horizontal-1 .hud-right-group .metric-value {
+    font-size: clamp(
+        14px,
+        calc(1.5vw * var(--workout-text-multiplier)),
+        42px
+    ) !important;
+}
+
+.workout-viewport.layout-horizontal-1 .hud-right-group .metric-avg {
+    font-size: clamp(
+        9px,
+        calc(0.7vw * var(--workout-text-multiplier)),
+        18px
+    ) !important;
+    padding-left: clamp(3px, 0.4vw, 8px);
+}
+
+.workout-viewport.layout-horizontal-1 .hud-right-group > .clock-session-time {
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+    gap: clamp(4px, 0.5vw, 8px);
+    padding: 3px 6px !important;
+}
+
+.workout-viewport.layout-horizontal-1 .clock-session-time .clock-label,
+.workout-viewport.layout-horizontal-1 #workout-timer {
+    white-space: nowrap;
+}
+
+.workout-viewport.layout-horizontal-1 .hud-right-group #workout-timer {
+    font-size: clamp(
+        14px,
+        calc(1.05vw * var(--workout-text-multiplier)),
+        28px
+    ) !important;
+}
+
+.workout-viewport.layout-horizontal-1 .hud-right-group .metric-label {
+    font-size: clamp(
+        9px,
+        calc(10px * var(--workout-text-multiplier)),
+        16px
+    );
+}
+
+.workout-viewport.layout-horizontal-1 .hud-font-selector {
+    flex: 0 0 auto;
+    gap: 3px !important;
+    font-size: clamp(8px, 0.65vw, 10px);
+}
+
+.workout-viewport.layout-horizontal-1 .hud-font-selector > span {
+    font-size: inherit !important;
+}
+
+.workout-viewport.layout-horizontal-1 .hud-font-selector > .btn-font-scale {
+    padding: 2px clamp(3px, 0.3vw, 6px) !important;
+    font-size: clamp(9px, 0.75vw, 12px) !important;
+}
+
+.workout-viewport.layout-horizontal-1 .hud-elevation-footer {
+    left: calc(min(250px, calc(50vw - 28px)) + 32px);
+    right: calc(min(420px, calc(100vw - 24px)) + 32px);
+    width: auto;
+    max-width: none;
+    transform: none;
+}
+
+.workout-viewport.layout-horizontal-1 .upcoming-profile-chart {
+    max-width: min(420px, calc(100vw - 24px));
+}
+
+.workout-viewport.layout-horizontal-1 .elevation-profile-title,
+.workout-viewport.layout-horizontal-1 .upcoming-profile-chart-title {
+    font-size: clamp(
+        11px,
+        calc(12px * var(--workout-text-multiplier)),
+        18px
+    );
 }
 
 .hud-top-bar .hud-sensor-bar {
@@ -3025,6 +3184,20 @@ h4 {
     padding: 8px 12px;
 }
 
+.workout-viewport .route-overview-card .mini-profile-title {
+    flex-wrap: nowrap;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.workout-viewport .route-overview-card .mini-profile-title > span {
+    min-width: 0;
+    overflow: hidden;
+    font-size: clamp(8px, 0.65vw, 9px) !important;
+    text-overflow: clip;
+    white-space: nowrap;
+}
+
 .workout-viewport .hud-route-side-stack > .route-overview-card.workout-panel-collapsed,
 .workout-viewport .hud-route-side-stack > .hud-bottom-left.workout-panel-collapsed {
     height: auto !important;
@@ -3034,13 +3207,14 @@ h4 {
 .route-overview-content {
     height: 88px;
     min-height: 0;
+    overflow: hidden;
 }
 
 #route-overview-svg {
     display: block;
     width: 100%;
     height: 100%;
-    overflow: visible;
+    overflow: hidden;
 }
 
 .route-overview-track,
@@ -3353,5 +3527,20 @@ h4 {
 
     .slope-reading-label {
         font-size: 8px;
+    }
+}
+
+@media (max-width: 1000px) {
+    .workout-viewport.layout-horizontal-1 .hud-elevation-footer {
+        left: 20px;
+        right: 20px;
+        top: clamp(120px, 22vh, 180px);
+        bottom: calc(
+            34px + max(180px, calc(150px + 30px * var(--workout-text-multiplier))) +
+                16px
+        );
+        height: auto !important;
+        min-height: 120px;
+        transform: none;
     }
 }

@@ -663,6 +663,10 @@ function initUpcomingChart(containerId) {
 
   const container = document.getElementById(containerId);
   if (container) {
+    if (upcomingChart) {
+      upcomingChart.destroy();
+      upcomingChart = null;
+    }
     container.innerHTML = "";
     upcomingChart = new ApexCharts(container, options);
     upcomingChart.render();
@@ -675,10 +679,12 @@ function initUpcomingChart(containerId) {
 function updateUpcomingChart(distances, elevations, avgSlope) {
   if (!upcomingChart) return;
 
-  const dataPoints = distances.map((d, idx) => ({
-    x: d,
-    y: elevations[idx],
-  }));
+  const dataPoints = distances
+    .map((distance, index) => ({
+      x: Number(distance),
+      y: Number(elevations[index]),
+    }))
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
 
   // Cambiar dinámicamente el color del gráfico según la pendiente media
   let color = "#9ca3af"; // Gris (Plano)

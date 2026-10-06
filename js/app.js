@@ -2905,9 +2905,10 @@ function renderRouteOverview() {
   );
   const width = bounds.maxX - bounds.minX || 1;
   const height = bounds.maxY - bounds.minY || 1;
-  const scale = Math.min(88 / width, 88 / height);
-  const offsetX = (100 - width * scale) / 2;
-  const offsetY = (100 - height * scale) / 2;
+  const plotSize = 80;
+  const scale = Math.min(plotSize / width, plotSize / height);
+  const offsetX = 10 + (plotSize - width * scale) / 2;
+  const offsetY = 10 + (plotSize - height * scale) / 2;
   routeOverviewCoordinates = projected.map((point) => ({
     x: offsetX + (point.x - bounds.minX) * scale,
     y: offsetY + (point.y - bounds.minY) * scale,
@@ -3407,7 +3408,13 @@ function getUpcomingSegmentData(
   previewDistanceMeters = SLOPE_PREVIEW_LONG_METERS,
   currentDistKm = null,
 ) {
-  if (state.routePoints.length === 0) return null;
+  if (
+    state.routePoints.length === 0 ||
+    state.routeDistances.length !== state.routePoints.length ||
+    state.routeElevations.length !== state.routeDistances.length
+  ) {
+    return null;
+  }
 
   const currentDistanceKm =
     currentDistKm !== null
@@ -3481,10 +3488,14 @@ function refreshUpcomingPreview(currentDistKm = null) {
       : state.routeDistances[state.currentRouteIndex] || 0;
 
   const preview = getUpcomingSegmentData(SLOPE_PREVIEW_LONG_METERS, distKm);
-  if (!preview) return;
+  const upcomingSlopeLabel = document.getElementById("upcoming-slope-label");
+  if (!preview) {
+    if (upcomingSlopeLabel) upcomingSlopeLabel.textContent = "⛰️ --";
+    ChartsManager.updateUpcomingChart([], [], 0);
+    return;
+  }
 
   const slope = preview.avgSlope;
-  const upcomingSlopeLabel = document.getElementById("upcoming-slope-label");
   if (upcomingSlopeLabel) {
     upcomingSlopeLabel.textContent =
       `⛰️ ${slope >= 0 ? "+" : ""}${slope.toFixed(1)}%`;
