@@ -36,6 +36,7 @@ import { exportAllData, getBackupStatus } from "./db.js";
 const SLOPE_AVERAGE_METERS = 10;
 const SLOPE_PREVIEW_LONG_METERS = 500;
 const MAX_SLOPE_CHANGE_PER_SEC = 0.5;
+const MAX_ROUTE_REAL_SLOPE_CHANGE_PER_UPDATE = 4;
 const WHEEL_INACTIVITY_TIMEOUT_MS = 10000;
 const MAPTILER_API_KEY = import.meta.env.VITE_MAPTILER_API_KEY || "";
 const MAP_VIEW_MODES = ["2D", "3D_AEREO", "3D_FPV"];
@@ -66,6 +67,7 @@ let routeMaximumAltitudeCalculated = false;
 let routeMaximumAltitudeIndex = -1;
 let routeMaximumAltitude = null;
 let routeLastAlertedThreshold = null;
+let effectiveRouteSlope = null;
 
 function logFpvDebug(message, details = {}) {
   const stateKey = `${message}:${JSON.stringify(details)}`;
@@ -1606,6 +1608,10 @@ function enterWorkoutScreen() {
   state.speedHistory = [];
   state.elapsedSeconds = 0;
   state.totalDistance = 0.0;
+  effectiveRouteSlope =
+    state.currentMode === "ROUTE"
+      ? getRouteSlopeAtDistance(state.totalDistance)
+      : null;
   state.totalAscent = 0.0;
   state.currentRouteIndex = 0;
   state.isMapFollowingRoute = state.mapInitialOrientation === "RUTA";
@@ -2270,6 +2276,7 @@ function startTimerInterval() {
         updateRouteProgressHud(state);
         updateRouteSimulation(state.totalDistance);
         setRouteTargetSlope(state.totalDistance);
+        updateEffectiveRouteSlope(state.totalDistance);
         syncSlopeDisplayLabels();
       }
 
@@ -3264,7 +3271,8 @@ function syncSlopeDisplayLabels() {
   if (trainerSlopeValue) trainerSlopeValue.textContent = formatted;
 
   const routeSlopeValue = document.getElementById("metrics-route-slope");
-  const routeSlope = getRouteSlopeAtDistance(state.totalDistance);
+  const routeSlope =
+    effectiveRouteSlope ?? getRouteSlopeAtDistance(state.totalDistance);
   if (routeSlopeValue) {
     routeSlopeValue.textContent = `${routeSlope >= 0 ? "+" : ""}${routeSlope.toFixed(1)}%`;
   }
@@ -3308,6 +3316,20 @@ function getRouteSlopeAtDistance(distanceKm) {
   const endElevation = getElevationAtDistance(endKm);
   const slope = ((endElevation - startElevation) / distanceMeters) * 100;
   return Number.isFinite(slope) ? slope : 0;
+}
+
+function updateEffectiveRouteSlope(distanceKm) {
+  const calculatedSlope = getRouteSlopeAtDistance(distanceKm);
+  if (effectiveRouteSlope === null) {
+    effectiveRouteSlope = calculatedSlope;
+    return;
+  }
+
+  const slopeChange = calculatedSlope - effectiveRouteSlope;
+  effectiveRouteSlope += Math.max(
+    -MAX_ROUTE_REAL_SLOPE_CHANGE_PER_UPDATE,
+    Math.min(MAX_ROUTE_REAL_SLOPE_CHANGE_PER_UPDATE, slopeChange),
+  );
 }
 
 function updateTrainerSlope(slope, immediate = false) {
