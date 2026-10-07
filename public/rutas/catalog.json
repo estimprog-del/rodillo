@@ -1,0 +1,24 @@
+{
+  "routes": [
+    {
+      "file": "la-cantabrona-2026-gran-fondo.gpx",
+      "name": "La Cantabrona 2026 Gran Fondo"
+    },
+    {
+      "file": "oiartzun-artikutza.gpx",
+      "name": "Oiartzun Artikutza"
+    },
+    {
+      "file": "oiartzun-artikutza-oiartzun.gpx",
+      "name": "Oiartzun Artikutza Oiartzun"
+    },
+    {
+      "file": "Quebrantahuesos 2021.gpx",
+      "name": "Quebrantahuesos 2021"
+    },
+    {
+      "file": "XXXIX-Prueba-Vitoria.gpx",
+      "name": "XXXIX Prueba Vitoria"
+    }
+  ]
+}

@@ -326,14 +326,20 @@ export function bindEvents(handlers) {
       if (id === "btn-history-back-top") navigateTo("dashboard");
       if (id === "btn-go-progress") navigateTo("stats");
       if (id === "btn-help-back") navigateTo("dashboard");
+      if (id === "btn-routes-back") navigateTo("dashboard");
+      if (id === "btn-open-saved-routes") navigateTo("routes");
       if (id === "btn-logout") handleLogout();
-      if (id === "btn-connections-back") navigateTo("dashboard");
+      if (id === "btn-connections-back") {
+        state.routeSelectedFromLibrary = false;
+        navigateTo("dashboard");
+      }
       if (id === "btn-stats-back") navigateTo("dashboard");
       if (id === "btn-stats-back-top") navigateTo("dashboard");
 
       // Modos
       if (id === "mode-route") {
         state.currentMode = "ROUTE";
+        state.routeSelectedFromLibrary = false;
         navigateTo("connections");
       }
       if (id === "mode-manual") {
@@ -520,8 +526,12 @@ export function bindEvents(handlers) {
         const hasSpeed = ble?.connections?.CSC?.status === "CONECTADO";
         if (isVirtual || hasControllable || hasPower || hasSpeed) {
           if (state.currentMode === "ROUTE") {
-            if (state.routeLoadedFromHistory && state.routePoints.length > 0) {
+            if (
+              (state.routeLoadedFromHistory || state.routeSelectedFromLibrary) &&
+              state.routePoints.length > 0
+            ) {
               navigateTo("workout");
+              state.routeSelectedFromLibrary = false;
               if (!state.isSessionActive) startSession();
             } else {
               openRouteModal();

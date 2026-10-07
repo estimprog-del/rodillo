@@ -1,0 +1,16 @@
+{
+  "routes": [
+    {
+      "file": "oiartzun-artikutza.gpx",
+      "name": "Oiartzun Artikutza"
+    },
+    {
+      "file": "oiartzun-artikutza-oiartzun.gpx",
+      "name": "Oiartzun Artikutza Oiartzun"
+    },
+    {
+      "file": "Quebrantahuesos 2021.gpx",
+      "name": "Quebrantahuesos 2021"
+    }
+  ]
+}

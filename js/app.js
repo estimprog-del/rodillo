@@ -68,6 +68,7 @@ let routeMaximumAltitudeIndex = -1;
 let routeMaximumAltitude = null;
 let routeLastAlertedThreshold = null;
 let effectiveRouteSlope = null;
+let bundledRouteCatalog = null;
 
 function logFpvDebug(message, details = {}) {
   const stateKey = `${message}:${JSON.stringify(details)}`;
@@ -334,6 +335,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     history: () => loadHistoryList(),
     stats: () => loadProgressStats(),
     connections: () => syncBluetoothScreenStatus(),
+    routes: () => void loadRouteLibrary(),
   };
 
   navigateTo = initNavigation(UI, state, navigationCallbacks);
@@ -612,6 +614,7 @@ function cacheUiElements() {
     "history",
     "stats",
     "help",
+    "routes",
   ].forEach((s) => {
     UI.screens[s] = document.getElementById(`screen-${s}`);
   });
@@ -1119,6 +1122,339 @@ function startModeFlow(mode) {
   }
 
   navigateTo("workout");
+}
+
+function getRouteSparklinePath(values) {
+  const validValues = values.map(Number).filter(Number.isFinite);
+  if (validValues.length < 2) return "";
+
+  let min = Infinity;
+  let max = -Infinity;
+  validValues.forEach((value) => {
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+  });
+  const range = max - min || 1;
+  const sampleCount = Math.min(180, validValues.length);
+  const path = [];
+  for (let sample = 0; sample < sampleCount; sample++) {
+    const index = Math.round(
+      (sample * (validValues.length - 1)) / (sampleCount - 1),
+    );
+    const x = (sample / (sampleCount - 1)) * 90 + 5;
+    const y = 95 - ((validValues[index] - min) / range) * 90;
+    path.push(`${sample === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`);
+  }
+  return path.join(" ");
+}
+
+function summarizeBundledRoute(routeData, route) {
+  const { points, elevations, distances } = routeData;
+  let positiveAscent = 0;
+  let maxUphillSlope = 0;
+  let nextIndex = 1;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+
+  for (let index = 1; index < elevations.length; index++) {
+    const elevationChange = Number(elevations[index]) - Number(elevations[index - 1]);
+    if (Number.isFinite(elevationChange) && elevationChange > 0) {
+      positiveAscent += elevationChange;
+    }
+  }
+
+  for (let index = 0; index < distances.length - 1; index++) {
+    nextIndex = Math.max(nextIndex, index + 1);
+    while (
+      nextIndex < distances.length - 1 &&
+      distances[nextIndex] - distances[index] < 0.01
+    ) {
+      nextIndex++;
+    }
+    const intervalMeters = (distances[nextIndex] - distances[index]) * 1000;
+    if (intervalMeters < 3) continue;
+    const slope =
+      ((elevations[nextIndex] - elevations[index]) / intervalMeters) * 100;
+    if (Number.isFinite(slope)) maxUphillSlope = Math.max(maxUphillSlope, slope);
+  }
+
+  const projected = points.map((point) => {
+    const x = Number(point.lon) * Math.cos((Number(point.lat) * Math.PI) / 180);
+    const y = -Number(point.lat);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+    return { x, y };
+  });
+  const validProjected = projected.filter(
+    (point) => Number.isFinite(point.x) && Number.isFinite(point.y),
+  );
+  let trackPath = "";
+  if (validProjected.length > 1) {
+    const width = maxX - minX || 1;
+    const height = maxY - minY || 1;
+    const scale = Math.min(90 / width, 90 / height);
+    const offsetX = (100 - width * scale) / 2;
+    const offsetY = (100 - height * scale) / 2;
+    const sampleCount = Math.min(180, validProjected.length);
+    trackPath = Array.from({ length: sampleCount }, (_, sample) => {
+      const index = Math.round(
+        (sample * (validProjected.length - 1)) / (sampleCount - 1),
+      );
+      const point = validProjected[index];
+      const x = offsetX + (point.x - minX) * scale;
+      const y = offsetY + (point.y - minY) * scale;
+      return `${sample === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(" ");
+  }
+
+  return {
+    ...route,
+    points: undefined,
+    distances: undefined,
+    elevations: undefined,
+    distanceKm: Number(distances.at(-1)) || 0,
+    positiveAscent: Math.round(positiveAscent),
+    maxUphillSlope,
+    trackPath,
+    elevationPath: getRouteSparklinePath(elevations),
+  };
+}
+
+function formatRouteDuration(seconds) {
+  const totalSeconds = Math.max(0, Math.round(Number(seconds) || 0));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainingSeconds = totalSeconds % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`
+    : `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function createRouteGraph(pathData, className, label) {
+  const svgNamespace = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNamespace, "svg");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", label);
+  const path = document.createElementNS(svgNamespace, "path");
+  path.setAttribute("class", className);
+  path.setAttribute("d", pathData);
+  svg.append(path);
+  return svg;
+}
+
+function renderRouteLibrary(routes, sessions) {
+  const container = document.getElementById("route-library-list");
+  if (!container) return;
+  container.replaceChildren();
+
+  if (routes.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "route-library-empty";
+    empty.textContent = "No hay rutas GPX/TCX en public/rutas.";
+    container.append(empty);
+    return;
+  }
+
+  const sortedRoutes = routes.filter((route) => !route.error).sort((a, b) => {
+    const favoriteDifference =
+      Number(state.favoriteRoutes.includes(b.file)) -
+      Number(state.favoriteRoutes.includes(a.file));
+    return favoriteDifference || a.name.localeCompare(b.name, "es");
+  });
+
+  sortedRoutes.forEach((route) => {
+    const card = document.createElement("article");
+    card.className = "route-library-card";
+    const graphs = document.createElement("div");
+    graphs.className = "route-library-graphs";
+    graphs.append(
+      createRouteGraph(route.trackPath, "route-library-track", `Trazado de ${route.name}`),
+      createRouteGraph(route.elevationPath, "route-library-elevation", `Perfil de altitud de ${route.name}`),
+    );
+
+    const details = document.createElement("div");
+    details.className = "route-library-details";
+    const heading = document.createElement("div");
+    heading.className = "route-library-heading";
+    const name = document.createElement("h3");
+    name.className = "route-library-name";
+    name.textContent = route.name;
+    name.title = route.file;
+
+    const favorite = document.createElement("button");
+    const isFavorite = state.favoriteRoutes.includes(route.file);
+    favorite.type = "button";
+    favorite.className = "route-library-favorite";
+    favorite.dataset.routeFavorite = route.file;
+    favorite.setAttribute("aria-pressed", String(isFavorite));
+    favorite.setAttribute(
+      "aria-label",
+      isFavorite ? `Quitar ${route.name} de favoritas` : `Marcar ${route.name} como favorita`,
+    );
+    favorite.title = favorite.getAttribute("aria-label");
+    favorite.textContent = isFavorite ? "★" : "☆";
+    heading.append(name, favorite);
+
+    const routeSessions = sessions.filter(
+      (session) =>
+        session.endTime !== null &&
+        (session.gpxPath === route.file ||
+          session.routeName === route.name ||
+          session.routeName === route.file),
+    );
+    const bestSession = routeSessions.reduce((best, session) => {
+      const duration = Number(session.activeDuration) || 0;
+      return duration > 0 && (!best || duration < best.duration)
+        ? { duration }
+        : best;
+    }, null);
+
+    const stats = document.createElement("div");
+    stats.className = "route-library-stats";
+    [
+      ["Distancia", `${route.distanceKm.toFixed(2)} km`],
+      ["Desnivel +", `${route.positiveAscent} m`],
+      ["Pend. máx. aprox.", `${route.maxUphillSlope.toFixed(1)}%`],
+      ["Mejor tiempo", bestSession ? formatRouteDuration(bestSession.duration) : "Sin sesiones"],
+    ].forEach(([label, value]) => {
+      const item = document.createElement("div");
+      item.append(`${label}: `);
+      const strong = document.createElement("strong");
+      strong.textContent = value;
+      item.append(strong);
+      stats.append(item);
+    });
+
+    const select = document.createElement("button");
+    select.type = "button";
+    select.className = "route-library-select";
+    select.dataset.routeSelect = route.file;
+    select.textContent = "Usar esta ruta";
+    details.append(heading, stats, select);
+    card.append(graphs, details);
+    container.append(card);
+
+    favorite.addEventListener("click", () => {
+      state.favoriteRoutes = isFavorite
+        ? state.favoriteRoutes.filter((file) => file !== route.file)
+        : [...state.favoriteRoutes, route.file];
+      saveStateToLocalStorage();
+      renderRouteLibrary(routes, sessions);
+    });
+    select.addEventListener("click", () => {
+      void selectBundledRoute(route, select);
+    });
+  });
+
+  routes
+    .filter((route) => route.error)
+    .forEach((route) => {
+      const error = document.createElement("div");
+      error.className = "route-library-error";
+      error.textContent = `${route.file}: ${route.error}`;
+      container.append(error);
+    });
+}
+
+async function loadRouteLibrary() {
+  const container = document.getElementById("route-library-list");
+  if (!container) return;
+  container.textContent = "Cargando rutas incluidas...";
+
+  try {
+    if (!bundledRouteCatalog) {
+      const baseUrl = import.meta.env.BASE_URL;
+      const catalogUrl = new URL(`${baseUrl}rutas/catalog.json`, document.baseURI);
+      const response = await fetch(catalogUrl);
+      if (!response.ok) throw new Error(`Error HTTP ${response.status} al cargar el catálogo.`);
+      const catalog = await response.json();
+      if (!Array.isArray(catalog.routes)) {
+        throw new Error("El catálogo de rutas no tiene un formato válido.");
+      }
+
+      bundledRouteCatalog = await Promise.all(
+        catalog.routes.map(async (route) => {
+          try {
+            const routeUrl = new URL(
+              `${baseUrl}rutas/${encodeURIComponent(route.file)}`,
+              document.baseURI,
+            );
+            const routeResponse = await fetch(routeUrl);
+            if (!routeResponse.ok) {
+              throw new Error(`Error HTTP ${routeResponse.status} al cargar el GPX.`);
+            }
+            const routeData = await GpxManager.parseRouteAsync(
+              await routeResponse.text(),
+            );
+            if (!routeData || routeData.points.length < 2) {
+              throw new Error("El archivo no contiene suficientes puntos.");
+            }
+            return summarizeBundledRoute(routeData, route);
+          } catch (error) {
+            console.error(`No se pudo leer la ruta del catálogo ${route.file}:`, error);
+            return { ...route, error: error.message };
+          }
+        }),
+      );
+    }
+
+    let sessions = [];
+    if (state.currentUser?.id !== undefined) {
+      try {
+        sessions = await DbManager.getAllSessions(state.currentUser.id);
+      } catch (error) {
+        console.error("No se pudieron cargar los tiempos de las rutas:", error);
+      }
+    }
+    renderRouteLibrary(bundledRouteCatalog, sessions);
+  } catch (error) {
+    console.error("No se pudo cargar la biblioteca de rutas:", error);
+    const message = document.createElement("div");
+    message.className = "route-library-error";
+    message.textContent = `No se pudieron cargar las rutas incluidas: ${error.message}`;
+    container.replaceChildren(message);
+  }
+}
+
+async function selectBundledRoute(route, button) {
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Cargando...";
+  }
+
+  try {
+    state.currentMode = "ROUTE";
+    const baseUrl = import.meta.env.BASE_URL;
+    const routeUrl = new URL(
+      `${baseUrl}rutas/${encodeURIComponent(route.file)}`,
+      document.baseURI,
+    );
+    const response = await fetch(routeUrl);
+    if (!response.ok) throw new Error(`Error HTTP ${response.status} al cargar la ruta.`);
+    const routeData = await GpxManager.parseRouteAsync(await response.text());
+    if (!routeData || routeData.points.length < 2) {
+      throw new Error("El archivo no contiene suficientes puntos de ruta.");
+    }
+
+    applyRouteData(routeData, route.file, route.name);
+    state.routeSelectedFromLibrary = true;
+    navigateTo("connections");
+  } catch (error) {
+    console.error(`No se pudo abrir la ruta ${route.file}:`, error);
+    alert(`No se pudo abrir la ruta: ${error.message}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Usar esta ruta";
+    }
+  }
 }
 
 // --- BLUETOOTH CONNECTION CENTER ---
@@ -1746,6 +2082,32 @@ function enterWorkoutScreen() {
 }
 
 // --- GPX ROUTE LOADER & PARSER ---
+function applyRouteData(routeData, fileName, routeName) {
+  state.gpxFilename = fileName;
+  state.routeName = routeName;
+  state.routeLoadedFromHistory = false;
+  state.routePoints = routeData.points;
+  state.routeElevations = routeData.elevations;
+  state.routeDistances = routeData.distances;
+  state.currentRouteIndex = 0;
+  state.routeTotalAscent = calculateTotalRouteAscent();
+  effectiveRouteSlope = null;
+  renderRouteOverview();
+
+  const label = document.getElementById("gpx-filename-label");
+  if (label) label.textContent = fileName;
+  initConfiguredMap();
+  drawRouteOnMap();
+  refreshUpcomingPreview(0);
+  updateRouteProgressHud(state);
+  setElDisplay("hud-elevation-footer", "block");
+  ChartsManager.initElevationChart(
+    "elevation-chart",
+    state.routeDistances,
+    state.routeElevations,
+  );
+}
+
 async function handleGpxUpload(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -1778,26 +2140,12 @@ async function handleGpxUpload(e) {
     const routeData = await GpxManager.parseRouteAsync(text);
 
     if (routeData) {
-      state.routePoints = routeData.points;
-      state.routeElevations = routeData.elevations;
-      state.routeDistances = routeData.distances;
-      state.currentRouteIndex = 0;
-      state.routeTotalAscent = calculateTotalRouteAscent();
-      renderRouteOverview();
-
-      initConfiguredMap();
-      drawRouteOnMap();
-      refreshUpcomingPreview(0);
-      updateRouteProgressHud(state);
-
-      setElDisplay("hud-elevation-footer", "block");
-      ChartsManager.initElevationChart(
-        "elevation-chart",
-        state.routeDistances,
-        state.routeElevations,
+      applyRouteData(
+        routeData,
+        file.name,
+        file.name.replace(/\.(gpx|tcx)$/i, ""),
       );
 
-      if (label) label.textContent = file.name;
       if (shouldRecoverFullscreen) showFullscreenRecovery();
     } else {
       throw new Error("No se encontraron puntos de ruta válidos.");

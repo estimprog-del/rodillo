@@ -20,8 +20,8 @@
 
         <!-- MapLibre 3D CSS -->
         <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-      <script type="module" crossorigin src="./assets/index-weFwRpsn.js"></script>
-      <link rel="stylesheet" crossorigin href="./assets/index-CstJEZyb.css">
+      <script type="module" crossorigin src="./assets/index-CYW5VK0C.js"></script>
+      <link rel="stylesheet" crossorigin href="./assets/index-BnN__V20.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -135,6 +135,13 @@
                             "
                             >Iniciar ➔</span
                         >
+                        <button
+                            class="route-library-open"
+                            id="btn-open-saved-routes"
+                            type="button"
+                        >
+                            Rutas guardadas <span aria-hidden="true">➔</span>
+                        </button>
                     </div>
 
                     <!-- Manual training -->
@@ -221,6 +228,20 @@
                     </button>
                 </div>
             </div>
+
+        <!-- SCREEN: SAVED ROUTES -->
+        <div id="screen-routes" class="screen">
+            <div class="page-heading-row">
+                <div>
+                    <h2>Rutas guardadas</h2>
+                    <p class="help-intro">Elige una ruta para preparar tu próxima sesión. Las favoritas aparecen primero.</p>
+                </div>
+                <button class="btn btn-dark page-heading-back" id="btn-routes-back">← Volver</button>
+            </div>
+            <div id="route-library-list" class="route-library-list route-library-screen-list" aria-live="polite">
+                Cargando rutas...
+            </div>
+        </div>
 
         <!-- 3. SCREEN: HELP -->
         <div id="screen-help" class="screen">
@@ -1015,7 +1036,7 @@
                     <div class="route-modal-title">Configurar Nueva Sesión</div>
                     <div class="route-modal-section">
                         <div class="route-modal-section-title">
-                            Cargar Nueva Ruta
+                            Cargar ruta desde tu dispositivo
                         </div>
                         <div class="gpx-load-area-modal">
                             <span
@@ -1033,7 +1054,7 @@
                                 class="btn-gpx-pick-modal"
                                 id="btn-trigger-gpx-pick"
                             >
-                                Seleccionar Archivo GPX
+                                Seleccionar archivo GPX/TCX
                             </button>
                         </div>
                     </div>

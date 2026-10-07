@@ -50,6 +50,7 @@ export const state = {
   routeTotalAscent: 0,
   currentRouteIndex: 0,
   routeLoadedFromHistory: false,
+  routeSelectedFromLibrary: false,
   routeName: "",
   ghostPoints: [],
   map: null,
@@ -81,6 +82,7 @@ export const state = {
   virtualSlopeMin: -15,
   virtualSlopeMax: 20,
   autoBackupOnSessionEnd: true,
+  favoriteRoutes: [],
 };
 
 export function saveStateToLocalStorage() {
@@ -117,6 +119,7 @@ export function saveStateToLocalStorage() {
     virtualSlopeMin: state.virtualSlopeMin,
     virtualSlopeMax: state.virtualSlopeMax,
     autoBackupOnSessionEnd: state.autoBackupOnSessionEnd,
+    favoriteRoutes: state.favoriteRoutes,
   };
   localStorage.setItem("rodilloint_state", JSON.stringify(persistableState));
 }
@@ -181,6 +184,9 @@ export function loadStateFromLocalStorage() {
       ? Math.max(-15, Math.min(20, Number(parsed.virtualSlopeMax)))
       : 20;
     state.autoBackupOnSessionEnd = parsed.autoBackupOnSessionEnd !== false;
+    state.favoriteRoutes = Array.isArray(parsed.favoriteRoutes)
+      ? parsed.favoriteRoutes.filter((route) => typeof route === "string")
+      : [];
     if (state.virtualSlopeMin >= state.virtualSlopeMax) {
       state.virtualSlopeMin = -15;
       state.virtualSlopeMax = 20;

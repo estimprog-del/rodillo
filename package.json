@@ -4,9 +4,12 @@
   "description": "Rodillo Interactivo Training Lab para Navegador Web",
   "main": "index.html",
   "scripts": {
+    "predev": "node scripts/generate-route-catalog.js",
     "dev": "vite",
+    "prebuild": "node scripts/generate-route-catalog.js",
     "build": "vite build",
     "preview": "vite preview",
+    "predeploy": "node scripts/generate-route-catalog.js",
     "deploy": "gh-pages -d dist"
   },
   "keywords": [
