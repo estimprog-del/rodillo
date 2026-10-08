@@ -687,14 +687,173 @@ function hideRouteModal() {
   if (UI.routeModal) UI.routeModal.classList.remove("active");
 }
 
-function calculateTotalRouteAscent() {
-  if (state.routeElevations.length < 2) return 0;
-  let total = 0;
-  for (let i = 1; i < state.routeElevations.length; i++) {
-    const diff = state.routeElevations[i] - state.routeElevations[i - 1];
-    if (diff > 0) total += diff;
+function buildRouteAscentProfile(distances, elevations, includeProfile = false) {
+  if (
+    !Array.isArray(distances) ||
+    !Array.isArray(elevations) ||
+    distances.length < 2 ||
+    distances.length !== elevations.length
+  ) {
+    return { profile: [], totalAscent: 0, maxUphillSlope: 0 };
   }
-  return total;
+
+  const startKm = Number(distances[0]);
+  const endKm = Number(distances.at(-1));
+  if (!Number.isFinite(startKm) || !Number.isFinite(endKm) || endKm <= startKm) {
+    return { profile: [], totalAscent: 0, maxUphillSlope: 0 };
+  }
+
+  // Smooth noisy GPX elevations over 300 m, ignore swings under 20 m, and measure sustained grade over 600 m.
+  const sampleSpacingMeters = 20;
+  const sampleSpacingKm = sampleSpacingMeters / 1000;
+  const smoothingRadiusMeters = 150;
+  const smoothingRadiusSamples = Math.round(
+    smoothingRadiusMeters / sampleSpacingMeters,
+  );
+  const ascentSwingMeters = 20;
+  const slopeWindowMeters = 600;
+  const slopeWindowSamples = Math.round(
+    slopeWindowMeters / sampleSpacingMeters,
+  );
+  const sampleCount = Math.ceil((endKm - startKm) / sampleSpacingKm);
+  const sampleDistances = [];
+  const sampleElevations = [];
+  let sourceIndex = 1;
+
+  for (let index = 0; index <= sampleCount; index++) {
+    const distanceKm = Math.min(endKm, startKm + index * sampleSpacingKm);
+    while (
+      sourceIndex < distances.length - 1 &&
+      Number(distances[sourceIndex]) < distanceKm
+    ) {
+      sourceIndex++;
+    }
+
+    const leftIndex = Math.max(0, sourceIndex - 1);
+    const leftDistance = Number(distances[leftIndex]);
+    const rightDistance = Number(distances[sourceIndex]);
+    const leftElevation = Number(elevations[leftIndex]);
+    const rightElevation = Number(elevations[sourceIndex]);
+    const intervalKm = rightDistance - leftDistance;
+    const ratio =
+      Number.isFinite(intervalKm) && intervalKm > 0
+        ? Math.max(0, Math.min(1, (distanceKm - leftDistance) / intervalKm))
+        : 0;
+    const elevation =
+      leftElevation + (rightElevation - leftElevation) * ratio;
+
+    if (!Number.isFinite(elevation)) continue;
+    sampleDistances.push(distanceKm);
+    sampleElevations.push(elevation);
+  }
+
+  if (sampleElevations.length < 2) {
+    return { profile: [], totalAscent: 0, maxUphillSlope: 0 };
+  }
+
+  const prefixElevations = [0];
+  sampleElevations.forEach((elevation) => {
+    prefixElevations.push(prefixElevations.at(-1) + elevation);
+  });
+  const smoothedElevations = sampleElevations.map((_, index) => {
+    const firstIndex = Math.max(0, index - smoothingRadiusSamples);
+    const lastIndex = Math.min(
+      sampleElevations.length,
+      index + smoothingRadiusSamples + 1,
+    );
+    return (
+      (prefixElevations[lastIndex] - prefixElevations[firstIndex]) /
+      (lastIndex - firstIndex)
+    );
+  });
+
+  let totalAscent = 0;
+  let lowestElevation = smoothedElevations[0];
+  let highestElevation = smoothedElevations[0];
+  let isClimbing = false;
+  const profile = includeProfile
+    ? [{ distanceKm: sampleDistances[0], cumulativeAscent: totalAscent }]
+    : [];
+
+  for (let index = 1; index < smoothedElevations.length; index++) {
+    const elevation = smoothedElevations[index];
+    if (!isClimbing) {
+      lowestElevation = Math.min(lowestElevation, elevation);
+      if (elevation - lowestElevation >= ascentSwingMeters) {
+        totalAscent += elevation - lowestElevation;
+        highestElevation = elevation;
+        isClimbing = true;
+      }
+    } else if (elevation > highestElevation) {
+      totalAscent += elevation - highestElevation;
+      highestElevation = elevation;
+    } else if (highestElevation - elevation >= ascentSwingMeters) {
+      lowestElevation = elevation;
+      isClimbing = false;
+    }
+
+    if (includeProfile) {
+      profile.push({
+        distanceKm: sampleDistances[index],
+        cumulativeAscent: totalAscent,
+      });
+    }
+  }
+
+  let maxUphillSlope = 0;
+  for (
+    let index = 0;
+    index + slopeWindowSamples < smoothedElevations.length;
+    index++
+  ) {
+    const intervalKm =
+      sampleDistances[index + slopeWindowSamples] - sampleDistances[index];
+    if (intervalKm <= 0) continue;
+    const slope =
+      ((smoothedElevations[index + slopeWindowSamples] -
+        smoothedElevations[index]) /
+        (intervalKm * 1000)) *
+      100;
+    maxUphillSlope = Math.max(maxUphillSlope, slope);
+  }
+
+  return { profile, totalAscent, maxUphillSlope };
+}
+
+function getRouteAscentAtDistance(distanceKm) {
+  const profile = state.routeAscentProfile;
+  if (!profile.length) return null;
+  if (distanceKm <= profile[0].distanceKm) return 0;
+
+  let low = 0;
+  let high = profile.length - 1;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (profile[middle].distanceKm < distanceKm) low = middle + 1;
+    else high = middle;
+  }
+
+  const right = profile[low];
+  const left = profile[Math.max(0, low - 1)];
+  if (right.distanceKm <= left.distanceKm) return right.cumulativeAscent;
+  const ratio = Math.max(
+    0,
+    Math.min(
+      1,
+      (distanceKm - left.distanceKm) / (right.distanceKm - left.distanceKm),
+    ),
+  );
+  return (
+    left.cumulativeAscent +
+    (right.cumulativeAscent - left.cumulativeAscent) * ratio
+  );
+}
+
+function calculateTotalRouteAscent() {
+  return buildRouteAscentProfile(
+    state.routeDistances,
+    state.routeElevations,
+  ).totalAscent;
 }
 
 function updateRouteProgressHud() {
@@ -1150,35 +1309,14 @@ function getRouteSparklinePath(values) {
 
 function summarizeBundledRoute(routeData, route) {
   const { points, elevations, distances } = routeData;
-  let positiveAscent = 0;
-  let maxUphillSlope = 0;
-  let nextIndex = 1;
+  const elevationStats = buildRouteAscentProfile(
+    distances,
+    elevations,
+  );
   let minX = Infinity;
   let maxX = -Infinity;
   let minY = Infinity;
   let maxY = -Infinity;
-
-  for (let index = 1; index < elevations.length; index++) {
-    const elevationChange = Number(elevations[index]) - Number(elevations[index - 1]);
-    if (Number.isFinite(elevationChange) && elevationChange > 0) {
-      positiveAscent += elevationChange;
-    }
-  }
-
-  for (let index = 0; index < distances.length - 1; index++) {
-    nextIndex = Math.max(nextIndex, index + 1);
-    while (
-      nextIndex < distances.length - 1 &&
-      distances[nextIndex] - distances[index] < 0.01
-    ) {
-      nextIndex++;
-    }
-    const intervalMeters = (distances[nextIndex] - distances[index]) * 1000;
-    if (intervalMeters < 3) continue;
-    const slope =
-      ((elevations[nextIndex] - elevations[index]) / intervalMeters) * 100;
-    if (Number.isFinite(slope)) maxUphillSlope = Math.max(maxUphillSlope, slope);
-  }
 
   const projected = points.map((point) => {
     const x = Number(point.lon) * Math.cos((Number(point.lat) * Math.PI) / 180);
@@ -1219,8 +1357,8 @@ function summarizeBundledRoute(routeData, route) {
     distances: undefined,
     elevations: undefined,
     distanceKm: Number(distances.at(-1)) || 0,
-    positiveAscent: Math.round(positiveAscent),
-    maxUphillSlope,
+    positiveAscent: Math.round(elevationStats.totalAscent),
+    maxUphillSlope: elevationStats.maxUphillSlope,
     trackPath,
     elevationPath: getRouteSparklinePath(elevations),
   };
@@ -1320,8 +1458,8 @@ function renderRouteLibrary(routes, sessions) {
     stats.className = "route-library-stats";
     [
       ["Distancia", `${route.distanceKm.toFixed(2)} km`],
-      ["Desnivel +", `${route.positiveAscent} m`],
-      ["Pend. máx. aprox.", `${route.maxUphillSlope.toFixed(1)}%`],
+      ["Desnivel + aprox.", `${route.positiveAscent} m`],
+      ["Pend. sostenida aprox.", `${route.maxUphillSlope.toFixed(1)}%`],
       ["Mejor tiempo", bestSession ? formatRouteDuration(bestSession.duration) : "Sin sesiones"],
     ].forEach(([label, value]) => {
       const item = document.createElement("div");
@@ -2090,7 +2228,13 @@ function applyRouteData(routeData, fileName, routeName) {
   state.routeElevations = routeData.elevations;
   state.routeDistances = routeData.distances;
   state.currentRouteIndex = 0;
-  state.routeTotalAscent = calculateTotalRouteAscent();
+  const elevationStats = buildRouteAscentProfile(
+    state.routeDistances,
+    state.routeElevations,
+    true,
+  );
+  state.routeAscentProfile = elevationStats.profile;
+  state.routeTotalAscent = elevationStats.totalAscent;
   effectiveRouteSlope = null;
   renderRouteOverview();
 
@@ -3421,7 +3565,10 @@ function updateRouteSimulation(currentDistKm) {
       // 2. Actualizar el gráfico "Prox 500m" y el desnivel
       refreshUpcomingPreview(currentDistKm);
 
-      if (index < state.routePoints.length - 1) {
+      if (
+        !state.routeAscentProfile.length &&
+        index < state.routePoints.length - 1
+      ) {
           const elevationDiffMeters = state.routeElevations[index + 1] - state.routeElevations[index];
           if (elevationDiffMeters > 0) {
               state.totalAscent += elevationDiffMeters;
@@ -3429,6 +3576,13 @@ function updateRouteSimulation(currentDistKm) {
               updateRouteProgressHud();
           }
       }
+  }
+
+  const filteredAscent = getRouteAscentAtDistance(currentDistKm);
+  if (filteredAscent !== null) {
+    state.totalAscent = filteredAscent;
+    setElText("submetrics-ascent", `${Math.round(state.totalAscent)} m`);
+    updateRouteProgressHud();
   }
 
   // 2. Sync elevation chart cursor (always for smooth movement)
@@ -4533,7 +4687,13 @@ async function repeatRouteFromHistory(id) {
     state.routeDistances = Array.isArray(session.routeDistances)
       ? session.routeDistances.map(Number)
       : [];
-    state.routeTotalAscent = Number(session.routeTotalAscent) || calculateTotalRouteAscent();
+    const elevationStats = buildRouteAscentProfile(
+      state.routeDistances,
+      state.routeElevations,
+      true,
+    );
+    state.routeAscentProfile = elevationStats.profile;
+    state.routeTotalAscent = elevationStats.totalAscent;
     state.currentRouteIndex = 0;
     state.routeLoadedFromHistory = true;
     navigateTo("connections");

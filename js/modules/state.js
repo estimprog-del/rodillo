@@ -48,6 +48,7 @@ export const state = {
   routeElevations: [],
   routeDistances: [],
   routeTotalAscent: 0,
+  routeAscentProfile: [],
   currentRouteIndex: 0,
   routeLoadedFromHistory: false,
   routeSelectedFromLibrary: false,
