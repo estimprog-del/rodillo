@@ -20,8 +20,8 @@
 
         <!-- MapLibre 3D CSS -->
         <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-      <script type="module" crossorigin src="./assets/index-CES6nMK9.js"></script>
-      <link rel="stylesheet" crossorigin href="./assets/index-Ba7EgFOv.css">
+      <script type="module" crossorigin src="./assets/index-Cfqasogu.js"></script>
+      <link rel="stylesheet" crossorigin href="./assets/index-C5ZXjA3O.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -1024,66 +1024,68 @@
                     <span>🎛️ Consola del Rodillo Virtual</span>
                     <button class="panel-toggle" data-panel-target="virtual" title="Mostrar u ocultar panel">−</button>
                 </h3>
-                <div class="sim-slider-group">
-                    <div class="sim-slider-label">
-                        <span>Pedaleo Virtual: Potencia</span>
-                        <strong id="sim-power-val">150 W</strong>
+                <div class="panel-content">
+                    <div class="sim-slider-group">
+                        <div class="sim-slider-label">
+                            <span>Pedaleo Virtual: Potencia</span>
+                            <strong id="sim-power-val">150 W</strong>
+                        </div>
+                        <input
+                            type="range"
+                            class="sim-slider"
+                            id="sim-power-slider"
+                            min="50"
+                            max="600"
+                            value="150"
+                            step="5"
+                        />
                     </div>
-                    <input
-                        type="range"
-                        class="sim-slider"
-                        id="sim-power-slider"
-                        min="50"
-                        max="600"
-                        value="150"
-                        step="5"
-                    />
-                </div>
-                <div class="sim-slider-group">
-                    <div class="sim-slider-label">
-                        <span>Pedaleo Virtual: Cadencia</span>
-                        <strong id="sim-cadence-val">85 rpm</strong>
+                    <div class="sim-slider-group">
+                        <div class="sim-slider-label">
+                            <span>Pedaleo Virtual: Cadencia</span>
+                            <strong id="sim-cadence-val">85 rpm</strong>
+                        </div>
+                        <input
+                            type="range"
+                            class="sim-slider"
+                            id="sim-cadence-slider"
+                            min="40"
+                            max="130"
+                            value="85"
+                            step="1"
+                        />
                     </div>
-                    <input
-                        type="range"
-                        class="sim-slider"
-                        id="sim-cadence-slider"
-                        min="40"
-                        max="130"
-                        value="85"
-                        step="1"
-                    />
-                </div>
-                <div class="sim-slider-group">
-                    <div class="sim-slider-label">
-                        <span>Ritmo Cardíaco Ficticio</span>
-                        <strong id="sim-hr-val">120 bpm</strong>
+                    <div class="sim-slider-group">
+                        <div class="sim-slider-label">
+                            <span>Ritmo Cardíaco Ficticio</span>
+                            <strong id="sim-hr-val">120 bpm</strong>
+                        </div>
+                        <input
+                            type="range"
+                            class="sim-slider"
+                            id="sim-hr-slider"
+                            min="60"
+                            max="190"
+                            value="120"
+                            step="1"
+                        />
                     </div>
-                    <input
-                        type="range"
-                        class="sim-slider"
-                        id="sim-hr-slider"
-                        min="60"
-                        max="190"
-                        value="120"
-                        step="1"
-                    />
-                </div>
 
-                <div class="sim-slider-group">
-                    <div class="sim-slider-label">
-                        <span>Factor de Realismo de la Pendiente</span>
-                        <strong id="realism-value-session">100%</strong>
+                    <div class="sim-slider-group">
+                        <div class="sim-slider-label">
+                            <span>Factor de Realismo de la Pendiente</span>
+                            <strong id="realism-value-session">100%</strong>
+                        </div>
+                        <input
+                            type="range"
+                            id="realism-slider-session"
+                            min="30"
+                            max="150"
+                            value="100"
+                            step="1"
+                            style="width: 100%; height: 8px; accent-color: var(--accent-blue); background: var(--bg-secondary); border: 1px solid var(--glass-border); border-radius: 4px;"
+                        />
                     </div>
-                    <input
-                        type="range"
-                        id="realism-slider-session"
-                        min="30"
-                        max="150"
-                        value="100"
-                        step="1"
-                        style="width: 100%; height: 8px; accent-color: var(--accent-blue); background: var(--bg-secondary); border: 1px solid var(--glass-border); border-radius: 4px;"
-                    />
                 </div>
             </div>
 
