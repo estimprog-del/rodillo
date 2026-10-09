@@ -2587,8 +2587,43 @@ h4 {
 }
 
 .virtual-gear-button {
-    padding: 6px 8px;
-    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 88px;
+    min-height: 46px;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.28) !important;
+    border-radius: 12px;
+    color: #ffffff !important;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.1;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    touch-action: manipulation;
+    transition:
+        transform 120ms ease,
+        filter 120ms ease,
+        box-shadow 120ms ease;
+}
+
+.virtual-gear-button#btn-gear-down {
+    background: linear-gradient(145deg, #ea580c, #9a3412) !important;
+    box-shadow: 0 3px 10px rgba(234, 88, 12, 0.3);
+}
+
+.virtual-gear-button#btn-gear-up {
+    background: linear-gradient(145deg, #16a34a, #166534) !important;
+    box-shadow: 0 3px 10px rgba(22, 163, 74, 0.3);
+}
+
+.virtual-gear-button:hover {
+    filter: brightness(1.15);
+}
+
+.virtual-gear-button:active {
+    transform: scale(0.96);
+    filter: brightness(1.2);
 }
 
 .remote-room-panel {
@@ -3921,14 +3956,24 @@ h4 {
 }
 
 .workout-viewport.workout-compact #virtual-gear-control .btn-control {
-    min-width: 72px;
-    min-height: 40px;
-    padding: 7px 8px;
+    min-height: 48px;
+    padding: 8px 12px;
     touch-action: manipulation;
 }
 
 .workout-viewport.workout-compact #virtual-gear-control #btn-open-remote-room {
     min-width: 40px;
+}
+
+.workout-viewport.workout-compact #virtual-gear-control .virtual-gear-button {
+    flex: 0 0 92px;
+    min-width: 92px;
+    min-height: 48px;
+    font-size: 12px !important;
+}
+
+.workout-viewport.workout-compact #virtual-gear-control #btn-open-remote-room {
+    display: none !important;
 }
 
 .workout-viewport.workout-compact #metrics-gear {

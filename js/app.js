@@ -2239,9 +2239,13 @@ function cancelCountdown() {
 
 // --- WORKOUT SCREEN ACTIVATION ---
 function enterWorkoutScreen() {
-  initializeRemoteRoomPanel();
-  toggleRemoteRoomPanel(true);
   applyWorkoutLayout();
+  initializeRemoteRoomPanel();
+  toggleRemoteRoomPanel(
+    !document
+      .querySelector(".workout-viewport")
+      ?.classList.contains("workout-compact"),
+  );
   updateFullscreenButton();
   setElDisplay("hud-top-bar", "flex");
   observeWorkoutHudSize();
@@ -2694,9 +2698,14 @@ function initializeRemoteRoomPanel() {
 function toggleRemoteRoomPanel(isOpen = null) {
   const panel = document.getElementById("remote-room-panel");
   if (!panel) return;
-  const nextIsOpen = isOpen === null
+  const viewport = document.querySelector(".workout-viewport");
+  const requestedOpen = isOpen === null
     ? !panel.classList.contains("is-open")
     : isOpen;
+  const nextIsOpen =
+    requestedOpen && viewport?.classList.contains("workout-compact")
+      ? false
+      : requestedOpen;
   panel.classList.toggle("is-open", nextIsOpen);
   panel.setAttribute("aria-hidden", String(!nextIsOpen));
 }
