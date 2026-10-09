@@ -3866,12 +3866,25 @@ h4 {
     grid-column: 2;
 }
 
+.workout-viewport.workout-compact .hud-bottom-right-group > #btn-workout-fullscreen {
+    grid-column: 3;
+}
+
 .workout-viewport.workout-compact .hud-bottom-right-group > #btn-workout-pause {
     grid-column: 1;
 }
 
 .workout-viewport.workout-compact .hud-bottom-right-group > #btn-compact-panels {
-    grid-column: 3;
+    grid-column: 4;
+}
+
+.workout-viewport #btn-workout-fullscreen[hidden] {
+    display: none !important;
+}
+
+.workout-viewport.workout-compact .hud-bottom-right-group > #btn-cycle-layout {
+    grid-column: 1 / -1;
+    grid-row: 3;
 }
 
 .workout-viewport.workout-compact .hud-bottom-right-group > #virtual-gear-control {
@@ -3882,6 +3895,13 @@ h4 {
     max-width: none;
     min-height: 44px;
     padding: 3px 6px;
+}
+
+.workout-viewport.workout-compact .hud-bottom-right-group > #btn-workout-pause,
+.workout-viewport.workout-compact .hud-bottom-right-group > #btn-workout-stop,
+.workout-viewport.workout-compact .hud-bottom-right-group > #btn-workout-fullscreen,
+.workout-viewport.workout-compact .hud-bottom-right-group > #btn-compact-panels {
+    grid-row: 2;
 }
 
 .workout-viewport.workout-compact #virtual-gear-control .btn-control {
@@ -4027,6 +4047,12 @@ h4 {
     transform: none;
 }
 
+.workout-viewport.workout-compact .compact-panels-drawer > #hud-elevation-footer.workout-panel-collapsed,
+.workout-viewport.workout-compact .compact-panels-drawer > #upcoming-profile-chart.workout-panel-collapsed {
+    height: auto !important;
+    min-height: 0 !important;
+}
+
 .workout-viewport.workout-compact .compact-panels-drawer > #hud-font-selector {
     display: flex !important;
     grid-column: 1 / -1;
@@ -4036,6 +4062,34 @@ h4 {
 .workout-viewport.workout-compact .compact-panels-drawer > #btn-orient-toggle,
 .workout-viewport.workout-compact .compact-panels-drawer > #btn-toggle-3d {
     width: 100% !important;
+}
+
+.workout-fullscreen-notice[hidden] {
+    display: none !important;
+}
+
+.workout-fullscreen-notice {
+    position: absolute;
+    z-index: 18;
+    top: calc(var(--workout-hud-height, 64px) + 12px);
+    left: 50%;
+    width: max-content;
+    max-width: calc(100% - 24px);
+    padding: 9px 14px;
+    transform: translateX(-50%);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 10px;
+    background: rgba(12, 16, 24, 0.94);
+    color: white;
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: center;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+}
+
+.workout-viewport.workout-compact .workout-fullscreen-notice {
+    top: calc(var(--workout-hud-height, 96px) + 52px);
 }
 
 @media (max-width: 420px) {

@@ -129,11 +129,37 @@ export function bindEvents(handlers) {
 
   document.body.addEventListener("click", (e) => {
     const target = e.target.closest(
-      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-cycle-layout, #btn-compact-panels, #btn-close-compact-panels, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, #btn-export-csv, [id^='btn-export-csv-'], [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-history-back-top, #btn-stats-back-top, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-settings-help, #btn-open-help, #btn-help-back, #btn-toggle-3d, #btn-toggle-manual-mode, #btn-session-safety-confirm, #btn-session-safety-cancel",
+      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-workout-fullscreen, #btn-cycle-layout, #btn-compact-panels, #btn-close-compact-panels, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, #btn-export-csv, [id^='btn-export-csv-'], [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-history-back-top, #btn-stats-back-top, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-settings-help, #btn-open-help, #btn-help-back, #btn-toggle-3d, #btn-toggle-manual-mode, #btn-session-safety-confirm, #btn-session-safety-cancel",
     );
 
     if (!target) return;
     const id = target.id;
+
+    const ble = window.BleManager;
+    const canStartSession =
+      ble?.simulator?.isActive ||
+      ble?.connections?.TRAINER?.status === "CONECTADO" ||
+      ble?.connections?.POWER?.status === "CONECTADO" ||
+      ble?.connections?.CSC?.status === "CONECTADO";
+    const requestsSessionFullscreen =
+      (id === "btn-connections-continue" && canStartSession) ||
+      (id === "btn-modal-confirm" && state.routePoints.length > 0) ||
+      id === "btn-session-safety-confirm" ||
+      (id === "btn-workout-pause" &&
+        (state.isSessionActive ||
+          state.currentMode !== "ROUTE" ||
+          state.routePoints.length > 0)) ||
+      target.matches("[data-route-select]");
+
+    if (requestsSessionFullscreen && typeof window.ensureWorkoutFullscreen === "function") {
+      void window.ensureWorkoutFullscreen();
+    }
+    if (id === "btn-workout-fullscreen" && typeof window.ensureWorkoutFullscreen === "function") {
+      void window.ensureWorkoutFullscreen();
+    }
+    if (id === "btn-toggle-fullscreen" && typeof window.toggleFullscreen === "function") {
+      void window.toggleFullscreen();
+    }
 
     setTimeout(() => {
       // Modales y Navegación
@@ -207,9 +233,6 @@ export function bindEvents(handlers) {
             btn.style.background = btn.getAttribute('data-val') == (state.sensorSmoothing || 3000) ? '#10b981' : '#333';
           });
         }, 250);
-      }
-      if (id === "btn-toggle-fullscreen" && typeof window.toggleFullscreen === "function") {
-        window.toggleFullscreen();
       }
       if (id === "btn-fullscreen-recovery-cancel" && typeof window.closeFullscreenRecovery === "function") {
         window.closeFullscreenRecovery();

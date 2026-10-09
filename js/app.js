@@ -256,16 +256,76 @@ window.applyWorkoutLayout = applyWorkoutLayout;
 
 function updateFullscreenButton() {
   const button = document.getElementById("btn-toggle-fullscreen");
-  if (!button) return;
-  button.textContent = document.fullscreenElement
-    ? "⛶ Salir de pantalla completa"
-    : "⛶ Pantalla completa";
+  const workoutButton = document.getElementById("btn-workout-fullscreen");
+  if (button) {
+    button.textContent = document.fullscreenElement
+      ? "⛶ Salir de pantalla completa"
+      : "⛶ Pantalla completa";
+  }
+  if (workoutButton) {
+    workoutButton.hidden = !!document.fullscreenElement;
+  }
+}
+
+async function exitWorkoutFullscreen() {
+  if (!document.fullscreenElement || !document.exitFullscreen) return;
+  try {
+    await document.exitFullscreen();
+    saveFullscreenPreference(false);
+  } catch (error) {
+    console.warn("No se pudo salir de pantalla completa:", error);
+  }
 }
 
 function saveFullscreenPreference(value) {
   state.fullscreenPreference = value;
   saveStateToLocalStorage();
 }
+
+let fullscreenNoticeTimer = null;
+
+function showWorkoutFullscreenNotice(message) {
+  const notice = document.getElementById("workout-fullscreen-notice");
+  if (!notice) return;
+
+  notice.textContent = message;
+  notice.hidden = false;
+  if (fullscreenNoticeTimer !== null) {
+    clearTimeout(fullscreenNoticeTimer);
+  }
+  fullscreenNoticeTimer = setTimeout(() => {
+    notice.hidden = true;
+    fullscreenNoticeTimer = null;
+  }, 7000);
+}
+
+async function ensureWorkoutFullscreen() {
+  if (document.fullscreenElement) return true;
+  if (
+    !document.fullscreenEnabled ||
+    typeof document.documentElement.requestFullscreen !== "function"
+  ) {
+    showWorkoutFullscreenNotice(
+      "Este navegador no permite pantalla completa. Puedes continuar con la sesión.",
+    );
+    return false;
+  }
+
+  try {
+    await document.documentElement.requestFullscreen();
+    saveFullscreenPreference(true);
+    updateFullscreenButton();
+    return true;
+  } catch (error) {
+    console.warn("No se pudo activar la pantalla completa:", error);
+    showWorkoutFullscreenNotice(
+      "No se pudo activar pantalla completa. Pulsa el botón ⛶ para intentarlo de nuevo.",
+    );
+    return false;
+  }
+}
+
+window.ensureWorkoutFullscreen = ensureWorkoutFullscreen;
 
 async function toggleFullscreen() {
   if (!document.fullscreenEnabled) {
@@ -289,6 +349,15 @@ document.addEventListener("fullscreenchange", () => {
   if (!state.fullscreenFilePickerActive) {
     saveFullscreenPreference(!!document.fullscreenElement);
   }
+  if (!document.fullscreenElement && state.isSessionActive) {
+    showWorkoutFullscreenNotice(
+      "La sesión sigue activa. Pulsa ⛶ Pantalla completa para volver a ampliarla.",
+    );
+  } else if (document.fullscreenElement) {
+    const notice = document.getElementById("workout-fullscreen-notice");
+    if (notice) notice.hidden = true;
+  }
+  if (state.workoutLayout === "auto") applyWorkoutLayout();
 });
 
 function showFullscreenRecovery() {
@@ -2172,6 +2241,7 @@ function enterWorkoutScreen() {
   initializeRemoteRoomPanel();
   toggleRemoteRoomPanel(true);
   applyWorkoutLayout();
+  updateFullscreenButton();
   setElDisplay("hud-top-bar", "flex");
   observeWorkoutHudSize();
   setElDisplay("hud-bottom-left", "flex");
@@ -3432,6 +3502,7 @@ async function stopSessionFlow() {
       ?.style.setProperty("display", "none");
 
     navigateTo("summary");
+    await exitWorkoutFullscreen();
     renderSummaryRoute(
       currentSession || {
         routePoints: state.currentMode === "ROUTE" ? state.routePoints : null,

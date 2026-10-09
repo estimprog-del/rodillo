@@ -602,6 +602,16 @@
                                 ⏹ Finalizar
                             </button>
                             <button
+                                class="btn-control btn-dark"
+                                id="btn-workout-fullscreen"
+                                type="button"
+                                title="Volver a pantalla completa"
+                                aria-label="Volver a pantalla completa"
+                                hidden
+                            >
+                                ⛶ Ampliar
+                            </button>
+                            <button
                                 class="btn-control btn-compact-panels"
                                 id="btn-compact-panels"
                                 type="button"
@@ -723,6 +733,13 @@
 
                     <!-- HUD superior (Global) -->
                     <div id="route-alert-banner" class="hud-alert-banner" style="display: none;"></div>
+                    <div
+                        id="workout-fullscreen-notice"
+                        class="workout-fullscreen-notice"
+                        role="status"
+                        aria-live="polite"
+                        hidden
+                    ></div>
                     <div class="hud-top-bar" id="hud-top-bar">
                         <div class="hud-left-group">
                             <div
