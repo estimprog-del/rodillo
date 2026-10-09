@@ -602,6 +602,16 @@
                                 ⏹ Finalizar
                             </button>
                             <button
+                                class="btn-control btn-compact-panels"
+                                id="btn-compact-panels"
+                                type="button"
+                                aria-controls="workout-compact-drawer"
+                                aria-expanded="false"
+                                hidden
+                            >
+                                Más datos
+                            </button>
+                            <button
                                 class="btn-control btn-dark"
                                 id="btn-orient-toggle"
                                 style="width: fit-content; padding: 5px 15px;"
@@ -682,6 +692,35 @@
                         </div>
                     </div>
 
+                    <section
+                        class="compact-panels-drawer"
+                        id="workout-compact-drawer"
+                        aria-label="Datos y controles adicionales de la sesión"
+                        aria-hidden="true"
+                        hidden
+                    >
+                        <div class="compact-panels-drawer-header">
+                            <div class="compact-panels-drawer-heading">
+                                <span class="compact-panels-handle" aria-hidden="true"></span>
+                                <strong>Más datos de la sesión</strong>
+                            </div>
+                            <button
+                                class="panel-toggle"
+                                id="btn-close-compact-panels"
+                                type="button"
+                                aria-label="Cerrar datos adicionales"
+                            >×</button>
+                        </div>
+                        <label class="compact-priority-setting" for="setting-compact-priority-metric">
+                            Destacar
+                            <select id="setting-compact-priority-metric">
+                                <option value="heartRate">Pulso</option>
+                                <option value="cadence">Cadencia</option>
+                            </select>
+                        </label>
+                        <p class="compact-priority-hint">Velocidad y potencia permanecen destacadas.</p>
+                    </section>
+
                     <!-- HUD superior (Global) -->
                     <div id="route-alert-banner" class="hud-alert-banner" style="display: none;"></div>
                     <div class="hud-top-bar" id="hud-top-bar">
@@ -755,6 +794,7 @@
                         <div class="hud-right-group">
                             <div
                                 class="hud-font-selector clock-session"
+                                id="hud-font-selector"
                                 style="
                                     pointer-events: auto;
                                     display: flex;
@@ -821,7 +861,7 @@
                                 </button>
                             </div>
 
-                            <div class="metric-group">
+                            <div class="metric-group metric-power-group">
                                 <div class="metric-main">
                                     <span
                                         class="metric-value"
@@ -834,13 +874,13 @@
                                     0 Ø
                                 </div>
                             </div>
-                            <div class="metric-main">
+                            <div class="metric-main metric-cadence">
                                 <span class="metric-value" id="metrics-cadence"
                                     >0</span
                                 >
                                 <span class="metric-label" style="color: #ffffff">RPM</span>
                             </div>
-                            <div class="metric-group">
+                            <div class="metric-group metric-speed-group">
                                 <div class="metric-main">
                                     <span
                                         class="metric-value speed-main"
@@ -853,7 +893,7 @@
                                     0.0 Ø
                                 </div>
                             </div>
-                            <div class="metric-group">
+                            <div class="metric-group metric-heart-rate">
                                 <div class="metric-main">
                                     <span
                                         class="metric-value"

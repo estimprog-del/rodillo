@@ -69,6 +69,7 @@ let routeMaximumAltitude = null;
 let routeLastAlertedThreshold = null;
 let effectiveRouteSlope = null;
 let bundledRouteCatalog = null;
+let compactWorkoutPanelPlaceholders = [];
 
 function logFpvDebug(message, details = {}) {
   const stateKey = `${message}:${JSON.stringify(details)}`;
@@ -121,14 +122,27 @@ function applyWorkoutLayout() {
   const layouts = ["horizontal-1", "horizontal-2", "vertical-1", "vertical-2"];
   const selectedLayout = state.workoutLayout;
   const isVertical = window.matchMedia("(orientation: portrait)").matches;
+  const viewportWidth = window.visualViewport?.width || window.innerWidth;
+  const viewportHeight = window.visualViewport?.height || window.innerHeight;
+  const isCompact =
+    selectedLayout === "auto" &&
+    (viewportWidth <= 720 ||
+      viewportHeight <= 540 ||
+      viewportWidth * viewportHeight <= 500000);
   const layout = layouts.includes(selectedLayout)
     ? selectedLayout
     : isVertical
-      ? (window.innerWidth < 700 ? "vertical-2" : "vertical-1")
-      : (window.innerWidth < 1100 ? "horizontal-2" : "horizontal-1");
+      ? (viewportWidth < 700 ? "vertical-2" : "vertical-1")
+      : (viewportWidth < 1100 ? "horizontal-2" : "horizontal-1");
 
   viewport.classList.remove(...layouts.map((name) => `layout-${name}`));
   viewport.classList.add(`layout-${layout}`);
+  viewport.classList.toggle("workout-compact", isCompact);
+  viewport.classList.toggle(
+    "priority-cadence",
+    state.workoutPriorityMetric === "cadence",
+  );
+  setCompactWorkoutPanels(isCompact);
 
   requestAnimationFrame(() => {
     if (!state.map) return;
@@ -146,9 +160,93 @@ function applyWorkoutLayout() {
   };
   const layoutButton = document.getElementById("btn-cycle-layout");
   if (layoutButton) {
-    layoutButton.textContent = `▣ Diseño: ${selectedLayout === "auto" ? layoutLabels.auto : layoutLabels[layout]}`;
+    layoutButton.textContent = isCompact
+      ? "▣ Auto"
+      : `▣ Diseño: ${selectedLayout === "auto" ? layoutLabels.auto : layoutLabels[layout]}`;
+    layoutButton.title = isCompact
+      ? "Diseño automático compacto para esta pantalla"
+      : "Cambiar diseño de pantalla";
   }
 }
+
+function setCompactWorkoutPanels(isCompact) {
+  const drawer = document.getElementById("workout-compact-drawer");
+  const viewport = document.querySelector(".workout-viewport");
+  const toggle = document.getElementById("btn-compact-panels");
+  if (!drawer || !viewport || !toggle) return;
+
+  if (isCompact) {
+    if (compactWorkoutPanelPlaceholders.length === 0) {
+      [
+        "route-side-stack",
+        "hud-elevation-footer",
+        "upcoming-profile-chart",
+        "hud-font-selector",
+        "btn-cycle-layout",
+        "btn-orient-toggle",
+        "btn-toggle-3d",
+      ].forEach((id) => {
+        const panel = document.getElementById(id);
+        if (!panel || !panel.parentNode) return;
+        const placeholder = document.createComment(`compact-panel-${id}`);
+        panel.parentNode.insertBefore(placeholder, panel);
+        compactWorkoutPanelPlaceholders.push({ panel, placeholder });
+      });
+    }
+
+    compactWorkoutPanelPlaceholders.forEach(({ panel }) => drawer.append(panel));
+    const priorityMetric = document.getElementById(
+      "setting-compact-priority-metric",
+    );
+    if (priorityMetric) {
+      priorityMetric.value = state.workoutPriorityMetric;
+    }
+    const panelsAreOpen = viewport.classList.contains("compact-panels-open");
+    drawer.hidden = false;
+    drawer.setAttribute("aria-hidden", String(!panelsAreOpen));
+    toggle.hidden = false;
+    toggle.setAttribute("aria-expanded", String(panelsAreOpen));
+    toggle.textContent = panelsAreOpen ? "Cerrar" : "Más datos";
+  } else {
+    compactWorkoutPanelPlaceholders.forEach(({ panel, placeholder }) => {
+      placeholder.parentNode?.insertBefore(panel, placeholder);
+      placeholder.remove();
+    });
+    compactWorkoutPanelPlaceholders = [];
+    viewport.classList.remove("compact-panels-open");
+    viewport.classList.remove("priority-cadence");
+    drawer.setAttribute("aria-hidden", "true");
+    drawer.hidden = true;
+    toggle.hidden = true;
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.textContent = "Más datos";
+  }
+}
+
+function toggleCompactWorkoutPanels() {
+  const viewport = document.querySelector(".workout-viewport");
+  const drawer = document.getElementById("workout-compact-drawer");
+  const toggle = document.getElementById("btn-compact-panels");
+  if (!viewport || !drawer || !toggle) return;
+
+  const isOpen = viewport.classList.toggle("compact-panels-open");
+  drawer.setAttribute("aria-hidden", String(!isOpen));
+  toggle.setAttribute("aria-expanded", String(isOpen));
+  toggle.textContent = isOpen ? "Cerrar" : "Más datos";
+}
+
+window.toggleCompactWorkoutPanels = toggleCompactWorkoutPanels;
+
+function setWorkoutPriorityMetric(metric) {
+  if (!["cadence", "heartRate"].includes(metric)) return;
+  state.workoutPriorityMetric = metric;
+  saveStateToLocalStorage();
+  document
+    .querySelector(".workout-viewport")
+    ?.classList.toggle("priority-cadence", metric === "cadence");
+}
+
+window.setWorkoutPriorityMetric = setWorkoutPriorityMetric;
 
 function layoutLabelsForResolvedLayout(layout) {
   return { "horizontal-1": "H1", "horizontal-2": "H2", "vertical-1": "V1", "vertical-2": "V2" }[layout];
@@ -228,6 +326,9 @@ window.cycleWorkoutLayout = cycleWorkoutLayout;
 window.addEventListener("resize", () => {
   if (state.workoutLayout === "auto") applyWorkoutLayout();
   else positionMapNavigationControls();
+});
+window.visualViewport?.addEventListener("resize", () => {
+  if (state.workoutLayout === "auto") applyWorkoutLayout();
 });
 
 function positionMapNavigationControls() {

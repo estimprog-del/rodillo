@@ -61,6 +61,7 @@ export const state = {
   mapViewMode: '3D_AEREO',
   mapInitialOrientation: 'NORTE',
   workoutLayout: 'auto',
+  workoutPriorityMetric: "heartRate",
   workoutLayouts: {},
   workoutPanels: { virtual: true, progress: true, elevation: true, upcoming: true, remote: true, routeOverview: true },
   workoutPanelsByUser: {},
@@ -102,6 +103,7 @@ export function saveStateToLocalStorage() {
     mapViewMode: state.mapViewMode,
     mapInitialOrientation: state.mapInitialOrientation,
     workoutLayout: state.workoutLayout,
+    workoutPriorityMetric: state.workoutPriorityMetric,
     workoutLayouts: state.workoutLayouts,
     workoutPanelsByUser: state.workoutPanelsByUser,
     fullscreenByUser: state.fullscreenByUser,
@@ -140,6 +142,11 @@ export function loadStateFromLocalStorage() {
       ? parsed.mapInitialOrientation
       : 'NORTE';
     state.workoutLayout = parsed.workoutLayout || 'auto';
+    state.workoutPriorityMetric = ["cadence", "heartRate"].includes(
+      parsed.workoutPriorityMetric,
+    )
+      ? parsed.workoutPriorityMetric
+      : "heartRate";
     state.workoutLayouts = parsed.workoutLayouts || {};
     state.workoutPanelsByUser = parsed.workoutPanelsByUser || {};
     state.fullscreenByUser = parsed.fullscreenByUser || {};
