@@ -202,7 +202,7 @@ function setCompactWorkoutPanels(isCompact) {
       priorityMetric.value = state.workoutPriorityMetric;
     }
     const panelsAreOpen = viewport.classList.contains("compact-panels-open");
-    drawer.hidden = false;
+    drawer.hidden = !panelsAreOpen;
     drawer.setAttribute("aria-hidden", String(!panelsAreOpen));
     toggle.hidden = false;
     toggle.setAttribute("aria-expanded", String(panelsAreOpen));
@@ -230,6 +230,7 @@ function toggleCompactWorkoutPanels() {
   if (!viewport || !drawer || !toggle) return;
 
   const isOpen = viewport.classList.toggle("compact-panels-open");
+  drawer.hidden = !isOpen;
   drawer.setAttribute("aria-hidden", String(!isOpen));
   toggle.setAttribute("aria-expanded", String(isOpen));
   toggle.textContent = isOpen ? "Cerrar" : "Más datos";

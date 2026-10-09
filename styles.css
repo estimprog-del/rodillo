@@ -3009,6 +3009,22 @@ h4 {
     min-height: 0 !important;
 }
 
+.simulator-control-panel.workout-panel-collapsed .hud-sim-title {
+    margin-bottom: 0;
+}
+
+.workout-viewport.workout-compact .compact-panels-drawer > .workout-panel-collapsed {
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0;
+    border-color: transparent;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
 /* Modal de carga de ruta */
 .route-modal-overlay {
     display: none;
