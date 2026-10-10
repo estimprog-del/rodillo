@@ -1907,6 +1907,11 @@ async function loadSavedRouteInSessionModal(button) {
   button.disabled = true;
   button.textContent = "Cargando...";
   if (status) status.textContent = "";
+  state.routePoints = [];
+  state.routeElevations = [];
+  state.routeDistances = [];
+  state.gpxFilename = "";
+  state.routeName = "";
   try {
     const [appRoutes, userRoutes] = await Promise.all([
       ensureBundledRouteCatalog(),
@@ -1927,6 +1932,9 @@ async function loadSavedRouteInSessionModal(button) {
 
     state.currentMode = "ROUTE";
     applyRouteData(routeData, route.file, route.name);
+    if (state.routePoints.length < 2) {
+      throw new Error("La ruta no contiene suficientes puntos válidos.");
+    }
     if (status) status.textContent = `Ruta cargada: ${route.name}`;
   } catch (error) {
     console.error("No se pudo cargar la ruta guardada:", error);

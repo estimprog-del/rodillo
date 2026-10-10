@@ -591,14 +591,6 @@ export function bindEvents(handlers) {
         }
       }
 
-      // Sesión GPX
-      if (id === "btn-modal-cancel") {
-        closeRouteModal();
-        navigateTo("dashboard");
-      }
-      if (id === "btn-load-saved-route") {
-        void loadSavedRouteInSessionModal(target);
-      }
       if (id === "btn-add-saved-route") {
         const routeInput = document.getElementById("saved-route-file-input");
         if (!state.currentUser) {
@@ -609,16 +601,27 @@ export function bindEvents(handlers) {
           routeInput.click();
         }
       }
-      if (id === "btn-modal-confirm") {
-        if (state.routePoints.length === 0) {
-          alert("Selecciona un archivo GPX/TCX antes de empezar.");
-        } else {
-          closeRouteModal();
-          navigateTo("workout");
-          if (!state.isSessionActive) startSession();
-        }
-      }
     }, 0);
+  });
+
+  const savedRouteLoadButton = document.getElementById("btn-load-saved-route");
+  savedRouteLoadButton?.addEventListener("click", () => {
+    void loadSavedRouteInSessionModal(savedRouteLoadButton);
+  });
+
+  document.getElementById("btn-modal-cancel")?.addEventListener("click", () => {
+    closeRouteModal();
+    navigateTo("dashboard");
+  });
+
+  document.getElementById("btn-modal-confirm")?.addEventListener("click", () => {
+    if (state.currentMode !== "ROUTE" || state.routePoints.length < 2) {
+      alert("Primero carga una ruta guardada o un archivo GPX/TCX válido.");
+      return;
+    }
+    closeRouteModal();
+    navigateTo("workout");
+    if (!state.isSessionActive) startSession();
   });
 
   document.addEventListener("keydown", (event) => {
