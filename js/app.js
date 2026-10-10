@@ -69,6 +69,9 @@ let routeMaximumAltitude = null;
 let routeLastAlertedThreshold = null;
 let effectiveRouteSlope = null;
 let bundledRouteCatalog = null;
+let routeLibraryRoutes = [];
+let routeLibrarySessions = [];
+let routeLibraryFilter = "all";
 let compactWorkoutPanelPlaceholders = [];
 
 function logFpvDebug(message, details = {}) {
@@ -526,6 +529,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     togglePause,
     stopSessionFlow,
     handleGpxUpload,
+    saveUserRoute,
+    setRouteLibraryFilter,
+    populateSessionSavedRoutes,
+    loadSavedRouteInSessionModal,
     adjustManualSlope,
     adjustManualPower,
     setWorkoutFontScale,
@@ -1563,15 +1570,24 @@ function renderRouteLibrary(routes, sessions) {
   if (!container) return;
   container.replaceChildren();
 
-  if (routes.length === 0) {
+  const visibleRoutes = routes.filter((route) =>
+    routeLibraryFilter === "all" ||
+    (routeLibraryFilter === "app" && route.source !== "user") ||
+    (routeLibraryFilter === "user" && route.source === "user"),
+  );
+  if (visibleRoutes.length === 0) {
     const empty = document.createElement("div");
     empty.className = "route-library-empty";
-    empty.textContent = "No hay rutas GPX/TCX en public/rutas.";
+    empty.textContent = routeLibraryFilter === "user"
+      ? "Todavía no has añadido rutas. Usa «Añadir ruta GPX/TCX» para guardarlas en este navegador."
+      : routeLibraryFilter === "app"
+        ? "No hay rutas incluidas disponibles."
+        : "No hay rutas guardadas disponibles.";
     container.append(empty);
     return;
   }
 
-  const sortedRoutes = routes.filter((route) => !route.error).sort((a, b) => {
+  const sortedRoutes = visibleRoutes.filter((route) => !route.error).sort((a, b) => {
     const favoriteDifference =
       Number(state.favoriteRoutes.includes(b.file)) -
       Number(state.favoriteRoutes.includes(a.file));
@@ -1596,6 +1612,9 @@ function renderRouteLibrary(routes, sessions) {
     name.className = "route-library-name";
     name.textContent = route.name;
     name.title = route.file;
+    const source = document.createElement("span");
+    source.className = "route-library-source";
+    source.textContent = route.source === "user" ? "Mi ruta" : "Ruta de la app";
 
     const favorite = document.createElement("button");
     const isFavorite = state.favoriteRoutes.includes(route.file);
@@ -1646,7 +1665,17 @@ function renderRouteLibrary(routes, sessions) {
     select.className = "route-library-select";
     select.dataset.routeSelect = route.file;
     select.textContent = "Usar esta ruta";
-    details.append(heading, stats, select);
+    details.append(heading, source, stats, select);
+    if (route.source === "user") {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "route-library-select route-library-delete";
+      remove.textContent = "Eliminar de Mis rutas";
+      remove.addEventListener("click", () => {
+        void removeSavedRoute(route);
+      });
+      details.append(remove);
+    }
     card.append(graphs, details);
     container.append(card);
 
@@ -1655,14 +1684,14 @@ function renderRouteLibrary(routes, sessions) {
         ? state.favoriteRoutes.filter((file) => file !== route.file)
         : [...state.favoriteRoutes, route.file];
       saveStateToLocalStorage();
-      renderRouteLibrary(routes, sessions);
+      renderRouteLibrary(routeLibraryRoutes, routeLibrarySessions);
     });
     select.addEventListener("click", () => {
       void selectBundledRoute(route, select);
     });
   });
 
-  routes
+  visibleRoutes
     .filter((route) => route.error)
     .forEach((route) => {
       const error = document.createElement("div");
@@ -1672,48 +1701,87 @@ function renderRouteLibrary(routes, sessions) {
     });
 }
 
+async function ensureBundledRouteCatalog() {
+  if (bundledRouteCatalog) return bundledRouteCatalog;
+
+  const baseUrl = import.meta.env.BASE_URL;
+  const catalogUrl = new URL(`${baseUrl}rutas/catalog.json`, document.baseURI);
+  const response = await fetch(catalogUrl);
+  if (!response.ok) throw new Error(`Error HTTP ${response.status} al cargar el catálogo.`);
+  const catalog = await response.json();
+  if (!Array.isArray(catalog.routes)) {
+    throw new Error("El catálogo de rutas no tiene un formato válido.");
+  }
+
+  bundledRouteCatalog = await Promise.all(
+    catalog.routes.map(async (route) => {
+      try {
+        const routeUrl = new URL(
+          `${baseUrl}rutas/${encodeURIComponent(route.file)}`,
+          document.baseURI,
+        );
+        const routeResponse = await fetch(routeUrl);
+        if (!routeResponse.ok) {
+          throw new Error(`Error HTTP ${routeResponse.status} al cargar el GPX.`);
+        }
+        const routeData = await GpxManager.parseRouteAsync(
+          await routeResponse.text(),
+        );
+        if (!routeData || routeData.points.length < 2) {
+          throw new Error("El archivo no contiene suficientes puntos.");
+        }
+        return { ...summarizeBundledRoute(routeData, route), source: "app" };
+      } catch (error) {
+        console.error(`No se pudo leer la ruta del catálogo ${route.file}:`, error);
+        return { ...route, error: error.message };
+      }
+    }),
+  );
+  return bundledRouteCatalog;
+}
+
+async function loadUserSavedRoutes() {
+  if (state.currentUser?.id === undefined) return [];
+  const savedRoutes = await DbManager.getSavedRoutes(state.currentUser.id);
+  return Promise.all(savedRoutes.map(async (savedRoute) => {
+    try {
+      const routeData = await GpxManager.parseRouteAsync(savedRoute.gpxText);
+      if (!routeData || routeData.points.length < 2) {
+        throw new Error("El archivo no contiene suficientes puntos.");
+      }
+      return {
+        ...summarizeBundledRoute(routeData, {
+          file: `user-route:${savedRoute.id}`,
+          name: savedRoute.name,
+        }),
+        source: "user",
+        storedRouteId: savedRoute.id,
+        gpxText: savedRoute.gpxText,
+      };
+    } catch (error) {
+      console.error(`No se pudo leer la ruta guardada ${savedRoute.fileName}:`, error);
+      return {
+        file: `user-route:${savedRoute.id}`,
+        name: savedRoute.name,
+        source: "user",
+        storedRouteId: savedRoute.id,
+        error: error.message,
+      };
+    }
+  }));
+}
+
 async function loadRouteLibrary() {
   const container = document.getElementById("route-library-list");
   if (!container) return;
   container.textContent = "Cargando rutas incluidas...";
 
   try {
-    if (!bundledRouteCatalog) {
-      const baseUrl = import.meta.env.BASE_URL;
-      const catalogUrl = new URL(`${baseUrl}rutas/catalog.json`, document.baseURI);
-      const response = await fetch(catalogUrl);
-      if (!response.ok) throw new Error(`Error HTTP ${response.status} al cargar el catálogo.`);
-      const catalog = await response.json();
-      if (!Array.isArray(catalog.routes)) {
-        throw new Error("El catálogo de rutas no tiene un formato válido.");
-      }
-
-      bundledRouteCatalog = await Promise.all(
-        catalog.routes.map(async (route) => {
-          try {
-            const routeUrl = new URL(
-              `${baseUrl}rutas/${encodeURIComponent(route.file)}`,
-              document.baseURI,
-            );
-            const routeResponse = await fetch(routeUrl);
-            if (!routeResponse.ok) {
-              throw new Error(`Error HTTP ${routeResponse.status} al cargar el GPX.`);
-            }
-            const routeData = await GpxManager.parseRouteAsync(
-              await routeResponse.text(),
-            );
-            if (!routeData || routeData.points.length < 2) {
-              throw new Error("El archivo no contiene suficientes puntos.");
-            }
-            return summarizeBundledRoute(routeData, route);
-          } catch (error) {
-            console.error(`No se pudo leer la ruta del catálogo ${route.file}:`, error);
-            return { ...route, error: error.message };
-          }
-        }),
-      );
-    }
-
+    const [appRoutes, userRoutes] = await Promise.all([
+      ensureBundledRouteCatalog(),
+      loadUserSavedRoutes(),
+    ]);
+    routeLibraryRoutes = [...appRoutes, ...userRoutes];
     let sessions = [];
     if (state.currentUser?.id !== undefined) {
       try {
@@ -1722,7 +1790,8 @@ async function loadRouteLibrary() {
         console.error("No se pudieron cargar los tiempos de las rutas:", error);
       }
     }
-    renderRouteLibrary(bundledRouteCatalog, sessions);
+    routeLibrarySessions = sessions;
+    renderRouteLibrary(routeLibraryRoutes, sessions);
   } catch (error) {
     console.error("No se pudo cargar la biblioteca de rutas:", error);
     const message = document.createElement("div");
@@ -1730,6 +1799,153 @@ async function loadRouteLibrary() {
     message.textContent = `No se pudieron cargar las rutas incluidas: ${error.message}`;
     container.replaceChildren(message);
   }
+}
+
+function setRouteLibraryFilter(filter) {
+  if (!["all", "app", "user"].includes(filter)) return;
+  routeLibraryFilter = filter;
+  renderRouteLibrary(routeLibraryRoutes, routeLibrarySessions);
+}
+
+async function saveUserRoute(file) {
+  const status = document.getElementById("saved-route-library-status");
+  if (!state.currentUser) {
+    if (status) status.textContent = "Selecciona un perfil antes de guardar rutas.";
+    return;
+  }
+
+  if (!/\.(gpx|tcx)$/i.test(file.name)) {
+    if (status) status.textContent = "Selecciona un archivo GPX o TCX válido.";
+    return;
+  }
+
+  if (status) status.textContent = `Procesando ${file.name}...`;
+  try {
+    const gpxText = await file.text();
+    if (!gpxText.trim()) throw new Error("El archivo está vacío.");
+    const routeData = await GpxManager.parseRouteAsync(gpxText);
+    if (!routeData || routeData.points.length < 2) {
+      throw new Error("No se encontraron suficientes puntos de ruta válidos.");
+    }
+    const routeName = file.name.replace(/\.(gpx|tcx)$/i, "");
+    await DbManager.saveRoute({
+      userId: state.currentUser.id,
+      name: routeName,
+      fileName: file.name,
+      gpxText,
+    });
+    if (status) status.textContent = `«${routeName}» se ha guardado en Mis rutas en este navegador.`;
+    await loadRouteLibrary();
+    const filter = document.getElementById("route-library-filter");
+    if (filter) {
+      filter.value = routeLibraryFilter = "user";
+      renderRouteLibrary(routeLibraryRoutes, routeLibrarySessions);
+    }
+  } catch (error) {
+    console.error("No se pudo guardar la ruta del usuario:", error);
+    if (status) status.textContent = `No se pudo guardar la ruta: ${error.message}`;
+  }
+}
+
+async function removeSavedRoute(route) {
+  if (!window.confirm(`¿Eliminar «${route.name}» de Mis rutas? Esta acción no elimina sesiones anteriores.`)) return;
+  try {
+    await DbManager.deleteSavedRoute(route.storedRouteId);
+    state.favoriteRoutes = state.favoriteRoutes.filter((file) => file !== route.file);
+    saveStateToLocalStorage();
+    await loadRouteLibrary();
+  } catch (error) {
+    console.error(`No se pudo eliminar la ruta guardada ${route.name}:`, error);
+    const status = document.getElementById("saved-route-library-status");
+    if (status) status.textContent = `No se pudo eliminar la ruta: ${error.message}`;
+  }
+}
+
+async function populateSessionSavedRoutes() {
+  const select = document.getElementById("session-saved-route-select");
+  const status = document.getElementById("session-saved-route-status");
+  if (!select) return;
+
+  select.replaceChildren(new Option("Cargando rutas guardadas...", ""));
+  if (status) status.textContent = "";
+  try {
+    const [appRoutes, userRoutes] = await Promise.all([
+      ensureBundledRouteCatalog(),
+      loadUserSavedRoutes(),
+    ]);
+    const routes = [...appRoutes, ...userRoutes];
+    const selectableRoutes = routes
+      .filter((route) => !route.error)
+      .sort((a, b) => {
+        const favoriteDifference =
+          Number(state.favoriteRoutes.includes(b.file)) -
+          Number(state.favoriteRoutes.includes(a.file));
+        return favoriteDifference || a.name.localeCompare(b.name, "es");
+      });
+
+    select.replaceChildren(new Option("Selecciona una ruta guardada", ""));
+    selectableRoutes.forEach((route) => {
+      const favoriteMarker = state.favoriteRoutes.includes(route.file) ? "★ " : "";
+      const sourceLabel = route.source === "user" ? "Mis rutas" : "App";
+      select.add(new Option(`${favoriteMarker}${route.name} · ${sourceLabel}`, route.file));
+    });
+    if (selectableRoutes.length === 0) {
+      select.replaceChildren(new Option("No hay rutas guardadas disponibles", ""));
+      if (status) status.textContent = "Añade archivos GPX/TCX a la biblioteca de rutas para que aparezcan aquí.";
+    }
+  } catch (error) {
+    console.error("No se pudieron cargar las rutas guardadas para la sesión:", error);
+    select.replaceChildren(new Option("No se pudieron cargar las rutas", ""));
+    if (status) status.textContent = error.message;
+  }
+}
+
+async function loadSavedRouteInSessionModal(button) {
+  const select = document.getElementById("session-saved-route-select");
+  const status = document.getElementById("session-saved-route-status");
+  const selectedFile = select?.value;
+  button.disabled = true;
+  button.textContent = "Cargando...";
+  if (status) status.textContent = "";
+  try {
+    const [appRoutes, userRoutes] = await Promise.all([
+      ensureBundledRouteCatalog(),
+      loadUserSavedRoutes(),
+    ]);
+    const route = [...appRoutes, ...userRoutes]
+      .find((item) => item.file === selectedFile);
+    if (!route || route.error) {
+      if (status) status.textContent = "Selecciona una ruta guardada válida.";
+      return;
+    }
+
+    const routeText = route.gpxText ?? await fetchBundledRouteText(route.file);
+    const routeData = await GpxManager.parseRouteAsync(routeText);
+    if (!routeData || routeData.points.length < 2) {
+      throw new Error("El archivo no contiene suficientes puntos de ruta.");
+    }
+
+    state.currentMode = "ROUTE";
+    applyRouteData(routeData, route.file, route.name);
+    if (status) status.textContent = `Ruta cargada: ${route.name}`;
+  } catch (error) {
+    console.error("No se pudo cargar la ruta guardada:", error);
+    if (status) status.textContent = `No se pudo cargar la ruta: ${error.message}`;
+  } finally {
+    button.disabled = false;
+    button.textContent = "Cargar ruta guardada";
+  }
+}
+
+async function fetchBundledRouteText(file) {
+  const baseUrl = import.meta.env.BASE_URL;
+  const routeUrl = new URL(
+    `${baseUrl}rutas/${encodeURIComponent(file)}`,
+    document.baseURI,
+  );
+  const response = await fetch(routeUrl);
+  if (!response.ok) throw new Error(`Error HTTP ${response.status} al cargar la ruta.`);
+  return response.text();
 }
 
 async function selectBundledRoute(route, button) {
@@ -1740,14 +1956,8 @@ async function selectBundledRoute(route, button) {
 
   try {
     state.currentMode = "ROUTE";
-    const baseUrl = import.meta.env.BASE_URL;
-    const routeUrl = new URL(
-      `${baseUrl}rutas/${encodeURIComponent(route.file)}`,
-      document.baseURI,
-    );
-    const response = await fetch(routeUrl);
-    if (!response.ok) throw new Error(`Error HTTP ${response.status} al cargar la ruta.`);
-    const routeData = await GpxManager.parseRouteAsync(await response.text());
+    const routeText = route.gpxText ?? await fetchBundledRouteText(route.file);
+    const routeData = await GpxManager.parseRouteAsync(routeText);
     if (!routeData || routeData.points.length < 2) {
       throw new Error("El archivo no contiene suficientes puntos de ruta.");
     }

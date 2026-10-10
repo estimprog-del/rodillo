@@ -43,7 +43,10 @@ function formatBackupStatus(status) {
     csv: "Telemetría CSV",
   };
   const source = status.automatic ? "automático" : "manual";
-  container.textContent = `Última descarga iniciada: ${dateText} · ${source} · ${scopeNames[status.scope] || status.scope} · ${status.sessionsCount ?? 0} sesiones · ${sizeText}. Archivo: ${status.filename || "desconocido"}. El navegador no confirma que se haya guardado.`;
+  const savedRoutesText = status.scope === "all"
+    ? ` · ${status.savedRoutesCount ?? 0} rutas personales`
+    : "";
+  container.textContent = `Última descarga iniciada: ${dateText} · ${source} · ${scopeNames[status.scope] || status.scope} · ${status.sessionsCount ?? 0} sesiones${savedRoutesText} · ${sizeText}. Archivo: ${status.filename || "desconocido"}. El navegador no confirma que se haya guardado.`;
 }
 
 async function populateBackupSessionPicker() {
@@ -90,6 +93,10 @@ export function bindEvents(handlers) {
     togglePause,
     stopSessionFlow,
     handleGpxUpload,
+    saveUserRoute,
+    setRouteLibraryFilter,
+    populateSessionSavedRoutes,
+    loadSavedRouteInSessionModal,
     adjustManualSlope,
     adjustManualPower,
     changeVirtualGear,
@@ -572,6 +579,7 @@ export function bindEvents(handlers) {
               if (!state.isSessionActive) startSession();
             } else {
               openRouteModal();
+              void populateSessionSavedRoutes();
             }
           } else {
             navigateTo("workout");
@@ -587,6 +595,19 @@ export function bindEvents(handlers) {
       if (id === "btn-modal-cancel") {
         closeRouteModal();
         navigateTo("dashboard");
+      }
+      if (id === "btn-load-saved-route") {
+        void loadSavedRouteInSessionModal(target);
+      }
+      if (id === "btn-add-saved-route") {
+        const routeInput = document.getElementById("saved-route-file-input");
+        if (!state.currentUser) {
+          const status = document.getElementById("saved-route-library-status");
+          if (status) status.textContent = "Selecciona un perfil antes de guardar rutas.";
+        } else {
+          routeInput.value = "";
+          routeInput.click();
+        }
       }
       if (id === "btn-modal-confirm") {
         if (state.routePoints.length === 0) {
@@ -642,6 +663,16 @@ export function bindEvents(handlers) {
     gpxInput.removeEventListener("change", handleGpxUpload);
     gpxInput.addEventListener("change", handleGpxUpload);
   }
+
+  const savedRouteInput = document.getElementById("saved-route-file-input");
+  savedRouteInput?.addEventListener("change", (event) => {
+    const [file] = event.target.files || [];
+    if (file) void saveUserRoute(file);
+  });
+
+  document.getElementById("route-library-filter")?.addEventListener("change", (event) => {
+    setRouteLibraryFilter(event.target.value);
+  });
 
   // Restaurar backup
   const backupInput = document.getElementById("backup-file-input");

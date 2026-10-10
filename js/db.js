@@ -1,6 +1,6 @@
 /* db.js - IndexedDB Manager for RodilloInt Web */
 const DB_NAME = 'RodilloIntDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbInstance = null;
 
@@ -42,6 +42,11 @@ function initDb() {
       if (!db.objectStoreNames.contains('sensor_data')) {
         const sensorDataStore = db.createObjectStore('sensor_data', { keyPath: 'id', autoIncrement: true });
         sensorDataStore.createIndex('sessionId', 'sessionId', { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains('saved_routes')) {
+        const savedRouteStore = db.createObjectStore('saved_routes', { keyPath: 'id', autoIncrement: true });
+        savedRouteStore.createIndex('userId', 'userId', { unique: false });
       }
 
       console.log('Database upgrade completed successfully');
@@ -126,6 +131,43 @@ async function deleteUser(id) {
     const store = transaction.objectStore('users');
     const request = store.delete(Number(id));
 
+    request.onsuccess = () => resolve(true);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function getSavedRoutes(userId) {
+  const db = await initDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['saved_routes'], 'readonly');
+    const store = transaction.objectStore('saved_routes');
+    const request = store.index('userId').getAll(Number(userId));
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveRoute(route) {
+  const db = await initDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['saved_routes'], 'readwrite');
+    const request = transaction.objectStore('saved_routes').add({
+      userId: Number(route.userId),
+      name: String(route.name),
+      fileName: String(route.fileName),
+      gpxText: String(route.gpxText),
+      createdAt: Date.now(),
+    });
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function deleteSavedRoute(id) {
+  const db = await initDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['saved_routes'], 'readwrite');
+    const request = transaction.objectStore('saved_routes').delete(Number(id));
     request.onsuccess = () => resolve(true);
     request.onerror = () => reject(request.error);
   });
@@ -361,6 +403,7 @@ async function insertSensorDataBulk(pointsArray) {
 
 // --- EXPORT/IMPORT ---
 const BACKUP_STORES = ['users', 'sessions', 'sensor_data'];
+const ALL_BACKUP_STORES = [...BACKUP_STORES, 'saved_routes'];
 const BACKUP_STATUS_KEY = 'rodilloint_last_backup';
 
 function downloadBlob(blob, filename) {
@@ -402,7 +445,7 @@ export async function exportAllData({ automatic = false, scope = 'all', sessionI
     throw new Error('Selecciona una sesión válida.');
   }
   const stores = scope === 'all'
-    ? BACKUP_STORES
+    ? ALL_BACKUP_STORES
     : scope === 'users'
       ? ['users']
       : scope === 'history'
@@ -419,7 +462,7 @@ export async function exportAllData({ automatic = false, scope = 'all', sessionI
   }
   const exportData = {
     format: 'RodilloInt backup',
-    version: 2,
+    version: 3,
     createdAt: new Date().toISOString(),
     automatic,
     scope,
@@ -447,6 +490,7 @@ export async function exportAllData({ automatic = false, scope = 'all', sessionI
     users: exportData.users?.length || 0,
     sessions: exportData.sessions?.length || 0,
     sensorDataPoints: exportData.sensor_data?.length || 0,
+    savedRoutes: exportData.saved_routes?.length || 0,
   };
 
   const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -459,6 +503,7 @@ export async function exportAllData({ automatic = false, scope = 'all', sessionI
     scope,
     automatic,
     sessionsCount,
+    savedRoutesCount: exportData.saved_routes?.length || 0,
     sizeBytes: blob.size,
   });
 }
@@ -517,12 +562,12 @@ export async function exportAllDataCsv() {
 
 export async function previewImportData(file) {
   const data = JSON.parse(await file.text());
-  if (!data || !BACKUP_STORES.some((storeName) => Array.isArray(data[storeName]))) {
+  if (!data || !ALL_BACKUP_STORES.some((storeName) => Array.isArray(data[storeName]))) {
     throw new Error('El archivo no contiene un backup válido de RodilloInt.');
   }
   const db = await initDb();
   const preview = {};
-  for (const storeName of BACKUP_STORES) {
+  for (const storeName of ALL_BACKUP_STORES) {
     if (!Array.isArray(data[storeName])) continue;
     const existing = await new Promise((resolve, reject) => {
       const request = db.transaction([storeName], 'readonly')
@@ -547,10 +592,10 @@ export async function previewImportData(file) {
 export async function importAllData(file) {
   try {
     const data = JSON.parse(await file.text());
-    if (!data || !BACKUP_STORES.some((storeName) => Array.isArray(data[storeName]))) {
+    if (!data || !ALL_BACKUP_STORES.some((storeName) => Array.isArray(data[storeName]))) {
       throw new Error('El archivo no contiene un backup válido de RodilloInt.');
     }
-    for (const storeName of BACKUP_STORES) {
+    for (const storeName of ALL_BACKUP_STORES) {
       if (data[storeName] && (!Array.isArray(data[storeName]) ||
           data[storeName].some((item) => !item || typeof item !== 'object'))) {
         throw new Error(`La sección ${storeName} del backup no es válida.`);
@@ -558,7 +603,7 @@ export async function importAllData(file) {
     }
 
     const db = await initDb();
-    const storesToRestore = BACKUP_STORES.filter((storeName) => Array.isArray(data[storeName]));
+    const storesToRestore = ALL_BACKUP_STORES.filter((storeName) => Array.isArray(data[storeName]));
     await new Promise((resolve, reject) => {
       const transaction = db.transaction(storesToRestore, 'readwrite');
       transaction.oncomplete = resolve;
@@ -594,6 +639,9 @@ window.DbManager = {
   insertUser,
   updateUser,
   deleteUser,
+  getSavedRoutes,
+  saveRoute,
+  deleteSavedRoute,
   insertSession,
   updateSession,
   getSessionById,

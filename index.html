@@ -237,6 +237,17 @@
                 </div>
                 <button class="btn btn-dark page-heading-back" id="btn-routes-back">← Volver</button>
             </div>
+            <div class="route-library-toolbar">
+                <label for="route-library-filter">Mostrar</label>
+                <select id="route-library-filter">
+                    <option value="all">Todas las rutas</option>
+                    <option value="app">Rutas de la app</option>
+                    <option value="user">Mis rutas</option>
+                </select>
+                <input type="file" id="saved-route-file-input" accept=".gpx,.xml,.tcx" hidden />
+                <button class="btn btn-primary" id="btn-add-saved-route" type="button">＋ Añadir ruta GPX/TCX</button>
+                <span id="saved-route-library-status" role="status" aria-live="polite"></span>
+            </div>
             <div id="route-library-list" class="route-library-list route-library-screen-list" aria-live="polite">
                 Cargando rutas...
             </div>
@@ -292,7 +303,7 @@
                 <article class="glass-card help-card">
                     <h3>Backups y recuperación</h3>
                     <p>En Ajustes puedes descargar el backup completo, exportar perfiles, historial, una sesión o la telemetría CSV. También puedes activar la descarga automática al finalizar cada sesión o guardar un backup desde el resumen.</p>
-                    <p>Antes de restaurar se ofrece descargar una copia actual y se muestra cuántos registros se añadirán o reemplazarán. Los backups no están cifrados y se descargan en la carpeta configurada por el navegador; guárdalos de forma segura.</p>
+                    <p>El backup completo incluye perfiles, sesiones, telemetría, preferencias y tus rutas GPX/TCX guardadas. Antes de restaurar se ofrece descargar una copia actual y se muestra cuántos registros se añadirán o reemplazarán. Los backups no están cifrados y se descargan en la carpeta configurada por el navegador; guárdalos de forma segura.</p>
                 </article>
                 <article class="glass-card help-card">
                     <h3>Mando remoto</h3>
@@ -1119,6 +1130,21 @@
 
                     <div class="route-modal-section">
                         <div class="route-modal-section-title">
+                            O elegir una ruta guardada
+                        </div>
+                        <div class="saved-route-picker-modal">
+                            <select id="session-saved-route-select" aria-label="Seleccionar ruta guardada">
+                                <option value="">Cargando rutas guardadas...</option>
+                            </select>
+                            <button class="btn-gpx-pick-modal" id="btn-load-saved-route" type="button">
+                                Cargar ruta guardada
+                            </button>
+                            <span id="session-saved-route-status" role="status" aria-live="polite"></span>
+                        </div>
+                    </div>
+
+                    <div class="route-modal-section">
+                        <div class="route-modal-section-title">
                             Ajuste de Dureza
                         </div>
                         <div class="input-group">
@@ -1857,7 +1883,7 @@
             <section class="backup-settings-section" aria-labelledby="backup-settings-heading">
               <div class="backup-settings-heading">
                 <h4 id="backup-settings-heading">💾 Copias de seguridad</h4>
-                <p>Elige dónde y cuándo guardar una copia de tus perfiles y actividades.</p>
+                <p>El backup completo conserva perfiles, actividades, preferencias y rutas personales guardadas.</p>
               </div>
 
               <div class="backup-destination-card">
@@ -1933,7 +1959,7 @@
             </p>
             <h3>Datos guardados en este navegador</h3>
             <p>
-              Los perfiles, entrenamientos, telemetría y preferencias se guardan en el almacenamiento local del navegador (IndexedDB y localStorage). No son cookies, pero pueden borrarse al limpiar los datos del sitio o cambiar de navegador/dispositivo. Puedes descargar backups desde Ajustes.
+              Los perfiles, entrenamientos, telemetría, preferencias y rutas personales se guardan en el almacenamiento local del navegador (IndexedDB y localStorage). No son cookies, pero pueden borrarse al limpiar los datos del sitio o cambiar de navegador/dispositivo. Puedes descargar backups completos desde Ajustes y restaurarlos en otro navegador/dispositivo.
             </p>
             <h3>Servicios externos al usar funciones</h3>
             <ul>

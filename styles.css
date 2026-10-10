@@ -3103,6 +3103,30 @@ h4 {
     padding: 0 2px 24px;
 }
 
+.route-library-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 12px 0 18px;
+    color: var(--text-secondary);
+}
+
+.route-library-toolbar select {
+    min-height: 42px;
+    padding: 8px 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: 9px;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+}
+
+#saved-route-library-status {
+    flex-basis: 100%;
+    min-height: 1.2em;
+    font-size: 13px;
+}
+
 .route-library-empty,
 .route-library-error {
     grid-column: 1 / -1;
@@ -3219,6 +3243,16 @@ h4 {
     cursor: wait;
 }
 
+.route-library-source {
+    color: #93c5fd;
+    font-size: 11px;
+}
+
+.route-library-delete {
+    color: #fecaca;
+    border-color: rgba(248, 113, 113, 0.4);
+}
+
 .route-modal-title {
     font-family: var(--font-title);
     font-size: 22px;
@@ -3265,6 +3299,33 @@ h4 {
 
 .btn-gpx-pick-modal:hover {
     background: rgba(59, 130, 246, 0.25);
+}
+
+.saved-route-picker-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.saved-route-picker-modal select {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+}
+
+.saved-route-picker-modal option {
+    color: #111827;
+    background: #fff;
+}
+
+#session-saved-route-status {
+    min-height: 1.2em;
+    color: var(--text-secondary);
+    font-size: 12px;
 }
 
 .route-modal-actions {
