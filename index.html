@@ -20,8 +20,8 @@
 
         <!-- MapLibre 3D CSS -->
         <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-      <script type="module" crossorigin src="./assets/index-t77kyj0I.js"></script>
-      <link rel="stylesheet" crossorigin href="./assets/index-U7axMrRu.css">
+      <script type="module" crossorigin src="./assets/index-BHqKknmq.js"></script>
+      <link rel="stylesheet" crossorigin href="./assets/index-CK1apZbP.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -651,7 +651,10 @@
                             <div class="virtual-gear-control glass-card" id="virtual-gear-control">
                                 <button class="btn-control remote-room-open-button" id="btn-open-remote-room" title="Mostrar mando móvil">📱</button>
                                 <button class="btn-control virtual-gear-button" id="btn-gear-down" title="Bajar marcha">− Marcha</button>
-                                <strong id="metrics-gear">Marcha: 9 / 14 · 50x17</strong>
+                                <strong id="metrics-gear">
+                                    <span id="metrics-gear-number">Marcha: 9 / 14</span>
+                                    <span id="metrics-gear-ratio">50x17</span>
+                                </strong>
                                 <button class="btn-control virtual-gear-button" id="btn-gear-up" title="Subir marcha">+ Marcha</button>
                             </div>
                             <div
@@ -1497,6 +1500,38 @@
                     </h1>
                 </div>
             </div>
+
+            <section class="training-calendar-section glass-card" aria-labelledby="training-calendar-heading">
+                <div class="training-calendar-heading-row">
+                    <div>
+                        <h3 id="training-calendar-heading">Calendario de entrenamiento</h3>
+                        <p>Consulta tus sesiones y el volumen de entrenamiento por semana y mes.</p>
+                    </div>
+                    <div class="training-calendar-navigation">
+                        <button class="btn btn-dark" id="btn-calendar-previous" type="button" aria-label="Mes anterior">‹</button>
+                        <strong id="training-calendar-month" aria-live="polite"></strong>
+                        <button class="btn btn-dark" id="btn-calendar-next" type="button" aria-label="Mes siguiente">›</button>
+                        <button class="btn btn-dark" id="btn-calendar-today" type="button">Hoy</button>
+                    </div>
+                </div>
+
+                <div class="training-period-summaries">
+                    <article class="training-period-summary">
+                        <h4>Este mes</h4>
+                        <div id="training-month-summary" class="training-summary-metrics"></div>
+                    </article>
+                    <article class="training-period-summary">
+                        <h4 id="training-week-heading">Semana seleccionada</h4>
+                        <div id="training-week-summary" class="training-summary-metrics"></div>
+                    </article>
+                </div>
+
+                <div class="training-calendar-grid" id="training-calendar-grid" role="group" aria-label="Calendario mensual de sesiones"></div>
+                <section class="training-selected-day" aria-labelledby="training-selected-day-heading">
+                    <h4 id="training-selected-day-heading">Sesiones del día</h4>
+                    <div id="training-selected-day-sessions" aria-live="polite"></div>
+                </section>
+            </section>
 
             <div class="glass-card" style="margin-bottom: 24px">
                 <h3 style="font-size: 16px; margin-bottom: 12px; color: white">
