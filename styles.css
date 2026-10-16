@@ -1303,6 +1303,217 @@ h4 {
     color: white;
 }
 
+/* Training calendar and period summaries */
+.training-calendar-section {
+    margin-bottom: 24px;
+    padding: clamp(14px, 3vw, 24px);
+}
+
+.training-calendar-heading-row,
+.training-calendar-navigation {
+    display: flex;
+    align-items: center;
+}
+
+.training-calendar-heading-row {
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.training-calendar-heading-row h3,
+.training-period-summary h4,
+.training-selected-day h4 {
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.training-calendar-heading-row p {
+    margin: 5px 0 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.training-calendar-navigation {
+    gap: 8px;
+}
+
+.training-calendar-navigation button {
+    min-width: 42px;
+    min-height: 40px;
+}
+
+#training-calendar-month {
+    min-width: 130px;
+    color: var(--text-primary);
+    text-align: center;
+    text-transform: capitalize;
+}
+
+.training-period-summaries {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.training-period-summary {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.training-period-summary h4 {
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+
+.training-summary-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.training-summary-metric {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.training-summary-metric strong {
+    overflow-wrap: anywhere;
+    color: #fff;
+    font-size: 16px;
+}
+
+.training-summary-metric span {
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.training-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 5px;
+}
+
+.training-calendar-weekday {
+    padding: 6px 2px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.training-calendar-day {
+    display: flex;
+    min-width: 0;
+    min-height: 66px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+    padding: 8px;
+    border: 1px solid var(--glass-border);
+    border-radius: 9px;
+    background: rgba(0, 0, 0, 0.2);
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+}
+
+.training-calendar-day:hover,
+.training-calendar-day:focus-visible {
+    border-color: var(--accent-blue);
+    outline: none;
+}
+
+.training-calendar-day.outside-month {
+    opacity: 0.42;
+}
+
+.training-calendar-day.today .training-calendar-day-number {
+    color: #93c5fd;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.training-calendar-day.selected {
+    border-color: var(--accent-green);
+    background: rgba(16, 185, 129, 0.16);
+    box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.25);
+}
+
+.training-calendar-day-number {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.training-calendar-day-activity {
+    max-width: 100%;
+    overflow: hidden;
+    color: #a7f3d0;
+    font-size: 10px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.training-selected-day {
+    margin-top: 20px;
+}
+
+.training-selected-day h4 {
+    margin-bottom: 10px;
+    font-size: 15px;
+    text-transform: capitalize;
+}
+
+.training-calendar-empty {
+    margin: 0;
+    padding: 12px;
+    border-radius: 9px;
+    background: rgba(0, 0, 0, 0.16);
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.training-day-session {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.training-day-session + .training-day-session {
+    margin-top: 8px;
+}
+
+.training-day-session-details,
+.training-day-session-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+}
+
+.training-day-session-details strong {
+    color: #fff;
+}
+
+.training-day-session-details span,
+.training-day-session-metrics {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
 /* Modals System */
 .modal-overlay {
     display: none;
@@ -1586,6 +1797,53 @@ h4 {
 }
 
 @media (max-width: 560px) {
+    .training-calendar-heading-row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .training-calendar-navigation {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    #training-calendar-month {
+        min-width: 0;
+        flex: 1;
+    }
+
+    .training-period-summaries {
+        grid-template-columns: 1fr;
+    }
+
+    .training-summary-metric strong {
+        font-size: 14px;
+    }
+
+    .training-calendar-grid {
+        gap: 3px;
+    }
+
+    .training-calendar-day {
+        min-height: 54px;
+        gap: 3px;
+        padding: 5px 4px;
+    }
+
+    .training-calendar-day-activity {
+        font-size: 8px;
+    }
+
+    .training-day-session {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .training-day-session-metrics {
+        gap: 8px;
+    }
+
     .backup-settings-section {
         padding: 12px;
     }
@@ -2580,10 +2838,16 @@ h4 {
 }
 
 .virtual-gear-control strong {
-    min-width: 76px;
+    display: flex;
+    min-width: 96px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
     text-align: center;
     color: var(--text-primary);
     font-size: 12px;
+    line-height: 1.15;
 }
 
 .virtual-gear-button {
@@ -3765,19 +4029,35 @@ h4 {
 /* Alert Banner Styles */
 .hud-alert-banner {
     position: absolute;
-    top: 80px;
+    top: calc(var(--workout-hud-height, 64px) + 74px);
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(245, 158, 11, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: max-content;
+    max-width: min(560px, calc(100vw - 24px));
+    min-height: 64px;
+    background: rgba(180, 83, 9, 0.96);
     color: white;
-    padding: 10px 25px;
+    padding: 15px 30px;
     border-radius: 50px;
     font-weight: 700;
-    font-size: 18px;
-    z-index: 99;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    font-size: clamp(20px, 2.2vw, 24px);
+    line-height: 1.25;
+    text-align: center;
+    z-index: 13;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.45);
     text-transform: uppercase;
     animation: fade-in-out 3s ease-in-out;
+}
+
+.workout-viewport.workout-compact .hud-alert-banner {
+    top: calc(var(--workout-hud-height, 96px) + 60px);
+    min-height: 58px;
+    padding: 12px 20px;
+    font-size: clamp(17px, 4.5vw, 21px);
 }
 
 @keyframes fade-in-out {

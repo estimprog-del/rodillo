@@ -36,7 +36,6 @@ import { exportAllData, getBackupStatus } from "./db.js";
 const SLOPE_AVERAGE_METERS = 10;
 const SLOPE_PREVIEW_LONG_METERS = 500;
 const MAX_SLOPE_CHANGE_PER_SEC = 0.5;
-const MAX_ROUTE_REAL_SLOPE_CHANGE_PER_UPDATE = 4;
 const WHEEL_INACTIVITY_TIMEOUT_MS = 10000;
 const MAPTILER_API_KEY = import.meta.env.VITE_MAPTILER_API_KEY || "";
 const MAP_VIEW_MODES = ["2D", "3D_AEREO", "3D_FPV"];
@@ -56,23 +55,6 @@ let movementWaitTimer = null;
 let sessionSafetyAcknowledged = false;
 let summaryRouteMap = null;
 let summaryRouteRenderId = 0;
-let routeOverviewCoordinates = [];
-let routeOverviewLastIndex = -1;
-let routeAlertTimer = null;
-let routeAlertQueue = [];
-let routeHalfwayAnnounced = false;
-let routeThreeQuarterAnnounced = false;
-let routeMaximumAltitudeAnnounced = false;
-let routeMaximumAltitudeCalculated = false;
-let routeMaximumAltitudeIndex = -1;
-let routeMaximumAltitude = null;
-let routeLastAlertedThreshold = null;
-let effectiveRouteSlope = null;
-let bundledRouteCatalog = null;
-let routeLibraryRoutes = [];
-let routeLibrarySessions = [];
-let routeLibraryFilter = "all";
-let compactWorkoutPanelPlaceholders = [];
 
 function logFpvDebug(message, details = {}) {
   const stateKey = `${message}:${JSON.stringify(details)}`;
@@ -125,27 +107,14 @@ function applyWorkoutLayout() {
   const layouts = ["horizontal-1", "horizontal-2", "vertical-1", "vertical-2"];
   const selectedLayout = state.workoutLayout;
   const isVertical = window.matchMedia("(orientation: portrait)").matches;
-  const viewportWidth = window.visualViewport?.width || window.innerWidth;
-  const viewportHeight = window.visualViewport?.height || window.innerHeight;
-  const isCompact =
-    selectedLayout === "auto" &&
-    (viewportWidth <= 720 ||
-      viewportHeight <= 540 ||
-      viewportWidth * viewportHeight <= 500000);
   const layout = layouts.includes(selectedLayout)
     ? selectedLayout
     : isVertical
-      ? (viewportWidth < 700 ? "vertical-2" : "vertical-1")
-      : (viewportWidth < 1100 ? "horizontal-2" : "horizontal-1");
+      ? (window.innerWidth < 700 ? "vertical-2" : "vertical-1")
+      : (window.innerWidth < 1100 ? "horizontal-2" : "horizontal-1");
 
   viewport.classList.remove(...layouts.map((name) => `layout-${name}`));
   viewport.classList.add(`layout-${layout}`);
-  viewport.classList.toggle("workout-compact", isCompact);
-  viewport.classList.toggle(
-    "priority-cadence",
-    state.workoutPriorityMetric === "cadence",
-  );
-  setCompactWorkoutPanels(isCompact);
 
   requestAnimationFrame(() => {
     if (!state.map) return;
@@ -163,94 +132,9 @@ function applyWorkoutLayout() {
   };
   const layoutButton = document.getElementById("btn-cycle-layout");
   if (layoutButton) {
-    layoutButton.textContent = isCompact
-      ? "▣ Auto"
-      : `▣ Diseño: ${selectedLayout === "auto" ? layoutLabels.auto : layoutLabels[layout]}`;
-    layoutButton.title = isCompact
-      ? "Diseño automático compacto para esta pantalla"
-      : "Cambiar diseño de pantalla";
+    layoutButton.textContent = `▣ Diseño: ${selectedLayout === "auto" ? layoutLabels.auto : layoutLabels[layout]}`;
   }
 }
-
-function setCompactWorkoutPanels(isCompact) {
-  const drawer = document.getElementById("workout-compact-drawer");
-  const viewport = document.querySelector(".workout-viewport");
-  const toggle = document.getElementById("btn-compact-panels");
-  if (!drawer || !viewport || !toggle) return;
-
-  if (isCompact) {
-    if (compactWorkoutPanelPlaceholders.length === 0) {
-      [
-        "route-side-stack",
-        "hud-elevation-footer",
-        "upcoming-profile-chart",
-        "hud-font-selector",
-        "btn-cycle-layout",
-        "btn-orient-toggle",
-        "btn-toggle-3d",
-      ].forEach((id) => {
-        const panel = document.getElementById(id);
-        if (!panel || !panel.parentNode) return;
-        const placeholder = document.createComment(`compact-panel-${id}`);
-        panel.parentNode.insertBefore(placeholder, panel);
-        compactWorkoutPanelPlaceholders.push({ panel, placeholder });
-      });
-    }
-
-    compactWorkoutPanelPlaceholders.forEach(({ panel }) => drawer.append(panel));
-    const priorityMetric = document.getElementById(
-      "setting-compact-priority-metric",
-    );
-    if (priorityMetric) {
-      priorityMetric.value = state.workoutPriorityMetric;
-    }
-    const panelsAreOpen = viewport.classList.contains("compact-panels-open");
-    drawer.hidden = !panelsAreOpen;
-    drawer.setAttribute("aria-hidden", String(!panelsAreOpen));
-    toggle.hidden = false;
-    toggle.setAttribute("aria-expanded", String(panelsAreOpen));
-    toggle.textContent = panelsAreOpen ? "Cerrar" : "Más datos";
-  } else {
-    compactWorkoutPanelPlaceholders.forEach(({ panel, placeholder }) => {
-      placeholder.parentNode?.insertBefore(panel, placeholder);
-      placeholder.remove();
-    });
-    compactWorkoutPanelPlaceholders = [];
-    viewport.classList.remove("compact-panels-open");
-    viewport.classList.remove("priority-cadence");
-    drawer.setAttribute("aria-hidden", "true");
-    drawer.hidden = true;
-    toggle.hidden = true;
-    toggle.setAttribute("aria-expanded", "false");
-    toggle.textContent = "Más datos";
-  }
-}
-
-function toggleCompactWorkoutPanels() {
-  const viewport = document.querySelector(".workout-viewport");
-  const drawer = document.getElementById("workout-compact-drawer");
-  const toggle = document.getElementById("btn-compact-panels");
-  if (!viewport || !drawer || !toggle) return;
-
-  const isOpen = viewport.classList.toggle("compact-panels-open");
-  drawer.hidden = !isOpen;
-  drawer.setAttribute("aria-hidden", String(!isOpen));
-  toggle.setAttribute("aria-expanded", String(isOpen));
-  toggle.textContent = isOpen ? "Cerrar" : "Más datos";
-}
-
-window.toggleCompactWorkoutPanels = toggleCompactWorkoutPanels;
-
-function setWorkoutPriorityMetric(metric) {
-  if (!["cadence", "heartRate"].includes(metric)) return;
-  state.workoutPriorityMetric = metric;
-  saveStateToLocalStorage();
-  document
-    .querySelector(".workout-viewport")
-    ?.classList.toggle("priority-cadence", metric === "cadence");
-}
-
-window.setWorkoutPriorityMetric = setWorkoutPriorityMetric;
 
 function layoutLabelsForResolvedLayout(layout) {
   return { "horizontal-1": "H1", "horizontal-2": "H2", "vertical-1": "V1", "vertical-2": "V2" }[layout];
@@ -260,76 +144,16 @@ window.applyWorkoutLayout = applyWorkoutLayout;
 
 function updateFullscreenButton() {
   const button = document.getElementById("btn-toggle-fullscreen");
-  const workoutButton = document.getElementById("btn-workout-fullscreen");
-  if (button) {
-    button.textContent = document.fullscreenElement
-      ? "⛶ Salir de pantalla completa"
-      : "⛶ Pantalla completa";
-  }
-  if (workoutButton) {
-    workoutButton.hidden = !!document.fullscreenElement;
-  }
-}
-
-async function exitWorkoutFullscreen() {
-  if (!document.fullscreenElement || !document.exitFullscreen) return;
-  try {
-    await document.exitFullscreen();
-    saveFullscreenPreference(false);
-  } catch (error) {
-    console.warn("No se pudo salir de pantalla completa:", error);
-  }
+  if (!button) return;
+  button.textContent = document.fullscreenElement
+    ? "⛶ Salir de pantalla completa"
+    : "⛶ Pantalla completa";
 }
 
 function saveFullscreenPreference(value) {
   state.fullscreenPreference = value;
   saveStateToLocalStorage();
 }
-
-let fullscreenNoticeTimer = null;
-
-function showWorkoutFullscreenNotice(message) {
-  const notice = document.getElementById("workout-fullscreen-notice");
-  if (!notice) return;
-
-  notice.textContent = message;
-  notice.hidden = false;
-  if (fullscreenNoticeTimer !== null) {
-    clearTimeout(fullscreenNoticeTimer);
-  }
-  fullscreenNoticeTimer = setTimeout(() => {
-    notice.hidden = true;
-    fullscreenNoticeTimer = null;
-  }, 7000);
-}
-
-async function ensureWorkoutFullscreen() {
-  if (document.fullscreenElement) return true;
-  if (
-    !document.fullscreenEnabled ||
-    typeof document.documentElement.requestFullscreen !== "function"
-  ) {
-    showWorkoutFullscreenNotice(
-      "Este navegador no permite pantalla completa. Puedes continuar con la sesión.",
-    );
-    return false;
-  }
-
-  try {
-    await document.documentElement.requestFullscreen();
-    saveFullscreenPreference(true);
-    updateFullscreenButton();
-    return true;
-  } catch (error) {
-    console.warn("No se pudo activar la pantalla completa:", error);
-    showWorkoutFullscreenNotice(
-      "No se pudo activar pantalla completa. Pulsa el botón ⛶ para intentarlo de nuevo.",
-    );
-    return false;
-  }
-}
-
-window.ensureWorkoutFullscreen = ensureWorkoutFullscreen;
 
 async function toggleFullscreen() {
   if (!document.fullscreenEnabled) {
@@ -353,15 +177,6 @@ document.addEventListener("fullscreenchange", () => {
   if (!state.fullscreenFilePickerActive) {
     saveFullscreenPreference(!!document.fullscreenElement);
   }
-  if (!document.fullscreenElement && state.isSessionActive) {
-    showWorkoutFullscreenNotice(
-      "La sesión sigue activa. Pulsa ⛶ Pantalla completa para volver a ampliarla.",
-    );
-  } else if (document.fullscreenElement) {
-    const notice = document.getElementById("workout-fullscreen-notice");
-    if (notice) notice.hidden = true;
-  }
-  if (state.workoutLayout === "auto") applyWorkoutLayout();
 });
 
 function showFullscreenRecovery() {
@@ -399,9 +214,6 @@ window.cycleWorkoutLayout = cycleWorkoutLayout;
 window.addEventListener("resize", () => {
   if (state.workoutLayout === "auto") applyWorkoutLayout();
   else positionMapNavigationControls();
-});
-window.visualViewport?.addEventListener("resize", () => {
-  if (state.workoutLayout === "auto") applyWorkoutLayout();
 });
 
 function positionMapNavigationControls() {
@@ -445,7 +257,6 @@ function applyWorkoutPanels() {
   const panels = {
     virtual: document.getElementById("virtual-trainer-panel"),
     progress: document.getElementById("hud-progress"),
-    routeOverview: document.getElementById("route-overview-card"),
     elevation: document.getElementById("hud-elevation-footer"),
     upcoming: document.getElementById("upcoming-profile-chart"),
   };
@@ -509,7 +320,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     history: () => loadHistoryList(),
     stats: () => loadProgressStats(),
     connections: () => syncBluetoothScreenStatus(),
-    routes: () => void loadRouteLibrary(),
   };
 
   navigateTo = initNavigation(UI, state, navigationCallbacks);
@@ -529,10 +339,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     togglePause,
     stopSessionFlow,
     handleGpxUpload,
-    saveUserRoute,
-    setRouteLibraryFilter,
-    populateSessionSavedRoutes,
-    loadSavedRouteInSessionModal,
     adjustManualSlope,
     adjustManualPower,
     setWorkoutFontScale,
@@ -792,7 +598,6 @@ function cacheUiElements() {
     "history",
     "stats",
     "help",
-    "routes",
   ].forEach((s) => {
     UI.screens[s] = document.getElementById(`screen-${s}`);
   });
@@ -865,173 +670,14 @@ function hideRouteModal() {
   if (UI.routeModal) UI.routeModal.classList.remove("active");
 }
 
-function buildRouteAscentProfile(distances, elevations, includeProfile = false) {
-  if (
-    !Array.isArray(distances) ||
-    !Array.isArray(elevations) ||
-    distances.length < 2 ||
-    distances.length !== elevations.length
-  ) {
-    return { profile: [], totalAscent: 0, maxUphillSlope: 0 };
-  }
-
-  const startKm = Number(distances[0]);
-  const endKm = Number(distances.at(-1));
-  if (!Number.isFinite(startKm) || !Number.isFinite(endKm) || endKm <= startKm) {
-    return { profile: [], totalAscent: 0, maxUphillSlope: 0 };
-  }
-
-  // Smooth noisy GPX elevations over 300 m, ignore swings under 20 m, and measure sustained grade over 600 m.
-  const sampleSpacingMeters = 20;
-  const sampleSpacingKm = sampleSpacingMeters / 1000;
-  const smoothingRadiusMeters = 150;
-  const smoothingRadiusSamples = Math.round(
-    smoothingRadiusMeters / sampleSpacingMeters,
-  );
-  const ascentSwingMeters = 20;
-  const slopeWindowMeters = 600;
-  const slopeWindowSamples = Math.round(
-    slopeWindowMeters / sampleSpacingMeters,
-  );
-  const sampleCount = Math.ceil((endKm - startKm) / sampleSpacingKm);
-  const sampleDistances = [];
-  const sampleElevations = [];
-  let sourceIndex = 1;
-
-  for (let index = 0; index <= sampleCount; index++) {
-    const distanceKm = Math.min(endKm, startKm + index * sampleSpacingKm);
-    while (
-      sourceIndex < distances.length - 1 &&
-      Number(distances[sourceIndex]) < distanceKm
-    ) {
-      sourceIndex++;
-    }
-
-    const leftIndex = Math.max(0, sourceIndex - 1);
-    const leftDistance = Number(distances[leftIndex]);
-    const rightDistance = Number(distances[sourceIndex]);
-    const leftElevation = Number(elevations[leftIndex]);
-    const rightElevation = Number(elevations[sourceIndex]);
-    const intervalKm = rightDistance - leftDistance;
-    const ratio =
-      Number.isFinite(intervalKm) && intervalKm > 0
-        ? Math.max(0, Math.min(1, (distanceKm - leftDistance) / intervalKm))
-        : 0;
-    const elevation =
-      leftElevation + (rightElevation - leftElevation) * ratio;
-
-    if (!Number.isFinite(elevation)) continue;
-    sampleDistances.push(distanceKm);
-    sampleElevations.push(elevation);
-  }
-
-  if (sampleElevations.length < 2) {
-    return { profile: [], totalAscent: 0, maxUphillSlope: 0 };
-  }
-
-  const prefixElevations = [0];
-  sampleElevations.forEach((elevation) => {
-    prefixElevations.push(prefixElevations.at(-1) + elevation);
-  });
-  const smoothedElevations = sampleElevations.map((_, index) => {
-    const firstIndex = Math.max(0, index - smoothingRadiusSamples);
-    const lastIndex = Math.min(
-      sampleElevations.length,
-      index + smoothingRadiusSamples + 1,
-    );
-    return (
-      (prefixElevations[lastIndex] - prefixElevations[firstIndex]) /
-      (lastIndex - firstIndex)
-    );
-  });
-
-  let totalAscent = 0;
-  let lowestElevation = smoothedElevations[0];
-  let highestElevation = smoothedElevations[0];
-  let isClimbing = false;
-  const profile = includeProfile
-    ? [{ distanceKm: sampleDistances[0], cumulativeAscent: totalAscent }]
-    : [];
-
-  for (let index = 1; index < smoothedElevations.length; index++) {
-    const elevation = smoothedElevations[index];
-    if (!isClimbing) {
-      lowestElevation = Math.min(lowestElevation, elevation);
-      if (elevation - lowestElevation >= ascentSwingMeters) {
-        totalAscent += elevation - lowestElevation;
-        highestElevation = elevation;
-        isClimbing = true;
-      }
-    } else if (elevation > highestElevation) {
-      totalAscent += elevation - highestElevation;
-      highestElevation = elevation;
-    } else if (highestElevation - elevation >= ascentSwingMeters) {
-      lowestElevation = elevation;
-      isClimbing = false;
-    }
-
-    if (includeProfile) {
-      profile.push({
-        distanceKm: sampleDistances[index],
-        cumulativeAscent: totalAscent,
-      });
-    }
-  }
-
-  let maxUphillSlope = 0;
-  for (
-    let index = 0;
-    index + slopeWindowSamples < smoothedElevations.length;
-    index++
-  ) {
-    const intervalKm =
-      sampleDistances[index + slopeWindowSamples] - sampleDistances[index];
-    if (intervalKm <= 0) continue;
-    const slope =
-      ((smoothedElevations[index + slopeWindowSamples] -
-        smoothedElevations[index]) /
-        (intervalKm * 1000)) *
-      100;
-    maxUphillSlope = Math.max(maxUphillSlope, slope);
-  }
-
-  return { profile, totalAscent, maxUphillSlope };
-}
-
-function getRouteAscentAtDistance(distanceKm) {
-  const profile = state.routeAscentProfile;
-  if (!profile.length) return null;
-  if (distanceKm <= profile[0].distanceKm) return 0;
-
-  let low = 0;
-  let high = profile.length - 1;
-  while (low < high) {
-    const middle = Math.floor((low + high) / 2);
-    if (profile[middle].distanceKm < distanceKm) low = middle + 1;
-    else high = middle;
-  }
-
-  const right = profile[low];
-  const left = profile[Math.max(0, low - 1)];
-  if (right.distanceKm <= left.distanceKm) return right.cumulativeAscent;
-  const ratio = Math.max(
-    0,
-    Math.min(
-      1,
-      (distanceKm - left.distanceKm) / (right.distanceKm - left.distanceKm),
-    ),
-  );
-  return (
-    left.cumulativeAscent +
-    (right.cumulativeAscent - left.cumulativeAscent) * ratio
-  );
-}
-
 function calculateTotalRouteAscent() {
-  return buildRouteAscentProfile(
-    state.routeDistances,
-    state.routeElevations,
-  ).totalAscent;
+  if (state.routeElevations.length < 2) return 0;
+  let total = 0;
+  for (let i = 1; i < state.routeElevations.length; i++) {
+    const diff = state.routeElevations[i] - state.routeElevations[i - 1];
+    if (diff > 0) total += diff;
+  }
+  return total;
 }
 
 function updateRouteProgressHud() {
@@ -1097,7 +743,6 @@ function configureWorkoutHudForMode() {
 
   // Ocultar/Mostrar elementos según el modo
   setElDisplay("hud-progress", isRoute ? "block" : "none");
-  setElDisplay("route-side-stack", isRoute ? "flex" : "none");
   setElDisplay("hud-profile", isRoute ? "flex" : "none");
   setElDisplay("hud-elevation-footer", isRoute ? "block" : "none");
   setElDisplay("workout-map", isRoute ? "block" : "none");
@@ -1459,529 +1104,6 @@ function startModeFlow(mode) {
   }
 
   navigateTo("workout");
-}
-
-function getRouteSparklinePath(values) {
-  const validValues = values.map(Number).filter(Number.isFinite);
-  if (validValues.length < 2) return "";
-
-  let min = Infinity;
-  let max = -Infinity;
-  validValues.forEach((value) => {
-    min = Math.min(min, value);
-    max = Math.max(max, value);
-  });
-  const range = max - min || 1;
-  const sampleCount = Math.min(180, validValues.length);
-  const path = [];
-  for (let sample = 0; sample < sampleCount; sample++) {
-    const index = Math.round(
-      (sample * (validValues.length - 1)) / (sampleCount - 1),
-    );
-    const x = (sample / (sampleCount - 1)) * 90 + 5;
-    const y = 95 - ((validValues[index] - min) / range) * 90;
-    path.push(`${sample === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`);
-  }
-  return path.join(" ");
-}
-
-function summarizeBundledRoute(routeData, route) {
-  const { points, elevations, distances } = routeData;
-  const elevationStats = buildRouteAscentProfile(
-    distances,
-    elevations,
-  );
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minY = Infinity;
-  let maxY = -Infinity;
-
-  const projected = points.map((point) => {
-    const x = Number(point.lon) * Math.cos((Number(point.lat) * Math.PI) / 180);
-    const y = -Number(point.lat);
-    if (Number.isFinite(x) && Number.isFinite(y)) {
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-    }
-    return { x, y };
-  });
-  const validProjected = projected.filter(
-    (point) => Number.isFinite(point.x) && Number.isFinite(point.y),
-  );
-  let trackPath = "";
-  if (validProjected.length > 1) {
-    const width = maxX - minX || 1;
-    const height = maxY - minY || 1;
-    const scale = Math.min(90 / width, 90 / height);
-    const offsetX = (100 - width * scale) / 2;
-    const offsetY = (100 - height * scale) / 2;
-    const sampleCount = Math.min(180, validProjected.length);
-    trackPath = Array.from({ length: sampleCount }, (_, sample) => {
-      const index = Math.round(
-        (sample * (validProjected.length - 1)) / (sampleCount - 1),
-      );
-      const point = validProjected[index];
-      const x = offsetX + (point.x - minX) * scale;
-      const y = offsetY + (point.y - minY) * scale;
-      return `${sample === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
-    }).join(" ");
-  }
-
-  return {
-    ...route,
-    points: undefined,
-    distances: undefined,
-    elevations: undefined,
-    distanceKm: Number(distances.at(-1)) || 0,
-    positiveAscent: Math.round(elevationStats.totalAscent),
-    maxUphillSlope: elevationStats.maxUphillSlope,
-    trackPath,
-    elevationPath: getRouteSparklinePath(elevations),
-  };
-}
-
-function formatRouteDuration(seconds) {
-  const totalSeconds = Math.max(0, Math.round(Number(seconds) || 0));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const remainingSeconds = totalSeconds % 60;
-  return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`
-    : `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
-function createRouteGraph(pathData, className, label) {
-  const svgNamespace = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(svgNamespace, "svg");
-  svg.setAttribute("viewBox", "0 0 100 100");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", label);
-  const path = document.createElementNS(svgNamespace, "path");
-  path.setAttribute("class", className);
-  path.setAttribute("d", pathData);
-  svg.append(path);
-  return svg;
-}
-
-function renderRouteLibrary(routes, sessions) {
-  const container = document.getElementById("route-library-list");
-  if (!container) return;
-  container.replaceChildren();
-
-  const visibleRoutes = routes.filter((route) =>
-    routeLibraryFilter === "all" ||
-    (routeLibraryFilter === "app" && route.source !== "user") ||
-    (routeLibraryFilter === "user" && route.source === "user"),
-  );
-  if (visibleRoutes.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "route-library-empty";
-    empty.textContent = routeLibraryFilter === "user"
-      ? "Todavía no has añadido rutas. Usa «Añadir ruta GPX/TCX» para guardarlas en este navegador."
-      : routeLibraryFilter === "app"
-        ? "No hay rutas incluidas disponibles."
-        : "No hay rutas guardadas disponibles.";
-    container.append(empty);
-    return;
-  }
-
-  const sortedRoutes = visibleRoutes.filter((route) => !route.error).sort((a, b) => {
-    const favoriteDifference =
-      Number(state.favoriteRoutes.includes(b.file)) -
-      Number(state.favoriteRoutes.includes(a.file));
-    return favoriteDifference || a.name.localeCompare(b.name, "es");
-  });
-
-  sortedRoutes.forEach((route) => {
-    const card = document.createElement("article");
-    card.className = "route-library-card";
-    const graphs = document.createElement("div");
-    graphs.className = "route-library-graphs";
-    graphs.append(
-      createRouteGraph(route.trackPath, "route-library-track", `Trazado de ${route.name}`),
-      createRouteGraph(route.elevationPath, "route-library-elevation", `Perfil de altitud de ${route.name}`),
-    );
-
-    const details = document.createElement("div");
-    details.className = "route-library-details";
-    const heading = document.createElement("div");
-    heading.className = "route-library-heading";
-    const name = document.createElement("h3");
-    name.className = "route-library-name";
-    name.textContent = route.name;
-    name.title = route.file;
-    const source = document.createElement("span");
-    source.className = "route-library-source";
-    source.textContent = route.source === "user" ? "Mi ruta" : "Ruta de la app";
-
-    const favorite = document.createElement("button");
-    const isFavorite = state.favoriteRoutes.includes(route.file);
-    favorite.type = "button";
-    favorite.className = "route-library-favorite";
-    favorite.dataset.routeFavorite = route.file;
-    favorite.setAttribute("aria-pressed", String(isFavorite));
-    favorite.setAttribute(
-      "aria-label",
-      isFavorite ? `Quitar ${route.name} de favoritas` : `Marcar ${route.name} como favorita`,
-    );
-    favorite.title = favorite.getAttribute("aria-label");
-    favorite.textContent = isFavorite ? "★" : "☆";
-    heading.append(name, favorite);
-
-    const routeSessions = sessions.filter(
-      (session) =>
-        session.endTime !== null &&
-        (session.gpxPath === route.file ||
-          session.routeName === route.name ||
-          session.routeName === route.file),
-    );
-    const bestSession = routeSessions.reduce((best, session) => {
-      const duration = Number(session.activeDuration) || 0;
-      return duration > 0 && (!best || duration < best.duration)
-        ? { duration }
-        : best;
-    }, null);
-
-    const stats = document.createElement("div");
-    stats.className = "route-library-stats";
-    [
-      ["Distancia", `${route.distanceKm.toFixed(2)} km`],
-      ["Desnivel + aprox.", `${route.positiveAscent} m`],
-      ["Pend. sostenida aprox.", `${route.maxUphillSlope.toFixed(1)}%`],
-      ["Mejor tiempo", bestSession ? formatRouteDuration(bestSession.duration) : "Sin sesiones"],
-    ].forEach(([label, value]) => {
-      const item = document.createElement("div");
-      item.append(`${label}: `);
-      const strong = document.createElement("strong");
-      strong.textContent = value;
-      item.append(strong);
-      stats.append(item);
-    });
-
-    const select = document.createElement("button");
-    select.type = "button";
-    select.className = "route-library-select";
-    select.dataset.routeSelect = route.file;
-    select.textContent = "Usar esta ruta";
-    details.append(heading, source, stats, select);
-    if (route.source === "user") {
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "route-library-select route-library-delete";
-      remove.textContent = "Eliminar de Mis rutas";
-      remove.addEventListener("click", () => {
-        void removeSavedRoute(route);
-      });
-      details.append(remove);
-    }
-    card.append(graphs, details);
-    container.append(card);
-
-    favorite.addEventListener("click", () => {
-      state.favoriteRoutes = isFavorite
-        ? state.favoriteRoutes.filter((file) => file !== route.file)
-        : [...state.favoriteRoutes, route.file];
-      saveStateToLocalStorage();
-      renderRouteLibrary(routeLibraryRoutes, routeLibrarySessions);
-    });
-    select.addEventListener("click", () => {
-      void selectBundledRoute(route, select);
-    });
-  });
-
-  visibleRoutes
-    .filter((route) => route.error)
-    .forEach((route) => {
-      const error = document.createElement("div");
-      error.className = "route-library-error";
-      error.textContent = `${route.file}: ${route.error}`;
-      container.append(error);
-    });
-}
-
-async function ensureBundledRouteCatalog() {
-  if (bundledRouteCatalog) return bundledRouteCatalog;
-
-  const baseUrl = import.meta.env.BASE_URL;
-  const catalogUrl = new URL(`${baseUrl}rutas/catalog.json`, document.baseURI);
-  const response = await fetch(catalogUrl);
-  if (!response.ok) throw new Error(`Error HTTP ${response.status} al cargar el catálogo.`);
-  const catalog = await response.json();
-  if (!Array.isArray(catalog.routes)) {
-    throw new Error("El catálogo de rutas no tiene un formato válido.");
-  }
-
-  bundledRouteCatalog = await Promise.all(
-    catalog.routes.map(async (route) => {
-      try {
-        const routeUrl = new URL(
-          `${baseUrl}rutas/${encodeURIComponent(route.file)}`,
-          document.baseURI,
-        );
-        const routeResponse = await fetch(routeUrl);
-        if (!routeResponse.ok) {
-          throw new Error(`Error HTTP ${routeResponse.status} al cargar el GPX.`);
-        }
-        const routeData = await GpxManager.parseRouteAsync(
-          await routeResponse.text(),
-        );
-        if (!routeData || routeData.points.length < 2) {
-          throw new Error("El archivo no contiene suficientes puntos.");
-        }
-        return { ...summarizeBundledRoute(routeData, route), source: "app" };
-      } catch (error) {
-        console.error(`No se pudo leer la ruta del catálogo ${route.file}:`, error);
-        return { ...route, error: error.message };
-      }
-    }),
-  );
-  return bundledRouteCatalog;
-}
-
-async function loadUserSavedRoutes() {
-  if (state.currentUser?.id === undefined) return [];
-  const savedRoutes = await DbManager.getSavedRoutes(state.currentUser.id);
-  return Promise.all(savedRoutes.map(async (savedRoute) => {
-    try {
-      const routeData = await GpxManager.parseRouteAsync(savedRoute.gpxText);
-      if (!routeData || routeData.points.length < 2) {
-        throw new Error("El archivo no contiene suficientes puntos.");
-      }
-      return {
-        ...summarizeBundledRoute(routeData, {
-          file: `user-route:${savedRoute.id}`,
-          name: savedRoute.name,
-        }),
-        source: "user",
-        storedRouteId: savedRoute.id,
-        gpxText: savedRoute.gpxText,
-      };
-    } catch (error) {
-      console.error(`No se pudo leer la ruta guardada ${savedRoute.fileName}:`, error);
-      return {
-        file: `user-route:${savedRoute.id}`,
-        name: savedRoute.name,
-        source: "user",
-        storedRouteId: savedRoute.id,
-        error: error.message,
-      };
-    }
-  }));
-}
-
-async function loadRouteLibrary() {
-  const container = document.getElementById("route-library-list");
-  if (!container) return;
-  container.textContent = "Cargando rutas incluidas...";
-
-  try {
-    const [appRoutes, userRoutes] = await Promise.all([
-      ensureBundledRouteCatalog(),
-      loadUserSavedRoutes(),
-    ]);
-    routeLibraryRoutes = [...appRoutes, ...userRoutes];
-    let sessions = [];
-    if (state.currentUser?.id !== undefined) {
-      try {
-        sessions = await DbManager.getAllSessions(state.currentUser.id);
-      } catch (error) {
-        console.error("No se pudieron cargar los tiempos de las rutas:", error);
-      }
-    }
-    routeLibrarySessions = sessions;
-    renderRouteLibrary(routeLibraryRoutes, sessions);
-  } catch (error) {
-    console.error("No se pudo cargar la biblioteca de rutas:", error);
-    const message = document.createElement("div");
-    message.className = "route-library-error";
-    message.textContent = `No se pudieron cargar las rutas incluidas: ${error.message}`;
-    container.replaceChildren(message);
-  }
-}
-
-function setRouteLibraryFilter(filter) {
-  if (!["all", "app", "user"].includes(filter)) return;
-  routeLibraryFilter = filter;
-  renderRouteLibrary(routeLibraryRoutes, routeLibrarySessions);
-}
-
-async function saveUserRoute(file) {
-  const status = document.getElementById("saved-route-library-status");
-  if (!state.currentUser) {
-    if (status) status.textContent = "Selecciona un perfil antes de guardar rutas.";
-    return;
-  }
-
-  if (!/\.(gpx|tcx)$/i.test(file.name)) {
-    if (status) status.textContent = "Selecciona un archivo GPX o TCX válido.";
-    return;
-  }
-
-  if (status) status.textContent = `Procesando ${file.name}...`;
-  try {
-    const gpxText = await file.text();
-    if (!gpxText.trim()) throw new Error("El archivo está vacío.");
-    const routeData = await GpxManager.parseRouteAsync(gpxText);
-    if (!routeData || routeData.points.length < 2) {
-      throw new Error("No se encontraron suficientes puntos de ruta válidos.");
-    }
-    const routeName = file.name.replace(/\.(gpx|tcx)$/i, "");
-    await DbManager.saveRoute({
-      userId: state.currentUser.id,
-      name: routeName,
-      fileName: file.name,
-      gpxText,
-    });
-    if (status) status.textContent = `«${routeName}» se ha guardado en Mis rutas en este navegador.`;
-    await loadRouteLibrary();
-    const filter = document.getElementById("route-library-filter");
-    if (filter) {
-      filter.value = routeLibraryFilter = "user";
-      renderRouteLibrary(routeLibraryRoutes, routeLibrarySessions);
-    }
-  } catch (error) {
-    console.error("No se pudo guardar la ruta del usuario:", error);
-    if (status) status.textContent = `No se pudo guardar la ruta: ${error.message}`;
-  }
-}
-
-async function removeSavedRoute(route) {
-  if (!window.confirm(`¿Eliminar «${route.name}» de Mis rutas? Esta acción no elimina sesiones anteriores.`)) return;
-  try {
-    await DbManager.deleteSavedRoute(route.storedRouteId);
-    state.favoriteRoutes = state.favoriteRoutes.filter((file) => file !== route.file);
-    saveStateToLocalStorage();
-    await loadRouteLibrary();
-  } catch (error) {
-    console.error(`No se pudo eliminar la ruta guardada ${route.name}:`, error);
-    const status = document.getElementById("saved-route-library-status");
-    if (status) status.textContent = `No se pudo eliminar la ruta: ${error.message}`;
-  }
-}
-
-async function populateSessionSavedRoutes() {
-  const select = document.getElementById("session-saved-route-select");
-  const status = document.getElementById("session-saved-route-status");
-  if (!select) return;
-
-  select.replaceChildren(new Option("Cargando rutas guardadas...", ""));
-  if (status) status.textContent = "";
-  try {
-    const [appRoutes, userRoutes] = await Promise.all([
-      ensureBundledRouteCatalog(),
-      loadUserSavedRoutes(),
-    ]);
-    const routes = [...appRoutes, ...userRoutes];
-    const selectableRoutes = routes
-      .filter((route) => !route.error)
-      .sort((a, b) => {
-        const favoriteDifference =
-          Number(state.favoriteRoutes.includes(b.file)) -
-          Number(state.favoriteRoutes.includes(a.file));
-        return favoriteDifference || a.name.localeCompare(b.name, "es");
-      });
-
-    select.replaceChildren(new Option("Selecciona una ruta guardada", ""));
-    selectableRoutes.forEach((route) => {
-      const favoriteMarker = state.favoriteRoutes.includes(route.file) ? "★ " : "";
-      const sourceLabel = route.source === "user" ? "Mis rutas" : "App";
-      select.add(new Option(`${favoriteMarker}${route.name} · ${sourceLabel}`, route.file));
-    });
-    if (selectableRoutes.length === 0) {
-      select.replaceChildren(new Option("No hay rutas guardadas disponibles", ""));
-      if (status) status.textContent = "Añade archivos GPX/TCX a la biblioteca de rutas para que aparezcan aquí.";
-    }
-  } catch (error) {
-    console.error("No se pudieron cargar las rutas guardadas para la sesión:", error);
-    select.replaceChildren(new Option("No se pudieron cargar las rutas", ""));
-    if (status) status.textContent = error.message;
-  }
-}
-
-async function loadSavedRouteInSessionModal(button) {
-  const select = document.getElementById("session-saved-route-select");
-  const status = document.getElementById("session-saved-route-status");
-  const selectedFile = select?.value;
-  button.disabled = true;
-  button.textContent = "Cargando...";
-  if (status) status.textContent = "";
-  state.routePoints = [];
-  state.routeElevations = [];
-  state.routeDistances = [];
-  state.gpxFilename = "";
-  state.routeName = "";
-  try {
-    const [appRoutes, userRoutes] = await Promise.all([
-      ensureBundledRouteCatalog(),
-      loadUserSavedRoutes(),
-    ]);
-    const route = [...appRoutes, ...userRoutes]
-      .find((item) => item.file === selectedFile);
-    if (!route || route.error) {
-      if (status) status.textContent = "Selecciona una ruta guardada válida.";
-      return;
-    }
-
-    const routeText = route.gpxText ?? await fetchBundledRouteText(route.file);
-    const routeData = await GpxManager.parseRouteAsync(routeText);
-    if (!routeData || routeData.points.length < 2) {
-      throw new Error("El archivo no contiene suficientes puntos de ruta.");
-    }
-
-    state.currentMode = "ROUTE";
-    applyRouteData(routeData, route.file, route.name);
-    if (state.routePoints.length < 2) {
-      throw new Error("La ruta no contiene suficientes puntos válidos.");
-    }
-    if (status) status.textContent = `Ruta cargada: ${route.name}`;
-  } catch (error) {
-    console.error("No se pudo cargar la ruta guardada:", error);
-    if (status) status.textContent = `No se pudo cargar la ruta: ${error.message}`;
-  } finally {
-    button.disabled = false;
-    button.textContent = "Cargar ruta guardada";
-  }
-}
-
-async function fetchBundledRouteText(file) {
-  const baseUrl = import.meta.env.BASE_URL;
-  const routeUrl = new URL(
-    `${baseUrl}rutas/${encodeURIComponent(file)}`,
-    document.baseURI,
-  );
-  const response = await fetch(routeUrl);
-  if (!response.ok) throw new Error(`Error HTTP ${response.status} al cargar la ruta.`);
-  return response.text();
-}
-
-async function selectBundledRoute(route, button) {
-  if (button) {
-    button.disabled = true;
-    button.textContent = "Cargando...";
-  }
-
-  try {
-    state.currentMode = "ROUTE";
-    const routeText = route.gpxText ?? await fetchBundledRouteText(route.file);
-    const routeData = await GpxManager.parseRouteAsync(routeText);
-    if (!routeData || routeData.points.length < 2) {
-      throw new Error("El archivo no contiene suficientes puntos de ruta.");
-    }
-
-    applyRouteData(routeData, route.file, route.name);
-    state.routeSelectedFromLibrary = true;
-    navigateTo("connections");
-  } catch (error) {
-    console.error(`No se pudo abrir la ruta ${route.file}:`, error);
-    alert(`No se pudo abrir la ruta: ${error.message}`);
-  } finally {
-    if (button) {
-      button.disabled = false;
-      button.textContent = "Usar esta ruta";
-    }
-  }
 }
 
 // --- BLUETOOTH CONNECTION CENTER ---
@@ -2457,14 +1579,9 @@ function cancelCountdown() {
 
 // --- WORKOUT SCREEN ACTIVATION ---
 function enterWorkoutScreen() {
-  applyWorkoutLayout();
   initializeRemoteRoomPanel();
-  toggleRemoteRoomPanel(
-    !document
-      .querySelector(".workout-viewport")
-      ?.classList.contains("workout-compact"),
-  );
-  updateFullscreenButton();
+  toggleRemoteRoomPanel(true);
+  applyWorkoutLayout();
   setElDisplay("hud-top-bar", "flex");
   observeWorkoutHudSize();
   setElDisplay("hud-bottom-left", "flex");
@@ -2476,10 +1593,6 @@ function enterWorkoutScreen() {
   state.speedHistory = [];
   state.elapsedSeconds = 0;
   state.totalDistance = 0.0;
-  effectiveRouteSlope =
-    state.currentMode === "ROUTE"
-      ? getRouteSlopeAtDistance(state.totalDistance)
-      : null;
   state.totalAscent = 0.0;
   state.currentRouteIndex = 0;
   state.isMapFollowingRoute = state.mapInitialOrientation === "RUTA";
@@ -2496,20 +1609,6 @@ function enterWorkoutScreen() {
   state.isAutoPaused = false;
   state.isSessionActive = false;
   state.routeTotalAscent = 0;
-  routeAlertQueue = [];
-  routeHalfwayAnnounced = false;
-  routeThreeQuarterAnnounced = false;
-  routeMaximumAltitudeAnnounced = false;
-  routeMaximumAltitudeCalculated = false;
-  routeMaximumAltitudeIndex = -1;
-  routeMaximumAltitude = null;
-  routeLastAlertedThreshold = null;
-  if (routeAlertTimer !== null) {
-    clearTimeout(routeAlertTimer);
-    routeAlertTimer = null;
-  }
-  const routeAlertBanner = document.getElementById("route-alert-banner");
-  if (routeAlertBanner) routeAlertBanner.style.display = "none";
 
   setElText("workout-timer", "00:00:00");
   setElText("metrics-power", "0");
@@ -2574,7 +1673,6 @@ function enterWorkoutScreen() {
   if (ghostBanner) ghostBanner.classList.remove("visible");
 
   if (isRouteMode) {
-    renderRouteOverview();
     if (state.ghostEnabled && state.gpxFilename) {
       void loadGhostRiderSession();
     }
@@ -2614,38 +1712,6 @@ function enterWorkoutScreen() {
 }
 
 // --- GPX ROUTE LOADER & PARSER ---
-function applyRouteData(routeData, fileName, routeName) {
-  state.gpxFilename = fileName;
-  state.routeName = routeName;
-  state.routeLoadedFromHistory = false;
-  state.routePoints = routeData.points;
-  state.routeElevations = routeData.elevations;
-  state.routeDistances = routeData.distances;
-  state.currentRouteIndex = 0;
-  const elevationStats = buildRouteAscentProfile(
-    state.routeDistances,
-    state.routeElevations,
-    true,
-  );
-  state.routeAscentProfile = elevationStats.profile;
-  state.routeTotalAscent = elevationStats.totalAscent;
-  effectiveRouteSlope = null;
-  renderRouteOverview();
-
-  const label = document.getElementById("gpx-filename-label");
-  if (label) label.textContent = fileName;
-  initConfiguredMap();
-  drawRouteOnMap();
-  refreshUpcomingPreview(0);
-  updateRouteProgressHud(state);
-  setElDisplay("hud-elevation-footer", "block");
-  ChartsManager.initElevationChart(
-    "elevation-chart",
-    state.routeDistances,
-    state.routeElevations,
-  );
-}
-
 async function handleGpxUpload(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -2678,12 +1744,25 @@ async function handleGpxUpload(e) {
     const routeData = await GpxManager.parseRouteAsync(text);
 
     if (routeData) {
-      applyRouteData(
-        routeData,
-        file.name,
-        file.name.replace(/\.(gpx|tcx)$/i, ""),
+      state.routePoints = routeData.points;
+      state.routeElevations = routeData.elevations;
+      state.routeDistances = routeData.distances;
+      state.currentRouteIndex = 0;
+      state.routeTotalAscent = calculateTotalRouteAscent();
+
+      initConfiguredMap();
+      drawRouteOnMap();
+      refreshUpcomingPreview(0);
+      updateRouteProgressHud(state);
+
+      setElDisplay("hud-elevation-footer", "block");
+      ChartsManager.initElevationChart(
+        "elevation-chart",
+        state.routeDistances,
+        state.routeElevations,
       );
 
+      if (label) label.textContent = file.name;
       if (shouldRecoverFullscreen) showFullscreenRecovery();
     } else {
       throw new Error("No se encontraron puntos de ruta válidos.");
@@ -2813,7 +1892,7 @@ function drawRouteOnMap() {
       // Posicionar cámara en el primer punto
       state.map.jumpTo({
           center: [firstPoint.lon, firstPoint.lat],
-          zoom: state.mapViewMode === "3D_FPV" ? 18 : 14,
+          zoom: state.mapViewMode === "3D_FPV" ? 20 : 14,
           pitch: state.mapViewMode === "3D_FPV" ? 82 : 60,
       });
   } else {
@@ -2916,14 +1995,9 @@ function initializeRemoteRoomPanel() {
 function toggleRemoteRoomPanel(isOpen = null) {
   const panel = document.getElementById("remote-room-panel");
   if (!panel) return;
-  const viewport = document.querySelector(".workout-viewport");
-  const requestedOpen = isOpen === null
+  const nextIsOpen = isOpen === null
     ? !panel.classList.contains("is-open")
     : isOpen;
-  const nextIsOpen =
-    requestedOpen && viewport?.classList.contains("workout-compact")
-      ? false
-      : requestedOpen;
   panel.classList.toggle("is-open", nextIsOpen);
   panel.setAttribute("aria-hidden", String(!nextIsOpen));
 }
@@ -3167,7 +2241,6 @@ function startTimerInterval() {
         updateRouteProgressHud(state);
         updateRouteSimulation(state.totalDistance);
         setRouteTargetSlope(state.totalDistance);
-        updateEffectiveRouteSlope(state.totalDistance);
         syncSlopeDisplayLabels();
       }
 
@@ -3730,7 +2803,6 @@ async function stopSessionFlow() {
       ?.style.setProperty("display", "none");
 
     navigateTo("summary");
-    await exitWorkoutFullscreen();
     renderSummaryRoute(
       currentSession || {
         routePoints: state.currentMode === "ROUTE" ? state.routePoints : null,
@@ -3748,203 +2820,6 @@ async function stopSessionFlow() {
 }
 
 // --- GPX ROUTE SIMULATION UPDATES ---
-function renderRouteOverview() {
-  const track = document.getElementById("route-overview-track");
-  const completed = document.getElementById("route-overview-completed");
-  const startMarker = document.getElementById("route-overview-start");
-  const endMarker = document.getElementById("route-overview-end");
-  const position = document.getElementById("route-overview-position");
-  if (!track || !completed || !startMarker || !endMarker || !position) return;
-
-  const points = state.routePoints.map((point) => ({
-    lat: Number(point?.lat),
-    lon: Number(point?.lon),
-  }));
-  if (
-    points.length < 2 ||
-    points.some(
-      (point) =>
-        !Number.isFinite(point.lat) ||
-        !Number.isFinite(point.lon) ||
-        point.lat < -90 ||
-        point.lat > 90 ||
-        point.lon < -180 ||
-        point.lon > 180,
-    )
-  ) {
-    track.setAttribute("d", "");
-    completed.setAttribute("d", "");
-    routeOverviewCoordinates = [];
-    return;
-  }
-
-  const meanLatitude =
-    points.reduce((sum, point) => sum + point.lat, 0) / points.length;
-  const longitudeScale = Math.max(
-    0.01,
-    Math.cos((meanLatitude * Math.PI) / 180),
-  );
-  const projected = points.map((point) => ({
-    x: point.lon * longitudeScale,
-    y: -point.lat,
-  }));
-  const bounds = projected.reduce(
-    (result, point) => ({
-      minX: Math.min(result.minX, point.x),
-      maxX: Math.max(result.maxX, point.x),
-      minY: Math.min(result.minY, point.y),
-      maxY: Math.max(result.maxY, point.y),
-    }),
-    {
-      minX: Infinity,
-      maxX: -Infinity,
-      minY: Infinity,
-      maxY: -Infinity,
-    },
-  );
-  const width = bounds.maxX - bounds.minX || 1;
-  const height = bounds.maxY - bounds.minY || 1;
-  const plotSize = 80;
-  const scale = Math.min(plotSize / width, plotSize / height);
-  const offsetX = 10 + (plotSize - width * scale) / 2;
-  const offsetY = 10 + (plotSize - height * scale) / 2;
-  routeOverviewCoordinates = projected.map((point) => ({
-    x: offsetX + (point.x - bounds.minX) * scale,
-    y: offsetY + (point.y - bounds.minY) * scale,
-  }));
-  routeOverviewLastIndex = -1;
-
-  const routePath = routeOverviewCoordinates
-    .map(
-      (point, index) =>
-        `${index === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`,
-    )
-    .join(" ");
-  track.setAttribute("d", routePath);
-  completed.setAttribute("d", "");
-  startMarker.setAttribute("cx", routeOverviewCoordinates[0].x.toFixed(2));
-  startMarker.setAttribute("cy", routeOverviewCoordinates[0].y.toFixed(2));
-  endMarker.setAttribute(
-    "cx",
-    routeOverviewCoordinates.at(-1).x.toFixed(2),
-  );
-  endMarker.setAttribute(
-    "cy",
-    routeOverviewCoordinates.at(-1).y.toFixed(2),
-  );
-  updateRouteOverview(state.totalDistance, state.currentRouteIndex);
-}
-
-function updateRouteOverview(distanceKm, routeIndex = state.currentRouteIndex) {
-  const position = document.getElementById("route-overview-position");
-  const completed = document.getElementById("route-overview-completed");
-  if (!position || !completed || routeOverviewCoordinates.length < 2) return;
-
-  const distances = state.routeDistances;
-  if (distances.length !== routeOverviewCoordinates.length) return;
-  const distance = Number(distanceKm) || 0;
-  let nextIndex = distances.findIndex((routeDistance) => routeDistance >= distance);
-  if (nextIndex < 0) nextIndex = distances.length - 1;
-  const currentIndex = Math.max(
-    0,
-    Math.min(routeIndex, nextIndex, routeOverviewCoordinates.length - 1),
-  );
-  const current = routeOverviewCoordinates[currentIndex];
-  position.setAttribute("cx", current.x.toFixed(2));
-  position.setAttribute("cy", current.y.toFixed(2));
-  if (currentIndex === routeOverviewLastIndex) return;
-  routeOverviewLastIndex = currentIndex;
-  const visitedPath = routeOverviewCoordinates
-    .slice(0, currentIndex + 1)
-    .map(
-      (point, index) =>
-        `${index === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`,
-    )
-    .join(" ");
-  completed.setAttribute("d", visitedPath);
-}
-
-function showNextRouteAlert() {
-  const banner = document.getElementById("route-alert-banner");
-  if (!banner || routeAlertQueue.length === 0) return;
-
-  banner.textContent = routeAlertQueue.shift();
-  banner.style.display = "block";
-  banner.style.animation = "none";
-  void banner.offsetWidth;
-  banner.style.animation = "";
-  routeAlertTimer = setTimeout(() => {
-    banner.style.display = "none";
-    routeAlertTimer = null;
-    showNextRouteAlert();
-  }, 3000);
-}
-
-function queueRouteAlert(message) {
-  routeAlertQueue.push(message);
-  if (routeAlertTimer === null) showNextRouteAlert();
-}
-
-function announceRouteMilestones(distanceKm) {
-  if (
-    (!routeHalfwayAnnounced || !routeThreeQuarterAnnounced) &&
-    state.routeDistances.length >= 2
-  ) {
-    const routeStartKm = Number(state.routeDistances[0]);
-    const routeEndKm = Number(state.routeDistances.at(-1));
-    if (
-      Number.isFinite(routeStartKm) &&
-      Number.isFinite(routeEndKm) &&
-      routeEndKm > routeStartKm
-    ) {
-      const routeLengthKm = routeEndKm - routeStartKm;
-      const progress = (distanceKm - routeStartKm) / routeLengthKm;
-      if (!routeHalfwayAnnounced && progress >= 0.5) {
-        routeHalfwayAnnounced = true;
-        queueRouteAlert("¡Has hecho la mitad de la ruta!");
-      }
-      if (!routeThreeQuarterAnnounced && progress >= 0.75) {
-        routeThreeQuarterAnnounced = true;
-        queueRouteAlert("¡Último cuarto de ruta!");
-      }
-    }
-  }
-
-  if (
-    !routeMaximumAltitudeAnnounced &&
-    state.routeElevations.length === state.routeDistances.length &&
-    state.routeElevations.length >= 2
-  ) {
-    if (!routeMaximumAltitudeCalculated) {
-      routeMaximumAltitudeCalculated = true;
-      state.routeElevations.forEach((elevation, index) => {
-        const altitude = Number(elevation);
-        if (
-          Number.isFinite(altitude) &&
-          (routeMaximumAltitude === null || altitude > routeMaximumAltitude)
-        ) {
-          routeMaximumAltitude = altitude;
-          routeMaximumAltitudeIndex = index;
-        }
-      });
-    }
-    const maximumDistanceKm = Number(
-      state.routeDistances[routeMaximumAltitudeIndex],
-    );
-    if (
-      routeMaximumAltitudeIndex >= 0 &&
-      Number.isFinite(maximumDistanceKm) &&
-      distanceKm >= maximumDistanceKm
-    ) {
-      routeMaximumAltitudeAnnounced = true;
-      const formattedAltitude = Math.round(routeMaximumAltitude).toLocaleString(
-        "es-ES",
-      );
-      queueRouteAlert(`¡Cima alcanzada! ${formattedAltitude} m`);
-    }
-  }
-}
-
 function updateRouteSimulation(currentDistKm) {
   if (state.currentMode !== "ROUTE" || state.routePoints.length === 0) return;
 
@@ -3952,8 +2827,6 @@ function updateRouteSimulation(currentDistKm) {
   let index = state.routeDistances.findIndex((d) => d >= currentDistKm);
   if (index === -1) index = state.routeDistances.length - 1;
   index = Math.max(0, Math.min(state.routePoints.length - 1, index));
-  updateRouteOverview(currentDistKm, index);
-  announceRouteMilestones(currentDistKm);
 
   if (index !== state.currentRouteIndex) {
       state.currentRouteIndex = index;
@@ -3965,10 +2838,7 @@ function updateRouteSimulation(currentDistKm) {
       // 2. Actualizar el gráfico "Prox 500m" y el desnivel
       refreshUpcomingPreview(currentDistKm);
 
-      if (
-        !state.routeAscentProfile.length &&
-        index < state.routePoints.length - 1
-      ) {
+      if (index < state.routePoints.length - 1) {
           const elevationDiffMeters = state.routeElevations[index + 1] - state.routeElevations[index];
           if (elevationDiffMeters > 0) {
               state.totalAscent += elevationDiffMeters;
@@ -3976,13 +2846,6 @@ function updateRouteSimulation(currentDistKm) {
               updateRouteProgressHud();
           }
       }
-  }
-
-  const filteredAscent = getRouteAscentAtDistance(currentDistKm);
-  if (filteredAscent !== null) {
-    state.totalAscent = filteredAscent;
-    setElText("submetrics-ascent", `${Math.round(state.totalAscent)} m`);
-    updateRouteProgressHud();
   }
 
   // 2. Sync elevation chart cursor (always for smooth movement)
@@ -3995,9 +2858,14 @@ function updateRouteSimulation(currentDistKm) {
     const thresholds = [20, 10, 5, 4, 3, 2, 1];
     const trigger = thresholds.find(t => Math.abs(remaining - t) < 0.05);
 
-    if (trigger && routeLastAlertedThreshold !== trigger) {
-        routeLastAlertedThreshold = trigger;
-        queueRouteAlert(`¡Quedan ${trigger} km para el final!`);
+    if (trigger && state.lastAlertedThreshold !== trigger) {
+        state.lastAlertedThreshold = trigger;
+        const banner = document.getElementById("route-alert-banner");
+        if (banner) {
+            banner.textContent = `¡Quedan ${trigger} km para el final!`;
+            banner.style.display = "block";
+            setTimeout(() => { banner.style.display = "none"; }, 3000);
+        }
     }
 
     // Actualizar posición del usuario en el mapa según el motor
@@ -4173,8 +3041,7 @@ function syncSlopeDisplayLabels() {
   if (trainerSlopeValue) trainerSlopeValue.textContent = formatted;
 
   const routeSlopeValue = document.getElementById("metrics-route-slope");
-  const routeSlope =
-    effectiveRouteSlope ?? getRouteSlopeAtDistance(state.totalDistance);
+  const routeSlope = getRouteSlopeAtDistance(state.totalDistance);
   if (routeSlopeValue) {
     routeSlopeValue.textContent = `${routeSlope >= 0 ? "+" : ""}${routeSlope.toFixed(1)}%`;
   }
@@ -4208,7 +3075,7 @@ function getRouteSlopeAtDistance(distanceKm) {
   const routeStartKm = state.routeDistances[0];
   const routeEndKm = state.routeDistances[state.routeDistances.length - 1];
   const distance = Math.max(routeStartKm, Math.min(routeEndKm, Number(distanceKm) || 0));
-  const sampleRadiusKm = 0.005;
+  const sampleRadiusKm = 0.010; //Pendiente real 10m antes y 10m despues
   const startKm = Math.max(routeStartKm, distance - sampleRadiusKm);
   const endKm = Math.min(routeEndKm, distance + sampleRadiusKm);
   const distanceMeters = (endKm - startKm) * 1000;
@@ -4218,20 +3085,6 @@ function getRouteSlopeAtDistance(distanceKm) {
   const endElevation = getElevationAtDistance(endKm);
   const slope = ((endElevation - startElevation) / distanceMeters) * 100;
   return Number.isFinite(slope) ? slope : 0;
-}
-
-function updateEffectiveRouteSlope(distanceKm) {
-  const calculatedSlope = getRouteSlopeAtDistance(distanceKm);
-  if (effectiveRouteSlope === null) {
-    effectiveRouteSlope = calculatedSlope;
-    return;
-  }
-
-  const slopeChange = calculatedSlope - effectiveRouteSlope;
-  effectiveRouteSlope += Math.max(
-    -MAX_ROUTE_REAL_SLOPE_CHANGE_PER_UPDATE,
-    Math.min(MAX_ROUTE_REAL_SLOPE_CHANGE_PER_UPDATE, slopeChange),
-  );
 }
 
 function updateTrainerSlope(slope, immediate = false) {
@@ -4332,13 +3185,7 @@ function getUpcomingSegmentData(
   previewDistanceMeters = SLOPE_PREVIEW_LONG_METERS,
   currentDistKm = null,
 ) {
-  if (
-    state.routePoints.length === 0 ||
-    state.routeDistances.length !== state.routePoints.length ||
-    state.routeElevations.length !== state.routeDistances.length
-  ) {
-    return null;
-  }
+  if (state.routePoints.length === 0) return null;
 
   const currentDistanceKm =
     currentDistKm !== null
@@ -4412,14 +3259,10 @@ function refreshUpcomingPreview(currentDistKm = null) {
       : state.routeDistances[state.currentRouteIndex] || 0;
 
   const preview = getUpcomingSegmentData(SLOPE_PREVIEW_LONG_METERS, distKm);
-  const upcomingSlopeLabel = document.getElementById("upcoming-slope-label");
-  if (!preview) {
-    if (upcomingSlopeLabel) upcomingSlopeLabel.textContent = "⛰️ --";
-    ChartsManager.updateUpcomingChart([], [], 0);
-    return;
-  }
+  if (!preview) return;
 
   const slope = preview.avgSlope;
+  const upcomingSlopeLabel = document.getElementById("upcoming-slope-label");
   if (upcomingSlopeLabel) {
     upcomingSlopeLabel.textContent =
       `⛰️ ${slope >= 0 ? "+" : ""}${slope.toFixed(1)}%`;
@@ -5087,13 +3930,7 @@ async function repeatRouteFromHistory(id) {
     state.routeDistances = Array.isArray(session.routeDistances)
       ? session.routeDistances.map(Number)
       : [];
-    const elevationStats = buildRouteAscentProfile(
-      state.routeDistances,
-      state.routeElevations,
-      true,
-    );
-    state.routeAscentProfile = elevationStats.profile;
-    state.routeTotalAscent = elevationStats.totalAscent;
+    state.routeTotalAscent = Number(session.routeTotalAscent) || calculateTotalRouteAscent();
     state.currentRouteIndex = 0;
     state.routeLoadedFromHistory = true;
     navigateTo("connections");

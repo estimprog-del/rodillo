@@ -95,6 +95,9 @@ export function bindEvents(handlers) {
     handleGpxUpload,
     saveUserRoute,
     setRouteLibraryFilter,
+    changeTrainingCalendarMonth,
+    selectTrainingCalendarDate,
+    goToTrainingCalendarToday,
     populateSessionSavedRoutes,
     loadSavedRouteInSessionModal,
     adjustManualSlope,
@@ -363,6 +366,12 @@ export function bindEvents(handlers) {
       if (id === "btn-history-back") navigateTo("dashboard");
       if (id === "btn-history-back-top") navigateTo("dashboard");
       if (id === "btn-go-progress") navigateTo("stats");
+      if (id === "btn-calendar-previous") changeTrainingCalendarMonth(-1);
+      if (id === "btn-calendar-next") changeTrainingCalendarMonth(1);
+      if (id === "btn-calendar-today") goToTrainingCalendarToday();
+      if (target.dataset.calendarDate) {
+        selectTrainingCalendarDate(target.dataset.calendarDate);
+      }
       if (id === "btn-help-back") navigateTo("dashboard");
       if (id === "btn-routes-back") navigateTo("dashboard");
       if (id === "btn-open-saved-routes") navigateTo("routes");

@@ -20,8 +20,8 @@
 
         <!-- MapLibre 3D CSS -->
         <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-      <script type="module" crossorigin src="./assets/index-CYW5VK0C.js"></script>
-      <link rel="stylesheet" crossorigin href="./assets/index-BnN__V20.css">
+      <script type="module" crossorigin src="./assets/index-B9fIEXVK.js"></script>
+      <link rel="stylesheet" crossorigin href="./assets/index-CK1apZbP.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -238,6 +238,17 @@
                 </div>
                 <button class="btn btn-dark page-heading-back" id="btn-routes-back">← Volver</button>
             </div>
+            <div class="route-library-toolbar">
+                <label for="route-library-filter">Mostrar</label>
+                <select id="route-library-filter">
+                    <option value="all">Todas las rutas</option>
+                    <option value="app">Rutas de la app</option>
+                    <option value="user">Mis rutas</option>
+                </select>
+                <input type="file" id="saved-route-file-input" accept=".gpx,.xml,.tcx" hidden />
+                <button class="btn btn-primary" id="btn-add-saved-route" type="button">＋ Añadir ruta GPX/TCX</button>
+                <span id="saved-route-library-status" role="status" aria-live="polite"></span>
+            </div>
             <div id="route-library-list" class="route-library-list route-library-screen-list" aria-live="polite">
                 Cargando rutas...
             </div>
@@ -293,7 +304,7 @@
                 <article class="glass-card help-card">
                     <h3>Backups y recuperación</h3>
                     <p>En Ajustes puedes descargar el backup completo, exportar perfiles, historial, una sesión o la telemetría CSV. También puedes activar la descarga automática al finalizar cada sesión o guardar un backup desde el resumen.</p>
-                    <p>Antes de restaurar se ofrece descargar una copia actual y se muestra cuántos registros se añadirán o reemplazarán. Los backups no están cifrados y se descargan en la carpeta configurada por el navegador; guárdalos de forma segura.</p>
+                    <p>El backup completo incluye perfiles, sesiones, telemetría, preferencias y tus rutas GPX/TCX guardadas. Antes de restaurar se ofrece descargar una copia actual y se muestra cuántos registros se añadirán o reemplazarán. Los backups no están cifrados y se descargan en la carpeta configurada por el navegador; guárdalos de forma segura.</p>
                 </article>
                 <article class="glass-card help-card">
                     <h3>Mando remoto</h3>
@@ -604,6 +615,26 @@
                             </button>
                             <button
                                 class="btn-control btn-dark"
+                                id="btn-workout-fullscreen"
+                                type="button"
+                                title="Volver a pantalla completa"
+                                aria-label="Volver a pantalla completa"
+                                hidden
+                            >
+                                ⛶ Ampliar
+                            </button>
+                            <button
+                                class="btn-control btn-compact-panels"
+                                id="btn-compact-panels"
+                                type="button"
+                                aria-controls="workout-compact-drawer"
+                                aria-expanded="false"
+                                hidden
+                            >
+                                Más datos
+                            </button>
+                            <button
+                                class="btn-control btn-dark"
                                 id="btn-orient-toggle"
                                 style="width: fit-content; padding: 5px 15px;"
                             >
@@ -620,7 +651,10 @@
                             <div class="virtual-gear-control glass-card" id="virtual-gear-control">
                                 <button class="btn-control remote-room-open-button" id="btn-open-remote-room" title="Mostrar mando móvil">📱</button>
                                 <button class="btn-control virtual-gear-button" id="btn-gear-down" title="Bajar marcha">− Marcha</button>
-                                <strong id="metrics-gear">Marcha: 9 / 14 · 50x17</strong>
+                                <strong id="metrics-gear">
+                                    <span id="metrics-gear-number">Marcha: 9 / 14</span>
+                                    <span id="metrics-gear-ratio">50x17</span>
+                                </strong>
                                 <button class="btn-control virtual-gear-button" id="btn-gear-up" title="Subir marcha">+ Marcha</button>
                             </div>
                             <div
@@ -683,8 +717,44 @@
                         </div>
                     </div>
 
+                    <section
+                        class="compact-panels-drawer"
+                        id="workout-compact-drawer"
+                        aria-label="Datos y controles adicionales de la sesión"
+                        aria-hidden="true"
+                        hidden
+                    >
+                        <div class="compact-panels-drawer-header">
+                            <div class="compact-panels-drawer-heading">
+                                <span class="compact-panels-handle" aria-hidden="true"></span>
+                                <strong>Más datos de la sesión</strong>
+                            </div>
+                            <button
+                                class="panel-toggle"
+                                id="btn-close-compact-panels"
+                                type="button"
+                                aria-label="Cerrar datos adicionales"
+                            >×</button>
+                        </div>
+                        <label class="compact-priority-setting" for="setting-compact-priority-metric">
+                            Destacar
+                            <select id="setting-compact-priority-metric">
+                                <option value="heartRate">Pulso</option>
+                                <option value="cadence">Cadencia</option>
+                            </select>
+                        </label>
+                        <p class="compact-priority-hint">Velocidad y potencia permanecen destacadas.</p>
+                    </section>
+
                     <!-- HUD superior (Global) -->
                     <div id="route-alert-banner" class="hud-alert-banner" style="display: none;"></div>
+                    <div
+                        id="workout-fullscreen-notice"
+                        class="workout-fullscreen-notice"
+                        role="status"
+                        aria-live="polite"
+                        hidden
+                    ></div>
                     <div class="hud-top-bar" id="hud-top-bar">
                         <div class="hud-left-group">
                             <div
@@ -756,6 +826,7 @@
                         <div class="hud-right-group">
                             <div
                                 class="hud-font-selector clock-session"
+                                id="hud-font-selector"
                                 style="
                                     pointer-events: auto;
                                     display: flex;
@@ -822,7 +893,7 @@
                                 </button>
                             </div>
 
-                            <div class="metric-group">
+                            <div class="metric-group metric-power-group">
                                 <div class="metric-main">
                                     <span
                                         class="metric-value"
@@ -835,13 +906,13 @@
                                     0 Ø
                                 </div>
                             </div>
-                            <div class="metric-main">
+                            <div class="metric-main metric-cadence">
                                 <span class="metric-value" id="metrics-cadence"
                                     >0</span
                                 >
                                 <span class="metric-label" style="color: #ffffff">RPM</span>
                             </div>
-                            <div class="metric-group">
+                            <div class="metric-group metric-speed-group">
                                 <div class="metric-main">
                                     <span
                                         class="metric-value speed-main"
@@ -854,7 +925,7 @@
                                     0.0 Ø
                                 </div>
                             </div>
-                            <div class="metric-group">
+                            <div class="metric-group metric-heart-rate">
                                 <div class="metric-main">
                                     <span
                                         class="metric-value"
@@ -967,66 +1038,68 @@
                     <span>🎛️ Consola del Rodillo Virtual</span>
                     <button class="panel-toggle" data-panel-target="virtual" title="Mostrar u ocultar panel">−</button>
                 </h3>
-                <div class="sim-slider-group">
-                    <div class="sim-slider-label">
-                        <span>Pedaleo Virtual: Potencia</span>
-                        <strong id="sim-power-val">150 W</strong>
+                <div class="panel-content">
+                    <div class="sim-slider-group">
+                        <div class="sim-slider-label">
+                            <span>Pedaleo Virtual: Potencia</span>
+                            <strong id="sim-power-val">150 W</strong>
+                        </div>
+                        <input
+                            type="range"
+                            class="sim-slider"
+                            id="sim-power-slider"
+                            min="50"
+                            max="600"
+                            value="150"
+                            step="5"
+                        />
                     </div>
-                    <input
-                        type="range"
-                        class="sim-slider"
-                        id="sim-power-slider"
-                        min="50"
-                        max="600"
-                        value="150"
-                        step="5"
-                    />
-                </div>
-                <div class="sim-slider-group">
-                    <div class="sim-slider-label">
-                        <span>Pedaleo Virtual: Cadencia</span>
-                        <strong id="sim-cadence-val">85 rpm</strong>
+                    <div class="sim-slider-group">
+                        <div class="sim-slider-label">
+                            <span>Pedaleo Virtual: Cadencia</span>
+                            <strong id="sim-cadence-val">85 rpm</strong>
+                        </div>
+                        <input
+                            type="range"
+                            class="sim-slider"
+                            id="sim-cadence-slider"
+                            min="40"
+                            max="130"
+                            value="85"
+                            step="1"
+                        />
                     </div>
-                    <input
-                        type="range"
-                        class="sim-slider"
-                        id="sim-cadence-slider"
-                        min="40"
-                        max="130"
-                        value="85"
-                        step="1"
-                    />
-                </div>
-                <div class="sim-slider-group">
-                    <div class="sim-slider-label">
-                        <span>Ritmo Cardíaco Ficticio</span>
-                        <strong id="sim-hr-val">120 bpm</strong>
+                    <div class="sim-slider-group">
+                        <div class="sim-slider-label">
+                            <span>Ritmo Cardíaco Ficticio</span>
+                            <strong id="sim-hr-val">120 bpm</strong>
+                        </div>
+                        <input
+                            type="range"
+                            class="sim-slider"
+                            id="sim-hr-slider"
+                            min="60"
+                            max="190"
+                            value="120"
+                            step="1"
+                        />
                     </div>
-                    <input
-                        type="range"
-                        class="sim-slider"
-                        id="sim-hr-slider"
-                        min="60"
-                        max="190"
-                        value="120"
-                        step="1"
-                    />
-                </div>
 
-                <div class="sim-slider-group">
-                    <div class="sim-slider-label">
-                        <span>Factor de Realismo de la Pendiente</span>
-                        <strong id="realism-value-session">100%</strong>
+                    <div class="sim-slider-group">
+                        <div class="sim-slider-label">
+                            <span>Factor de Realismo de la Pendiente</span>
+                            <strong id="realism-value-session">100%</strong>
+                        </div>
+                        <input
+                            type="range"
+                            id="realism-slider-session"
+                            min="30"
+                            max="150"
+                            value="100"
+                            step="1"
+                            style="width: 100%; height: 8px; accent-color: var(--accent-blue); background: var(--bg-secondary); border: 1px solid var(--glass-border); border-radius: 4px;"
+                        />
                     </div>
-                    <input
-                        type="range"
-                        id="realism-slider-session"
-                        min="30"
-                        max="150"
-                        value="100"
-                        step="1"
-                        style="width: 100%; height: 8px; accent-color: var(--accent-blue); background: var(--bg-secondary); border: 1px solid var(--glass-border); border-radius: 4px;"
-                    />
                 </div>
             </div>
 
@@ -1056,6 +1129,21 @@
                             >
                                 Seleccionar archivo GPX/TCX
                             </button>
+                        </div>
+                    </div>
+
+                    <div class="route-modal-section">
+                        <div class="route-modal-section-title">
+                            O elegir una ruta guardada
+                        </div>
+                        <div class="saved-route-picker-modal">
+                            <select id="session-saved-route-select" aria-label="Seleccionar ruta guardada">
+                                <option value="">Cargando rutas guardadas...</option>
+                            </select>
+                            <button class="btn-gpx-pick-modal" id="btn-load-saved-route" type="button">
+                                Cargar ruta guardada
+                            </button>
+                            <span id="session-saved-route-status" role="status" aria-live="polite"></span>
                         </div>
                     </div>
 
@@ -1412,6 +1500,38 @@
                     </h1>
                 </div>
             </div>
+
+            <section class="training-calendar-section glass-card" aria-labelledby="training-calendar-heading">
+                <div class="training-calendar-heading-row">
+                    <div>
+                        <h3 id="training-calendar-heading">Calendario de entrenamiento</h3>
+                        <p>Consulta tus sesiones y el volumen de entrenamiento por semana y mes.</p>
+                    </div>
+                    <div class="training-calendar-navigation">
+                        <button class="btn btn-dark" id="btn-calendar-previous" type="button" aria-label="Mes anterior">‹</button>
+                        <strong id="training-calendar-month" aria-live="polite"></strong>
+                        <button class="btn btn-dark" id="btn-calendar-next" type="button" aria-label="Mes siguiente">›</button>
+                        <button class="btn btn-dark" id="btn-calendar-today" type="button">Hoy</button>
+                    </div>
+                </div>
+
+                <div class="training-period-summaries">
+                    <article class="training-period-summary">
+                        <h4>Este mes</h4>
+                        <div id="training-month-summary" class="training-summary-metrics"></div>
+                    </article>
+                    <article class="training-period-summary">
+                        <h4 id="training-week-heading">Semana seleccionada</h4>
+                        <div id="training-week-summary" class="training-summary-metrics"></div>
+                    </article>
+                </div>
+
+                <div class="training-calendar-grid" id="training-calendar-grid" role="group" aria-label="Calendario mensual de sesiones"></div>
+                <section class="training-selected-day" aria-labelledby="training-selected-day-heading">
+                    <h4 id="training-selected-day-heading">Sesiones del día</h4>
+                    <div id="training-selected-day-sessions" aria-live="polite"></div>
+                </section>
+            </section>
 
             <div class="glass-card" style="margin-bottom: 24px">
                 <h3 style="font-size: 16px; margin-bottom: 12px; color: white">
@@ -1794,7 +1914,7 @@
             <section class="backup-settings-section" aria-labelledby="backup-settings-heading">
               <div class="backup-settings-heading">
                 <h4 id="backup-settings-heading">💾 Copias de seguridad</h4>
-                <p>Elige dónde y cuándo guardar una copia de tus perfiles y actividades.</p>
+                <p>El backup completo conserva perfiles, actividades, preferencias y rutas personales guardadas.</p>
               </div>
 
               <div class="backup-destination-card">
@@ -1870,7 +1990,7 @@
             </p>
             <h3>Datos guardados en este navegador</h3>
             <p>
-              Los perfiles, entrenamientos, telemetría y preferencias se guardan en el almacenamiento local del navegador (IndexedDB y localStorage). No son cookies, pero pueden borrarse al limpiar los datos del sitio o cambiar de navegador/dispositivo. Puedes descargar backups desde Ajustes.
+              Los perfiles, entrenamientos, telemetría, preferencias y rutas personales se guardan en el almacenamiento local del navegador (IndexedDB y localStorage). No son cookies, pero pueden borrarse al limpiar los datos del sitio o cambiar de navegador/dispositivo. Puedes descargar backups completos desde Ajustes y restaurarlos en otro navegador/dispositivo.
             </p>
             <h3>Servicios externos al usar funciones</h3>
             <ul>

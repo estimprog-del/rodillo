@@ -60,6 +60,8 @@ export const state = {
   mapType: 'maplibre',
   mapViewMode: '3D_AEREO',
   mapInitialOrientation: 'NORTE',
+  fpvZoomLevel: 20,
+  fpvZoomByUser: {},
   workoutLayout: 'auto',
   workoutPriorityMetric: "heartRate",
   workoutLayouts: {},
@@ -93,6 +95,7 @@ export function saveStateToLocalStorage() {
     state.workoutLayouts[userKey] = state.workoutLayout;
     state.workoutPanelsByUser[userKey] = state.workoutPanels;
     state.fullscreenByUser[userKey] = state.fullscreenPreference;
+    state.fpvZoomByUser[userKey] = state.fpvZoomLevel;
   }
 
   const persistableState = {
@@ -102,6 +105,8 @@ export function saveStateToLocalStorage() {
     mapType: state.mapType,
     mapViewMode: state.mapViewMode,
     mapInitialOrientation: state.mapInitialOrientation,
+    fpvZoomLevel: state.fpvZoomLevel,
+    fpvZoomByUser: state.fpvZoomByUser,
     workoutLayout: state.workoutLayout,
     workoutPriorityMetric: state.workoutPriorityMetric,
     workoutLayouts: state.workoutLayouts,
@@ -141,6 +146,11 @@ export function loadStateFromLocalStorage() {
     state.mapInitialOrientation = ['NORTE', 'RUTA'].includes(parsed.mapInitialOrientation)
       ? parsed.mapInitialOrientation
       : 'NORTE';
+    state.fpvZoomByUser = parsed.fpvZoomByUser || {};
+    const savedFpvZoom = Number(parsed.fpvZoomLevel);
+    state.fpvZoomLevel = Number.isFinite(savedFpvZoom)
+      ? Math.max(12, Math.min(24, savedFpvZoom))
+      : 20;
     state.workoutLayout = parsed.workoutLayout || 'auto';
     state.workoutPriorityMetric = ["cadence", "heartRate"].includes(
       parsed.workoutPriorityMetric,
@@ -151,6 +161,12 @@ export function loadStateFromLocalStorage() {
     state.workoutPanelsByUser = parsed.workoutPanelsByUser || {};
     state.fullscreenByUser = parsed.fullscreenByUser || {};
     const userKey = state.currentUser?.uuid || state.currentUser?.id;
+    if (userKey && Number.isFinite(Number(state.fpvZoomByUser[userKey]))) {
+      state.fpvZoomLevel = Math.max(
+        12,
+        Math.min(24, Number(state.fpvZoomByUser[userKey])),
+      );
+    }
     if (userKey && state.workoutLayouts[userKey]) {
       state.workoutLayout = state.workoutLayouts[userKey];
     }
@@ -204,6 +220,10 @@ export function loadStateFromLocalStorage() {
 
 export function loadWorkoutLayoutForUser(user) {
   const userKey = user?.uuid || user?.id;
+  const savedFpvZoom = Number(userKey && state.fpvZoomByUser[userKey]);
+  state.fpvZoomLevel = Number.isFinite(savedFpvZoom)
+    ? Math.max(12, Math.min(24, savedFpvZoom))
+    : 20;
   state.workoutLayout = (userKey && state.workoutLayouts[userKey]) || "auto";
   state.workoutPanels = {
     virtual: true,
