@@ -3721,7 +3721,7 @@ h4 {
 }
 
 .workout-viewport .hud-route-side-stack > .route-overview-card {
-    height: 132px;
+    height: 170px;
     padding: 8px 12px;
 }
 
@@ -3746,9 +3746,10 @@ h4 {
 }
 
 .route-overview-content {
-    height: 88px;
+    height: 120px;
     min-height: 0;
     overflow: hidden;
+    border-radius: 8px;
 }
 
 #route-overview-svg {
@@ -3756,6 +3757,9 @@ h4 {
     width: 100%;
     height: 100%;
     overflow: hidden;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.08);
 }
 
 .route-overview-track,
@@ -3766,13 +3770,14 @@ h4 {
 }
 
 .route-overview-track {
-    stroke: rgba(255, 255, 255, 0.55);
-    stroke-width: 2;
+    stroke: rgba(255, 255, 255, 0.30);
+    stroke-width: 1.5;
 }
 
 .route-overview-completed {
     stroke: #10b981;
-    stroke-width: 2.6;
+    stroke-width: 3;
+    filter: drop-shadow(0 0 3px rgba(16,185,129,0.7));
 }
 
 .route-overview-start {
@@ -3791,7 +3796,13 @@ h4 {
     fill: #3b82f6;
     stroke: #ffffff;
     stroke-width: 1.5;
-    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.9));
+    filter: drop-shadow(0 0 4px rgba(59,130,246,0.9));
+    animation: overview-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes overview-pulse {
+    0%, 100% { r: 4; opacity: 1; }
+    50% { r: 5.5; opacity: 0.85; }
 }
 
 .workout-viewport .hud-route-side-stack > .hud-bottom-left {
