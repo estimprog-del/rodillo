@@ -320,6 +320,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     history: () => loadHistoryList(),
     stats: () => loadProgressStats(),
     connections: () => syncBluetoothScreenStatus(),
+    routes: () => renderRouteLibrary(),
   };
 
   navigateTo = initNavigation(UI, state, navigationCallbacks);
@@ -345,6 +346,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     startSession,
     changeVirtualGear,
     confirmSessionSafety,
+    saveUserRoute,
+    setRouteLibraryFilter,
+    populateSessionSavedRoutes,
+    loadSavedRouteInSessionModal,
+    changeTrainingCalendarMonth: () => {},
+    selectTrainingCalendarDate: () => {},
+    goToTrainingCalendarToday: () => {},
   });
   initPrivacyConsent();
 
@@ -598,6 +606,7 @@ function cacheUiElements() {
     "history",
     "stats",
     "help",
+    "routes",
   ].forEach((s) => {
     UI.screens[s] = document.getElementById(`screen-${s}`);
   });
@@ -668,6 +677,237 @@ function showRouteModal() {
 
 function hideRouteModal() {
   if (UI.routeModal) UI.routeModal.classList.remove("active");
+}
+
+// --- ROUTE LIBRARY (pantalla "Rutas Guardadas") ---
+
+/** Filtro activo: 'all' | 'app' | 'user' */
+let _routeLibraryFilter = "all";
+
+/**
+ * Renderiza la lista de rutas guardadas en #route-library-list.
+ * Llamada al navegar a la pantalla "routes".
+ */
+async function renderRouteLibrary() {
+  const container = document.getElementById("route-library-list");
+  if (!container) return;
+  container.innerHTML = "<p class='route-library-empty'>Cargando rutas...</p>";
+
+  try {
+    const userId = state.currentUser?.id;
+    // Rutas guardadas por el usuario
+    const userRoutes = userId
+      ? await DbManager.getSavedRoutes(userId)
+      : [];
+
+    const filter = _routeLibraryFilter;
+    const filtered = filter === "user"
+      ? userRoutes
+      : filter === "app"
+        ? []          // aquí podrías añadir rutas de la app predefinidas
+        : userRoutes; // 'all'
+
+    if (filtered.length === 0) {
+      container.innerHTML =
+        "<p class='route-library-empty'>No hay rutas guardadas. Usa el botón \"＋ Añadir ruta GPX/TCX\" para guardar una.</p>";
+      return;
+    }
+
+    container.innerHTML = "";
+    for (const route of filtered) {
+      const card = document.createElement("div");
+      card.className = "route-library-card glass-card";
+      card.innerHTML = `
+        <div class="route-library-details">
+          <div class="route-library-heading">
+            <span class="route-library-name">${escapeHtml(route.name || route.fileName || "Ruta sin nombre")}</span>
+            <span class="route-library-source">${escapeHtml(route.fileName || "")}</span>
+          </div>
+          <div class="route-library-stats">
+            <small>${route.createdAt ? new Date(route.createdAt).toLocaleDateString("es-ES") : ""}</small>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-primary route-library-select" data-route-id="${route.id}" type="button">
+            Usar ruta
+          </button>
+          <button class="btn btn-dark route-library-delete" data-route-id="${route.id}" type="button" title="Eliminar ruta">
+            🗑️
+          </button>
+        </div>`;
+
+      // Botón "Usar ruta"
+      card.querySelector(".route-library-select").addEventListener("click", async () => {
+        try {
+          const gpxText = route.gpxText;
+          const parsed = GpxManager.parseRoute(gpxText);
+          if (!parsed || !parsed.points?.length) {
+            alert("No se pudo cargar la ruta. El archivo puede estar corrupto.");
+            return;
+          }
+          state.routePoints = parsed.points;
+          state.routeElevations = parsed.elevations;
+          state.routeDistances = parsed.distances;
+          state.gpxFilename = route.fileName || route.name;
+          state.routeName = route.name || route.fileName;
+          state.routeSelectedFromLibrary = true;
+          state.currentMode = "ROUTE";
+          navigateTo("connections");
+        } catch (err) {
+          console.error("Error cargando ruta desde biblioteca:", err);
+          alert("Error al cargar la ruta.");
+        }
+      });
+
+      // Botón eliminar
+      card.querySelector(".route-library-delete").addEventListener("click", async () => {
+        if (!confirm(`¿Eliminar la ruta "${route.name || route.fileName}"?`)) return;
+        try {
+          await DbManager.deleteSavedRoute(route.id);
+          await renderRouteLibrary();
+        } catch (err) {
+          console.error("Error eliminando ruta:", err);
+          alert("No se pudo eliminar la ruta.");
+        }
+      });
+
+      container.appendChild(card);
+    }
+  } catch (err) {
+    console.error("Error cargando biblioteca de rutas:", err);
+    container.innerHTML = "<p class='route-library-error'>Error al cargar las rutas. Inténtalo de nuevo.</p>";
+  }
+}
+
+/** Cambia el filtro activo y vuelve a renderizar */
+function setRouteLibraryFilter(value) {
+  _routeLibraryFilter = value || "all";
+  renderRouteLibrary();
+}
+
+/** Guarda un archivo GPX/TCX seleccionado por el usuario en la BD */
+async function saveUserRoute(file) {
+  const statusEl = document.getElementById("saved-route-library-status");
+  const setStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
+
+  if (!state.currentUser) {
+    setStatus("Selecciona un perfil antes de guardar rutas.");
+    return;
+  }
+
+  setStatus("Guardando ruta...");
+  try {
+    const gpxText = await file.text();
+    const parsed = GpxManager.parseRoute(gpxText);
+    if (!parsed || !parsed.points?.length) {
+      setStatus("El archivo no es válido o no contiene puntos de ruta.");
+      return;
+    }
+    const routeName = file.name.replace(/\.(gpx|tcx|xml)$/i, "");
+    await DbManager.saveRoute({
+      userId: state.currentUser.id,
+      name: routeName,
+      fileName: file.name,
+      gpxText,
+    });
+    setStatus(`✅ Ruta "${routeName}" guardada.`);
+    await renderRouteLibrary();
+  } catch (err) {
+    console.error("Error guardando ruta:", err);
+    setStatus("❌ Error al guardar la ruta.");
+  }
+}
+
+/**
+ * Rellena el <select> del modal de nueva sesión con las rutas guardadas.
+ * Llamada al abrir el modal de ruta en modo ROUTE.
+ */
+async function populateSessionSavedRoutes() {
+  const select = document.getElementById("session-saved-route-select");
+  const statusEl = document.getElementById("session-saved-route-status");
+  if (!select) return;
+
+  select.innerHTML = "<option value=''>Cargando rutas guardadas...</option>";
+  if (statusEl) statusEl.textContent = "";
+
+  try {
+    const userId = state.currentUser?.id;
+    const routes = userId ? await DbManager.getSavedRoutes(userId) : [];
+    if (routes.length === 0) {
+      select.innerHTML = "<option value=''>No hay rutas guardadas</option>";
+      if (statusEl) statusEl.textContent = "Guarda rutas en \"Rutas guardadas\" del dashboard.";
+      return;
+    }
+    select.innerHTML = "<option value=''>-- Seleccionar ruta --</option>";
+    for (const route of routes) {
+      const opt = document.createElement("option");
+      opt.value = String(route.id);
+      opt.textContent = route.name || route.fileName || `Ruta ${route.id}`;
+      select.appendChild(opt);
+    }
+  } catch (err) {
+    console.error("Error cargando rutas en el modal:", err);
+    select.innerHTML = "<option value=''>Error al cargar rutas</option>";
+  }
+}
+
+/**
+ * Carga la ruta seleccionada en el <select> del modal y la aplica al estado.
+ */
+async function loadSavedRouteInSessionModal(button) {
+  const select = document.getElementById("session-saved-route-select");
+  const statusEl = document.getElementById("session-saved-route-status");
+  const setStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
+
+  const routeId = select?.value;
+  if (!routeId) {
+    setStatus("Elige una ruta de la lista primero.");
+    return;
+  }
+
+  if (button) button.disabled = true;
+  setStatus("Cargando ruta...");
+
+  try {
+    const userId = state.currentUser?.id;
+    const routes = userId ? await DbManager.getSavedRoutes(userId) : [];
+    const route = routes.find((r) => String(r.id) === String(routeId));
+    if (!route) {
+      setStatus("Ruta no encontrada.");
+      return;
+    }
+
+    const parsed = GpxManager.parseRoute(route.gpxText);
+    if (!parsed || !parsed.points?.length) {
+      setStatus("El archivo de ruta es inválido o está corrupto.");
+      return;
+    }
+
+    state.routePoints = parsed.points;
+    state.routeElevations = parsed.elevations;
+    state.routeDistances = parsed.distances;
+    state.gpxFilename = route.fileName || route.name;
+    state.routeName = route.name || route.fileName;
+    state.routeSelectedFromLibrary = true;
+
+    const label = document.getElementById("gpx-filename-label");
+    if (label) label.textContent = `✅ ${state.routeName}`;
+    setStatus(`Ruta "${state.routeName}" cargada correctamente.`);
+  } catch (err) {
+    console.error("Error cargando ruta desde el modal:", err);
+    setStatus("Error al cargar la ruta.");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+/** Escapa HTML para evitar XSS en nombres de rutas */
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function calculateTotalRouteAscent() {
@@ -742,6 +982,8 @@ function configureWorkoutHudForMode() {
   }
 
   // Ocultar/Mostrar elementos según el modo
+  // route-side-stack es el contenedor padre de "VISTA GENERAL" y "PROGRESO RUTA"
+  setElDisplay("route-side-stack", isRoute ? "flex" : "none");
   setElDisplay("hud-progress", isRoute ? "block" : "none");
   setElDisplay("hud-profile", isRoute ? "flex" : "none");
   setElDisplay("hud-elevation-footer", isRoute ? "block" : "none");
