@@ -33,6 +33,7 @@ export const state = {
   totalDistance: 0.0,
   totalAscent: 0.0,
   calories: 0,
+  kilojoules: 0,
 
   powerHistory: [],
   hrHistory: [],

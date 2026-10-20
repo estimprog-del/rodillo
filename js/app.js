@@ -56,6 +56,7 @@ let movementWaitTimer = null;
 let sessionSafetyAcknowledged = false;
 let summaryRouteMap = null;
 let summaryRouteRenderId = 0;
+let kilojuliosAcumulados = 0;
 
 function logFpvDebug(message, details = {}) {
   const stateKey = `${message}:${JSON.stringify(details)}`;
@@ -2152,9 +2153,12 @@ function enterWorkoutScreen() {
   state.isAutoPaused = false;
   state.isSessionActive = false;
   state.routeTotalAscent = 0;
+  kilojuliosAcumulados = 0;
+  state.kilojoules = 0;
 
   setElText("workout-timer", "00:00:00");
   setElText("metrics-power", "0");
+  setElText("metrics-kj", "0");
   setElText("metrics-hr", "0");
   setElText("metrics-cadence", "0");
   setElText("metrics-speed", "0.0");
@@ -2636,6 +2640,9 @@ async function startSession() {
     state.elevationHistory = [];
     state.totalDistance = 0.0;
     state.totalAscent = 0.0;
+    kilojuliosAcumulados = 0;
+    state.kilojoules = 0;
+    setElText("metrics-kj", "0");
     state.currentSlope = 0.0;
     state.targetSlope = 0.0;
     state.lastSlopeRampTime = Date.now();
@@ -2732,6 +2739,12 @@ function startTimerInterval() {
     if (state.isSessionActive && !state.isPaused) {
       const now = Date.now();
       state.elapsedSeconds = Math.floor((now - startTime - (state.totalPausedDuration || 0)) / 1000);
+
+      // Acumulación de Kilojulios (kJ) segundo a segundo
+      const currentWatts = Number(state.currentPower) || 0;
+      kilojuliosAcumulados += (currentWatts / 1000);
+      state.kilojoules = kilojuliosAcumulados;
+      setElText("metrics-kj", String(Math.round(kilojuliosAcumulados)));
 
       // 1. Cálculos de velocidad virtual y estado (Modo Ruta)
       if (state.currentMode === "ROUTE") {
@@ -2971,6 +2984,13 @@ function renderSummaryMetrics(metrics) {
     metrics.intensityFactor.toFixed(2);
   document.getElementById("summary-calories").textContent =
     `${metrics.calories} kcal`;
+  const summaryKjEl = document.getElementById("summary-kilojoules");
+  if (summaryKjEl) {
+    const kjVal = Number.isFinite(Number(metrics.kilojoules))
+      ? Math.round(Number(metrics.kilojoules))
+      : (metrics.calories ? Math.round(metrics.calories * 1.05) : 0);
+    summaryKjEl.textContent = `${kjVal} kJ`;
+  }
   document.getElementById("summary-power-stats").textContent =
     `${metrics.avgPower} / ${metrics.maxPower} W`;
   document.getElementById("summary-speed-stats").textContent =
@@ -3240,6 +3260,7 @@ async function stopSessionFlow() {
         tss,
         intensityFactor,
         calories: state.calories,
+        kilojoules: Math.round(kilojuliosAcumulados),
         maxSpeed,
         maxHeartRate: maxHr,
         averageSpeed: avgSpeed,
@@ -3272,6 +3293,7 @@ async function stopSessionFlow() {
       tss,
       intensityFactor,
       calories: state.calories,
+      kilojoules: Math.round(kilojuliosAcumulados),
       avgPower,
       maxPower,
       avgSpeed,
@@ -3293,6 +3315,7 @@ async function stopSessionFlow() {
         maxHr,
         ascent: state.totalAscent,
         calories: state.calories,
+        kilojoules: Math.round(kilojuliosAcumulados),
         np,
         tss,
       });
@@ -4574,6 +4597,9 @@ async function openHistoricalSessionSummary(id, returnScreen = "history") {
       calories: Number.isFinite(Number(session.calories))
         ? Number(session.calories)
         : Math.round(avgPower * (activeDurationSeconds / 3600) * 3.6),
+      kilojoules: Number.isFinite(Number(session.kilojoules))
+        ? Number(session.kilojoules)
+        : (Number.isFinite(Number(session.calories)) ? Math.round(Number(session.calories) * 1.05) : Math.round(avgPower * (activeDurationSeconds / 1000))),
       avgPower,
       maxPower,
       avgSpeed,
