@@ -8,6 +8,14 @@
         />
         <title>RodilloInt - Training Lab</title>
 
+        <!-- PWA -->
+        <link rel="manifest" href="manifest.json" />
+        <meta name="theme-color" content="#1a1f35" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="RodilloInt" />
+        <link rel="apple-touch-icon" href="icons/icon-192.png" />
+
         <!-- CSS Stylesheets -->
         <link rel="stylesheet" href="styles.css" />
 
@@ -1825,7 +1833,18 @@
         <script type="module" src="js/gpx.js"></script>
         <script type="module" src="js/bluetooth.js"></script>
         <script type="module" src="js/charts.js"></script>
+        <script type="module" src="js/modules/toast.js"></script>
         <script type="module" src="js/app.js"></script>
+        <!-- PWA: Service Worker -->
+        <script>
+          if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+              navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('[PWA] SW registrado:', reg.scope))
+                .catch(err => console.warn('[PWA] SW error:', err));
+            });
+          }
+        </script>
       <!-- Modal Ajustes Generales -->
       <div id="modal-settings" class="modal-overlay" style="display: none;">
         <div class="modal-content glass-card" style="width: 400px; padding: 24px; color: white;">

@@ -16,6 +16,7 @@ import { loadDashboardHeader } from "./ui/dashboard.js";
 import { updateClock, updatePauseButton } from "./ui/uiHelpers.js";
 import { bindEvents } from "./modules/events.js";
 import { initPrivacyConsent } from "./modules/privacyConsent.js";
+import { showToast, showConfirm } from "./modules/toast.js";
 import {
   RemoteRoomClient,
   buildQrUrl,
@@ -72,14 +73,14 @@ async function renameHistoryRoute(id) {
     if (newName === null) return;
     const routeName = newName.trim();
     if (!routeName) {
-      alert("El nombre de la ruta no puede estar vacío.");
+      showToast("El nombre de la ruta no puede estar vacío.", "warning");
       return;
     }
     await DbManager.updateSession({ ...session, routeName });
     await loadHistoryList();
   } catch (error) {
     console.error("Error renombrando la ruta histórica:", error);
-    alert("No se pudo cambiar el nombre de la ruta.");
+    showToast("No se pudo cambiar el nombre de la ruta.", "error");
   }
 }
 
@@ -157,7 +158,7 @@ function saveFullscreenPreference(value) {
 
 async function toggleFullscreen() {
   if (!document.fullscreenEnabled) {
-    alert("El navegador no permite pantalla completa en este dispositivo.");
+    showToast("El navegador no permite pantalla completa en este dispositivo.", "warning");
     return;
   }
 
@@ -190,7 +191,7 @@ function closeFullscreenRecovery() {
 async function reactivateFullscreen() {
   closeFullscreenRecovery();
   if (!document.fullscreenEnabled) {
-    alert("El navegador no permite pantalla completa en este dispositivo.");
+    showToast("El navegador no permite pantalla completa en este dispositivo.", "warning");
     return;
   }
   await document.documentElement.requestFullscreen();
@@ -350,9 +351,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     setRouteLibraryFilter,
     populateSessionSavedRoutes,
     loadSavedRouteInSessionModal,
-    changeTrainingCalendarMonth: () => {},
-    selectTrainingCalendarDate: () => {},
-    goToTrainingCalendarToday: () => {},
+    changeTrainingCalendarMonth,
+    selectTrainingCalendarDate,
+    goToTrainingCalendarToday,
   });
   initPrivacyConsent();
 
@@ -524,8 +525,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("btn-remote-gear-up")?.addEventListener("click", () => emitGearChange("up"));
     document.getElementById("btn-remote-gear-down")?.addEventListener("click", () => emitGearChange("down"));
     document.getElementById("btn-remote-pause")?.addEventListener("click", () => emitGearCommand("TOGGLE_PAUSE"));
-    document.getElementById("btn-remote-stop")?.addEventListener("click", () => {
-      if (window.confirm("¿Finalizar la sesión?")) void emitGearCommand("STOP_SESSION");
+    document.getElementById("btn-remote-stop")?.addEventListener("click", async () => {
+      if (await showConfirm("¿Finalizar la sesión?", "Finalizar", "danger")) void emitGearCommand("STOP_SESSION");
     });
     reconnectButton?.addEventListener("click", () => void connectRemote(true));
 
@@ -877,7 +878,7 @@ async function loadRouteCardData(card, route) {
         navigateTo("connections");
       } catch (err) {
         console.error("Error cargando ruta:", err);
-        alert("No se pudo cargar la ruta. Comprueba el archivo.");
+        showToast("No se pudo cargar la ruta. Comprueba el archivo.", "error");
         selectBtn.disabled = false;
         selectBtn.textContent = "Usar ruta";
       }
@@ -889,13 +890,13 @@ async function loadRouteCardData(card, route) {
   if (deleteBtn) {
     const routeName2 = route.name || route.fileName || "Ruta";
     deleteBtn.addEventListener("click", async () => {
-      if (!confirm("Eliminar la ruta \"" + routeName2 + "\"?")) return;
+      if (!await showConfirm('¿Eliminar la ruta "' + routeName2 + '"?', 'Eliminar', 'danger')) return;
       try {
         await DbManager.deleteSavedRoute(route.id);
         await renderRouteLibrary();
       } catch (err) {
         console.error("Error eliminando ruta:", err);
-        alert("No se pudo eliminar la ruta.");
+        showToast("No se pudo eliminar la ruta.", "error");
       }
     });
   }
@@ -1458,7 +1459,7 @@ async function loadProfilesGrid() {
 }
 
 async function deleteProfileFromSelectScreen(id, name) {
-  const confirmDel = confirm(
+  const confirmDel = await showConfirm(
     `¿Estás seguro de que quieres eliminar el perfil de ${name}? Esto borrará sus datos permanentemente.`,
   );
   if (confirmDel) {
@@ -1517,7 +1518,7 @@ async function handleAddUserSubmit(e) {
       selectUser(user);
     } catch (e) {
       console.error(e);
-      alert("Error al crear perfil.");
+      showToast("Error al crear perfil.", "error");
     }
   }
 }
@@ -1552,7 +1553,7 @@ async function handleEditUserSubmit(e) {
     loadDashboardHeader();
   } catch (e) {
     console.error(e);
-    alert("Error al guardar ajustes.");
+    showToast("Error al guardar ajustes.", "error");
   }
 }
 
@@ -1563,9 +1564,7 @@ async function handleImportUserSubmit() {
   try {
     const profile = JSON.parse(jsonStr);
     if (!profile.name || !profile.ftp) {
-      alert(
-        "Formato de perfil no válido. Faltan campos obligatorios (name, ftp).",
-      );
+      showToast("Formato de perfil no válido. Faltan campos obligatorios (name, ftp).", "warning");
       return;
     }
     const newId = await DbManager.insertUser({
@@ -1584,13 +1583,13 @@ async function handleImportUserSubmit() {
     selectUser(user);
   } catch (e) {
     console.error(e);
-    alert("Formato JSON no válido.");
+    showToast("Formato JSON no válido.", "error");
   }
 }
 
 async function handleDeleteProfile() {
   if (!state.currentUser) return;
-  const confirmDel = confirm(
+  const confirmDel = await showConfirm(
     `¿Estás seguro de que quieres eliminar el perfil de ${state.currentUser.name}? Esto borrará sus datos permanentemente.`,
   );
   if (confirmDel) {
@@ -1621,12 +1620,10 @@ function handleExportProfile() {
   navigator.clipboard
     .writeText(jsonStr)
     .then(() => {
-      alert(
-        "¡Código de Perfil copiado al portapapeles! Pégalo en otro dispositivo para importarlo.",
-      );
+      showToast("¡Código de Perfil copiado al portapapeles! Pégalo en otro dispositivo para importarlo.", "success");
     })
     .catch(() => {
-      alert(`Copia este código:\n\n${jsonStr}`);
+      showToast("Código de perfil copiado al portapapeles.", "success"); try { navigator.clipboard.writeText(jsonStr); } catch(e) {};
     });
 }
 
@@ -1643,9 +1640,7 @@ function startModeFlow(mode) {
   if (mode === "ROUTE" || mode === "MANUAL") {
     // Requires a controllable trainer, speed or power sensors to calculate virtual metrics
     if (!hasControllable && !hasPower && !hasSpeed && !isVirtual) {
-      alert(
-        "Se necesita conectar al menos un sensor (Rodillo inteligente, potenciómetro, sensor de velocidad) o activar el Rodillo Virtual para iniciar entrenamientos interactivos.",
-      );
+      showToast("Se necesita conectar al menos un sensor (Rodillo inteligente, potenciómetro, sensor de velocidad) o activar el Rodillo Virtual para iniciar entrenamientos interactivos.", "warning");
       navigateTo("connections");
       return;
     }
@@ -2271,7 +2266,7 @@ async function handleGpxUpload(e) {
   // Validación de extensión
   const fileName = file.name.toLowerCase();
   if (!fileName.endsWith(".gpx") && !fileName.endsWith(".tcx")) {
-    alert("Por favor, selecciona un archivo válido (.gpx o .tcx).");
+    showToast("Por favor, selecciona un archivo válido (.gpx o .tcx).", "warning");
     return;
   }
 
@@ -2319,9 +2314,7 @@ async function handleGpxUpload(e) {
     }
   } catch (err) {
     console.error("Error al procesar el archivo GPX:", err);
-    alert(
-      "Error: El archivo no es válido o está corrupto. Asegúrate de que contiene datos de ruta.",
-    );
+    showToast("Error: El archivo no es válido o está corrupto. Asegúrate de que contiene datos de ruta.", "error");
     if (label) label.textContent = "Error al cargar archivo.";
   } finally {
     if (btnPick) {
@@ -2697,7 +2690,7 @@ async function startSession() {
 
   } catch (e) {
     console.error(e);
-    alert("No se pudo inicializar la base de datos de entrenamiento.");
+    showToast("No se pudo inicializar la base de datos de entrenamiento.", "error");
   }
 }
 
@@ -3155,7 +3148,7 @@ async function stopSessionFlow() {
     return;
   }
 
-  const confirmStop = confirm(
+  const confirmStop = await showConfirm(
     "¿Quieres finalizar y guardar el entrenamiento actual?",
   );
   if (!confirmStop) return;
@@ -3978,7 +3971,7 @@ window.toggleMapEngine = function(btn) {
     else {
         console.log(`Cambiando a motor MapLibre ${nextMode}...`);
         if (!MAPTILER_API_KEY) {
-            alert("El mapa 3D no está configurado: falta la clave de MapTiler.");
+            showToast("El mapa 3D no está configurado: falta la clave de MapTiler.", "warning");
             return;
         }
 
@@ -4072,7 +4065,7 @@ window.toggleMapEngine = function(btn) {
                 const status = e?.error?.status;
                 if (!mapErrorAlertShown && (status === 401 || status === 403)) {
                     mapErrorAlertShown = true;
-                    alert("Error de autorización del mapa 3D. Revisa la clave de MapTiler.");
+                    showToast("Error de autorización del mapa 3D. Revisa la clave de MapTiler.", "error");
                 }
                 const errorMessage = mapError?.message || String(mapError || "");
                 if (errorMessage && !reportedMapErrors.has(errorMessage)) {
@@ -4310,14 +4303,14 @@ async function handleSessionExport() {
     if (session && data.length > 0) {
       const uName = state.currentUser ? state.currentUser.name : "Usuario";
       if (!session.gpxPath) {
-        alert("Las sesiones manuales no tienen una ruta GPS para exportar.");
+        showToast("Las sesiones manuales no tienen una ruta GPS para exportar.", "info");
         return;
       }
       if (!GpxManager.exportSession(session, data, uName)) {
-        alert("Esta sesión no contiene coordenadas GPS válidas para exportar.");
+        showToast("Esta sesión no contiene coordenadas GPS válidas para exportar.", "warning");
       }
     } else {
-      alert("Error: No hay datos de telemetría válidos para exportar.");
+      showToast("Error: No hay datos de telemetría válidos para exportar.", "error");
     }
   } catch (e) {
     console.error(e);
@@ -4334,17 +4327,17 @@ async function handleSessionCsvExport() {
     const data = await DbManager.getSensorDataForSession(sessionId);
 
     if (!session || data.length === 0) {
-      alert("Error: No hay datos de telemetría válidos para exportar.");
+      showToast("Error: No hay datos de telemetría válidos para exportar.", "error");
       return;
     }
 
     const userName = state.currentUser ? state.currentUser.name : "Usuario";
     if (!GpxManager.exportSessionCsv(session, data, userName)) {
-      alert("No se pudo generar el archivo CSV de esta sesión.");
+      showToast("No se pudo generar el archivo CSV de esta sesión.", "error");
     }
   } catch (error) {
     console.error("Error exportando CSV de la sesión:", error);
-    alert("No se pudo exportar el CSV de la sesión.");
+    showToast("No se pudo exportar el CSV de la sesión.", "error");
   }
 }
 window.handleSessionCsvExport = handleSessionCsvExport;
@@ -4452,7 +4445,7 @@ async function loadHistoryList() {
       }
 
       // Open the same summary screen used after finishing a live session
-      card.onclick = () => openHistoricalSessionSummary(s.id);
+      card.onclick = () => openHistoricalSessionSummary(s.id, "history");
 
       container.appendChild(card);
     });
@@ -4465,7 +4458,7 @@ async function repeatRouteFromHistory(id) {
   try {
     const session = await DbManager.getSessionById(id);
     if (!session || !Array.isArray(session.routePoints) || session.routePoints.length === 0) {
-      alert("Esta sesión no contiene una copia reutilizable de la ruta.");
+      showToast("Esta sesión no contiene una copia reutilizable de la ruta.", "info");
       return;
     }
 
@@ -4488,17 +4481,17 @@ async function repeatRouteFromHistory(id) {
     navigateTo("connections");
   } catch (error) {
     console.error("Error al repetir la ruta histórica:", error);
-    alert("No se pudo cargar la ruta seleccionada.");
+    showToast("No se pudo cargar la ruta seleccionada.", "error");
   }
 }
 
-async function openHistoricalSessionSummary(id) {
+async function openHistoricalSessionSummary(id, returnScreen = "history") {
   try {
     const session = await DbManager.getSessionById(id);
     const telemetry = await DbManager.getSensorDataForSession(id);
 
     if (!session) {
-      alert("No se encontró la sesión seleccionada.");
+      showToast("No se encontró la sesión seleccionada.", "error");
       return;
     }
 
@@ -4569,7 +4562,7 @@ async function openHistoricalSessionSummary(id) {
     });
 
     state.lastSavedSessionId = id;
-    state.summaryReturnScreen = "history";
+    state.summaryReturnScreen = returnScreen;
     setSessionSaveStatus("Sesión guardada correctamente", "var(--accent-green)");
     renderSummaryMetrics({
       duration,
@@ -4593,12 +4586,12 @@ async function openHistoricalSessionSummary(id) {
     renderSummaryRoute(session, distance);
   } catch (e) {
     console.error("Error loading historical session summary:", e);
-    alert("No se pudo abrir el resumen de la sesión.");
+    showToast("No se pudo abrir el resumen de la sesión.", "error");
   }
 }
 
 async function deleteHistorySession(id) {
-  const confirmDel = confirm(
+  const confirmDel = await showConfirm(
     "¿Quieres eliminar permanentemente esta sesión de tu historial?",
   );
   if (confirmDel) {
@@ -4619,14 +4612,14 @@ async function downloadSpecificHistoryGpx(id) {
     if (session && data.length > 0) {
       const uName = state.currentUser ? state.currentUser.name : "Usuario";
       if (!session.gpxPath) {
-        alert("Las sesiones manuales no tienen una ruta GPS para exportar.");
+        showToast("Las sesiones manuales no tienen una ruta GPS para exportar.", "info");
         return;
       }
       if (!GpxManager.exportSession(session, data, uName)) {
-        alert("Esta sesión no contiene coordenadas GPS válidas para exportar.");
+        showToast("Esta sesión no contiene coordenadas GPS válidas para exportar.", "warning");
       }
     } else {
-      alert("Esta sesión no posee datos de telemetría exportables.");
+      showToast("Esta sesión no posee datos de telemetría exportables.", "warning");
     }
   } catch (e) {
     console.error(e);
@@ -4638,17 +4631,17 @@ async function downloadSpecificHistoryCsv(id) {
     const session = await DbManager.getSessionById(id);
     const data = await DbManager.getSensorDataForSession(id);
     if (!session || data.length === 0) {
-      alert("Esta sesión no posee datos de telemetría exportables.");
+      showToast("Esta sesión no posee datos de telemetría exportables.", "warning");
       return;
     }
 
     const userName = state.currentUser ? state.currentUser.name : "Usuario";
     if (!GpxManager.exportSessionCsv(session, data, userName)) {
-      alert("No se pudo generar el archivo CSV de esta sesión.");
+      showToast("No se pudo generar el archivo CSV de esta sesión.", "error");
     }
   } catch (error) {
     console.error("Error exportando CSV histórico:", error);
-    alert("No se pudo exportar el CSV de esta sesión.");
+    showToast("No se pudo exportar el CSV de esta sesión.", "error");
   }
 }
 window.downloadSpecificHistoryCsv = downloadSpecificHistoryCsv;
@@ -4660,13 +4653,15 @@ async function checkPendingSessions() {
 
   if (pending) {
     if (
-      confirm(
+      await showConfirm(
         "Parece que tienes una sesión de entrenamiento incompleta. ¿Quieres recuperarla y guardarla?",
+        "Recuperar sesión",
+        "primary"
       )
     ) {
       pending.endTime = Date.now();
       await DbManager.updateSession(pending);
-      alert("Sesión recuperada con éxito.");
+      showToast("Sesión recuperada con éxito.", "success");
     } else {
       await DbManager.deleteSession(pending.id);
       await DbManager.deleteDataForSession(pending.id);
@@ -4674,11 +4669,327 @@ async function checkPendingSessions() {
   }
 }
 
+// --- TRAINING CALENDAR ---
+let calendarCurrentMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+let selectedCalendarDate = formatDateKey(new Date());
+let calendarSessions = [];
+
+function formatDateKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function getSessionDurationSeconds(session) {
+  const activeDuration = Number(session.activeDuration);
+  if (Number.isFinite(activeDuration) && activeDuration >= 0) {
+    return activeDuration;
+  }
+  return Math.max(0, (Number(session.endTime) - Number(session.startTime)) / 1000);
+}
+
+function getCompletedSessions(sessions) {
+  return (sessions || []).filter((s) => {
+    const startTime = Number(s.startTime);
+    return Boolean(s.endTime) && Number.isFinite(startTime);
+  });
+}
+
+function aggregateSessionMetrics(sessions) {
+  return sessions.reduce(
+    (acc, session) => {
+      acc.sessions += 1;
+      acc.distance += Math.max(0, Number(session.totalDistance) || 0);
+      acc.duration += getSessionDurationSeconds(session);
+      acc.ascent += Math.max(0, Number(session.totalAscent) || 0);
+      return acc;
+    },
+    { sessions: 0, distance: 0, duration: 0, ascent: 0 }
+  );
+}
+
+function formatActiveDuration(durationSeconds) {
+  const totalMinutes = Math.floor(Math.max(0, durationSeconds) / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
+}
+
+function renderPeriodSummaryMetrics(container, sessions) {
+  if (!container) return;
+  const metrics = aggregateSessionMetrics(sessions);
+  container.replaceChildren();
+  [
+    ["Sesiones", String(metrics.sessions)],
+    ["Distancia", `${metrics.distance.toFixed(1)} km`],
+    ["Tiempo activo", formatActiveDuration(metrics.duration)],
+    ["Desnivel +", `${Math.round(metrics.ascent)} m`],
+  ].forEach(([label, value]) => {
+    const item = document.createElement("div");
+    item.className = "training-summary-metric";
+    const strong = document.createElement("strong");
+    strong.textContent = value;
+    const span = document.createElement("span");
+    span.textContent = label;
+    item.append(strong, span);
+    container.append(item);
+  });
+}
+
+function getWeekStartMonday(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function renderSelectedDaySessions(sessions) {
+  const heading = document.getElementById("training-selected-day-heading");
+  const container = document.getElementById("training-selected-day-sessions");
+  if (!heading || !container) return;
+
+  const [y, m, d] = selectedCalendarDate.split("-").map(Number);
+  const selectedDateObj = new Date(y, m - 1, d);
+  heading.textContent = `Sesiones del ${selectedDateObj.toLocaleDateString("es-ES", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  })}`;
+
+  const daySessions = sessions
+    .filter((s) => formatDateKey(new Date(Number(s.startTime))) === selectedCalendarDate)
+    .sort((a, b) => Number(a.startTime) - Number(b.startTime));
+
+  container.replaceChildren();
+  if (daySessions.length === 0) {
+    const p = document.createElement("p");
+    p.className = "training-calendar-empty";
+    p.textContent = "No hay sesiones finalizadas en este día.";
+    container.append(p);
+    return;
+  }
+
+  daySessions.forEach((session) => {
+    const article = document.createElement("article");
+    article.className = "training-day-session";
+    article.style.cursor = "pointer";
+    article.setAttribute("role", "button");
+    article.setAttribute("tabindex", "0");
+    article.title = "Haz clic para ver el resumen de esta sesión";
+
+    const details = document.createElement("div");
+    details.className = "training-day-session-details";
+    const strong = document.createElement("strong");
+    strong.textContent = session.routeName || (session.gpxPath ? "Ruta" : "Sesión manual");
+    const timeSpan = document.createElement("span");
+    timeSpan.textContent = new Date(Number(session.startTime)).toLocaleTimeString("es-ES", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    details.append(strong, timeSpan);
+
+    const metricsDiv = document.createElement("div");
+    metricsDiv.className = "training-day-session-metrics";
+    [
+      `${(Number(session.totalDistance) || 0).toFixed(2)} km`,
+      formatActiveDuration(getSessionDurationSeconds(session)),
+      `${Math.round(Number(session.totalAscent) || 0)} m+`,
+    ].forEach((text) => {
+      const sp = document.createElement("span");
+      sp.textContent = text;
+      metricsDiv.append(sp);
+    });
+
+    const actionSpan = document.createElement("span");
+    actionSpan.style.color = "var(--accent-green, #10b981)";
+    actionSpan.style.fontWeight = "600";
+    actionSpan.style.marginLeft = "auto";
+    actionSpan.textContent = "Ver detalle →";
+    metricsDiv.append(actionSpan);
+
+    article.append(details, metricsDiv);
+
+    const openSummary = () => {
+      openHistoricalSessionSummary(session.id, "stats");
+    };
+
+    article.addEventListener("click", openSummary);
+    article.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openSummary();
+      }
+    });
+
+    container.append(article);
+  });
+}
+
+function renderTrainingCalendar() {
+  const grid = document.getElementById("training-calendar-grid");
+  const monthLabel = document.getElementById("training-calendar-month");
+  if (!grid || !monthLabel) return;
+
+  const year = calendarCurrentMonth.getFullYear();
+  const month = calendarCurrentMonth.getMonth();
+  const firstDayOfMonth = new Date(year, month, 1);
+  const lastDayOfMonth = new Date(year, month + 1, 0);
+
+  const firstDayWeekdayOffset = (firstDayOfMonth.getDay() + 6) % 7;
+  const startDate = new Date(year, month, 1 - firstDayWeekdayOffset);
+  const totalDaysToShow = Math.ceil((firstDayWeekdayOffset + lastDayOfMonth.getDate()) / 7) * 7;
+  const completedSessions = getCompletedSessions(calendarSessions);
+
+  const rawMonthName = firstDayOfMonth.toLocaleDateString("es-ES", {
+    month: "long",
+    year: "numeric",
+  });
+  monthLabel.textContent =
+    rawMonthName.charAt(0).toLocaleUpperCase("es-ES") + rawMonthName.slice(1);
+
+  // Resumen del mes mostrado
+  const monthSessions = completedSessions.filter((s) => {
+    const d = new Date(Number(s.startTime));
+    return d.getFullYear() === year && d.getMonth() === month;
+  });
+  renderPeriodSummaryMetrics(
+    document.getElementById("training-month-summary"),
+    monthSessions
+  );
+
+  // Resumen de la semana de la fecha seleccionada
+  const [y, m, d] = selectedCalendarDate.split("-").map(Number);
+  const selectedDateObj = new Date(y, m - 1, d);
+  const weekStart = getWeekStartMonday(selectedDateObj);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
+
+  const weekSessions = completedSessions.filter((s) => {
+    const startTime = Number(s.startTime);
+    return startTime >= weekStart.getTime() && startTime <= weekEnd.getTime();
+  });
+
+  const weekHeading = document.getElementById("training-week-heading");
+  if (weekHeading) {
+    weekHeading.textContent = `Semana ${weekStart.toLocaleDateString("es-ES", {
+      day: "numeric",
+      month: "short",
+    })} – ${weekEnd.toLocaleDateString("es-ES", {
+      day: "numeric",
+      month: "short",
+    })}`;
+  }
+  renderPeriodSummaryMetrics(
+    document.getElementById("training-week-summary"),
+    weekSessions
+  );
+
+  // Cuadrícula de días
+  grid.replaceChildren();
+  ["L", "M", "X", "J", "V", "S", "D"].forEach((weekday) => {
+    const sp = document.createElement("span");
+    sp.className = "training-calendar-weekday";
+    sp.setAttribute("aria-hidden", "true");
+    sp.textContent = weekday;
+    grid.append(sp);
+  });
+
+  const todayKey = formatDateKey(new Date());
+
+  for (let i = 0; i < totalDaysToShow; i++) {
+    const date = new Date(startDate);
+    date.setDate(startDate.getDate() + i);
+    const dateKey = formatDateKey(date);
+    const daySessions = completedSessions.filter(
+      (s) => formatDateKey(new Date(Number(s.startTime))) === dateKey
+    );
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "training-calendar-day";
+    btn.dataset.calendarDate = dateKey;
+    btn.setAttribute("aria-pressed", String(dateKey === selectedCalendarDate));
+    btn.setAttribute(
+      "aria-label",
+      `${date.toLocaleDateString("es-ES", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })}${daySessions.length ? `, ${daySessions.length} sesiones` : ""}`
+    );
+
+    if (date.getMonth() !== month) btn.classList.add("outside-month");
+    if (dateKey === selectedCalendarDate) btn.classList.add("selected");
+    if (dateKey === todayKey) btn.classList.add("today");
+
+    const numSpan = document.createElement("span");
+    numSpan.className = "training-calendar-day-number";
+    numSpan.textContent = String(date.getDate());
+    btn.append(numSpan);
+
+    if (daySessions.length > 0) {
+      const actSpan = document.createElement("span");
+      actSpan.className = "training-calendar-day-activity";
+      const totalKm = daySessions.reduce(
+        (acc, s) => acc + (Number(s.totalDistance) || 0),
+        0
+      );
+      actSpan.textContent = `${daySessions.length} ses. · ${totalKm.toFixed(0)} km`;
+      btn.append(actSpan);
+    }
+
+    btn.addEventListener("click", () => selectTrainingCalendarDate(dateKey));
+    grid.append(btn);
+  }
+
+  renderSelectedDaySessions(completedSessions);
+}
+
+function changeTrainingCalendarMonth(delta) {
+  const [y, m, d] = selectedCalendarDate.split("-").map(Number);
+  const currentSelDate = new Date(y, m - 1, d);
+  calendarCurrentMonth = new Date(
+    calendarCurrentMonth.getFullYear(),
+    calendarCurrentMonth.getMonth() + delta,
+    1
+  );
+  const maxDaysInNewMonth = new Date(
+    calendarCurrentMonth.getFullYear(),
+    calendarCurrentMonth.getMonth() + 1,
+    0
+  ).getDate();
+  currentSelDate.setFullYear(
+    calendarCurrentMonth.getFullYear(),
+    calendarCurrentMonth.getMonth(),
+    Math.min(currentSelDate.getDate(), maxDaysInNewMonth)
+  );
+  selectedCalendarDate = formatDateKey(currentSelDate);
+  renderTrainingCalendar();
+}
+
+function selectTrainingCalendarDate(dateKey) {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const dateObj = new Date(y, m - 1, d);
+  selectedCalendarDate = dateKey;
+  calendarCurrentMonth = new Date(dateObj.getFullYear(), dateObj.getMonth(), 1);
+  renderTrainingCalendar();
+}
+
+function goToTrainingCalendarToday() {
+  selectTrainingCalendarDate(formatDateKey(new Date()));
+}
+
 async function loadProgressStats() {
   if (!state.currentUser) return;
 
   try {
     const sessions = await DbManager.getAllSessions(state.currentUser.id);
+    calendarSessions = sessions;
+    renderTrainingCalendar();
 
     let totalSessions = sessions.length;
     let totalDist = 0.0;
@@ -4733,3 +5044,4 @@ window.addEventListener('keydown', (e) => {
         changeFpvZoom(-1);
     }
 });
+
