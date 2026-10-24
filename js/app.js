@@ -709,7 +709,7 @@ async function renderRouteLibrary() {
           appRoutes = (catalog.routes || []).map((r) => ({
             ...r,
             source: "app",
-            gpxUrl: "/rutas/" + encodeURIComponent(r.file),
+            gpxUrl: "/rodillo/rutas/" + encodeURIComponent(r.file),
           }));
         }
       } catch (e) {
@@ -1016,7 +1016,7 @@ async function populateSessionSavedRoutes() {
     // Rutas de la app
     let appRoutes = [];
     try {
-      const res = await fetch("/rutas/catalog.json");
+      const res = await fetch("/rodillo/rutas/catalog.json");
       if (res.ok) {
         const catalog = await res.json();
         appRoutes = catalog.routes || [];
@@ -1069,7 +1069,7 @@ async function loadSavedRouteInSessionModal(button) {
     let gpxText, routeName;
     if (isApp) {
       const file = selectedOpt.dataset.file;
-      const res = await fetch("/rutas/" + encodeURIComponent(file));
+      const res = await fetch("/rodillo/rutas/" + encodeURIComponent(file));
       if (!res.ok) throw new Error("No se pudo descargar el archivo de ruta.");
       gpxText = await res.text();
       routeName = selectedOpt.textContent.replace(/^\[App\] /, "");
