@@ -4436,6 +4436,7 @@ async function loadHistoryList() {
             : ""}
           ${s.gpxPath ? `<button class="btn btn-dark history-rename-route" id="btn-rename-${s.id}">Renombrar</button>` : ""}
           <button class="btn btn-secondary" id="btn-export-csv-${s.id}">CSV</button>
+          <button class="btn btn-primary" style="padding: 6px 12px; font-size: 11px; border-radius: 8px; background: #6366f1;" onclick="window.handleFitExport('${s.id}')">FIT</button>
           <button class="btn btn-danger" style="padding: 6px 12px; font-size: 11px; border-radius: 8px;" id="btn-del-${s.id}">❌</button>
           </div>
         `;
