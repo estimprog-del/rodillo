@@ -5071,3 +5071,20 @@ window.addEventListener('keydown', (e) => {
         changeFpvZoom(-1);
     }
 });
+
+// Inyección forzada del botón FIT al cargar
+window.addEventListener('DOMContentLoaded', () => {
+  const container = document.querySelector('.summary-actions-container') || document.querySelector('.workout-controls');
+  if (container && !document.getElementById('btn-export-fit')) {
+    const btn = document.createElement('button');
+    btn.id = 'btn-export-fit';
+    btn.className = 'btn btn-secondary';
+    btn.style.background = '#6366f1';
+    btn.textContent = 'Exportar FIT';
+    btn.onclick = () => {
+        const id = state.currentSessionId || state.lastSavedSessionId;
+        if(id) window.handleFitExport(id);
+    };
+    container.appendChild(btn);
+  }
+});
