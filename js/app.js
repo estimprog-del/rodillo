@@ -703,7 +703,7 @@ async function renderRouteLibrary() {
     let appRoutes = [];
     if (filter !== "user") {
       try {
-        const res = await fetch("/rutas/catalog.json");
+        const res = await fetch("./rutas/catalog.json");
         if (res.ok) {
           const catalog = await res.json();
           appRoutes = (catalog.routes || []).map((r) => ({
@@ -5070,4 +5070,3 @@ window.addEventListener('keydown', (e) => {
         changeFpvZoom(-1);
     }
 });
-
