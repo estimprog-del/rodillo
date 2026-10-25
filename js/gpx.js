@@ -285,6 +285,264 @@ function exportSessionCsv(session, sensorData, userName = 'Usuario') {
 }
 
 /**
+ * Generates a binary FIT file from session data and triggers download.
+ * Produces a valid Activity FIT file compatible with Garmin Connect, Strava and TrainingPeaks.
+ */
+function exportSessionFit(session, sensorData, userName = 'Usuario') {
+  try {
+    if (!Array.isArray(sensorData) || sensorData.length === 0) return false;
+
+    // ---- FIT binary helpers ----
+    const buf = [];
+    const writeUint8  = (v) => buf.push(v & 0xFF);
+    const writeUint16 = (v) => { buf.push(v & 0xFF); buf.push((v >> 8) & 0xFF); };
+    const writeUint32 = (v) => { for (let i = 0; i < 4; i++) { buf.push((v >>> (i * 8)) & 0xFF); } };
+    const writeInt32  = (v) => writeUint32(v >>> 0);
+    const writeUint32BE = (v) => { for (let i = 3; i >= 0; i--) buf.push((v >>> (i * 8)) & 0xFF); };
+
+    // FIT timestamps use seconds since 1989-12-31T00:00:00Z (unix = 631065600)
+    const FIT_EPOCH = 631065600;
+    const toFitTime = (ms) => Math.max(0, Math.round(ms / 1000) - FIT_EPOCH);
+
+    // ---- Local Message Definitions ----
+    // Local msg 0 → file_id (mesg_num = 0)
+    const defFileId = () => {
+      writeUint8(0x40);        // Definition header: local msg 0
+      writeUint8(0x00);        // reserved
+      writeUint8(0x00);        // arch: little endian
+      writeUint16(0);          // mesg_num: file_id
+      writeUint8(5);           // num fields
+      // field_def: field_num, size, base_type
+      writeUint8(0); writeUint8(1); writeUint8(0); // type (enum)
+      writeUint8(1); writeUint8(2); writeUint8(132); // manufacturer (uint16)
+      writeUint8(2); writeUint8(2); writeUint8(132); // product (uint16)
+      writeUint8(3); writeUint8(4); writeUint8(134); // serial_number (uint32)
+      writeUint8(4); writeUint8(4); writeUint8(134); // time_created (uint32)
+    };
+    const dataFileId = (timeCreated) => {
+      writeUint8(0x00);        // Data header local msg 0
+      writeUint8(4);           // type: activity
+      writeUint16(255);        // manufacturer: development
+      writeUint16(0);          // product
+      writeUint32(0xFFFFFFFF); // serial_number: invalid
+      writeUint32(timeCreated);
+    };
+
+    // Local msg 1 → event (mesg_num = 21)
+    const defEvent = () => {
+      writeUint8(0x41);
+      writeUint8(0x00);
+      writeUint8(0x00);
+      writeUint16(21); // event
+      writeUint8(3);
+      writeUint8(253); writeUint8(4); writeUint8(134); // timestamp
+      writeUint8(0);   writeUint8(1); writeUint8(0);   // event (enum)
+      writeUint8(1);   writeUint8(1); writeUint8(0);   // event_type (enum)
+    };
+    const dataEvent = (fitTs, event, eventType) => {
+      writeUint8(0x01);
+      writeUint32(fitTs);
+      writeUint8(event);
+      writeUint8(eventType);
+    };
+
+    // Local msg 2 → record (mesg_num = 20)
+    const defRecord = () => {
+      writeUint8(0x42);
+      writeUint8(0x00);
+      writeUint8(0x00);
+      writeUint16(20); // record
+      writeUint8(9);   // num fields
+      writeUint8(253); writeUint8(4); writeUint8(134); // timestamp (uint32)
+      writeUint8(0);   writeUint8(4); writeUint8(133); // position_lat (sint32 semicircles)
+      writeUint8(1);   writeUint8(4); writeUint8(133); // position_long (sint32 semicircles)
+      writeUint8(2);   writeUint8(2); writeUint8(132); // altitude (uint16, scale 5, offset 500)
+      writeUint8(3);   writeUint8(1); writeUint8(2);   // heart_rate (uint8)
+      writeUint8(4);   writeUint8(1); writeUint8(2);   // cadence (uint8)
+      writeUint8(5);   writeUint8(4); writeUint8(134); // distance (uint32, scale 100, cm)
+      writeUint8(6);   writeUint8(2); writeUint8(132); // speed (uint16, scale 1000, mm/s)
+      writeUint8(7);   writeUint8(2); writeUint8(132); // power (uint16, watts)
+    };
+    const degToSemi = (deg) => Math.round(deg * (2 ** 31) / 180);
+    const dataRecord = (fitTs, pt) => {
+      writeUint8(0x02);
+      writeUint32(fitTs);
+      const hasGps = Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude);
+      writeInt32(hasGps ? degToSemi(pt.latitude)  : 0x7FFFFFFF);
+      writeInt32(hasGps ? degToSemi(pt.longitude) : 0x7FFFFFFF);
+      const altRaw = Number.isFinite(pt.elevation) ? Math.round((pt.elevation + 500) * 5) : 0xFFFF;
+      writeUint16(Math.min(0xFFFE, Math.max(0, altRaw)));
+      writeUint8(Number.isFinite(pt.heartRate) && pt.heartRate > 0 ? Math.min(255, Math.round(pt.heartRate)) : 0xFF);
+      writeUint8(Number.isFinite(pt.cadence)   && pt.cadence   > 0 ? Math.min(254, Math.round(pt.cadence))   : 0xFF);
+      const distCm = Number.isFinite(pt.distance) ? Math.round(pt.distance * 100000) : 0xFFFFFFFF;
+      writeUint32(distCm);
+      const speedMms = Number.isFinite(pt.speed) ? Math.round((pt.speed / 3.6) * 1000) : 0xFFFF;
+      writeUint16(Math.min(0xFFFE, speedMms));
+      const pwr = Number.isFinite(pt.power) && pt.power >= 0 ? Math.min(0xFFFE, Math.round(pt.power)) : 0xFFFF;
+      writeUint16(pwr);
+    };
+
+    // Local msg 3 → lap (mesg_num = 19)
+    const defLap = () => {
+      writeUint8(0x43);
+      writeUint8(0x00);
+      writeUint8(0x00);
+      writeUint16(19); // lap
+      writeUint8(6);
+      writeUint8(253); writeUint8(4); writeUint8(134); // timestamp
+      writeUint8(2);   writeUint8(4); writeUint8(134); // start_time
+      writeUint8(7);   writeUint8(4); writeUint8(134); // total_elapsed_time (ms→scale 1000→uint32)
+      writeUint8(9);   writeUint8(4); writeUint8(134); // total_distance (cm→scale 100→uint32)
+      writeUint8(15);  writeUint8(2); writeUint8(132); // avg_power
+      writeUint8(16);  writeUint8(2); writeUint8(132); // max_power
+    };
+    const dataLap = (fitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr) => {
+      writeUint8(0x03);
+      writeUint32(fitTs);
+      writeUint32(startFitTs);
+      writeUint32(Math.round(elapsedSec * 1000));
+      writeUint32(Math.round(distKm * 100000));
+      writeUint16(Math.min(0xFFFE, Math.round(avgPwr)));
+      writeUint16(Math.min(0xFFFE, Math.round(maxPwr)));
+    };
+
+    // Local msg 4 → session (mesg_num = 18)
+    const defSession = () => {
+      writeUint8(0x44);
+      writeUint8(0x00);
+      writeUint8(0x00);
+      writeUint16(18); // session
+      writeUint8(7);
+      writeUint8(253); writeUint8(4); writeUint8(134); // timestamp
+      writeUint8(2);   writeUint8(4); writeUint8(134); // start_time
+      writeUint8(7);   writeUint8(4); writeUint8(134); // total_elapsed_time
+      writeUint8(9);   writeUint8(4); writeUint8(134); // total_distance
+      writeUint8(15);  writeUint8(2); writeUint8(132); // avg_power
+      writeUint8(16);  writeUint8(2); writeUint8(132); // max_power
+      writeUint8(25);  writeUint8(1); writeUint8(0);   // sport (enum: 2=cycling)
+    };
+    const dataSession = (fitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr) => {
+      writeUint8(0x04);
+      writeUint32(fitTs);
+      writeUint32(startFitTs);
+      writeUint32(Math.round(elapsedSec * 1000));
+      writeUint32(Math.round(distKm * 100000));
+      writeUint16(Math.min(0xFFFE, Math.round(avgPwr)));
+      writeUint16(Math.min(0xFFFE, Math.round(maxPwr)));
+      writeUint8(2); // sport: cycling
+    };
+
+    // Local msg 5 → activity (mesg_num = 34)
+    const defActivity = () => {
+      writeUint8(0x45);
+      writeUint8(0x00);
+      writeUint8(0x00);
+      writeUint16(34); // activity
+      writeUint8(3);
+      writeUint8(253); writeUint8(4); writeUint8(134); // timestamp
+      writeUint8(1);   writeUint8(4); writeUint8(134); // total_timer_time
+      writeUint8(5);   writeUint8(1); writeUint8(0);   // type (enum: 0=manual)
+    };
+    const dataActivity = (fitTs, elapsedSec) => {
+      writeUint8(0x05);
+      writeUint32(fitTs);
+      writeUint32(Math.round(elapsedSec * 1000));
+      writeUint8(0); // type: manual
+    };
+
+    // ---- Build FIT body ----
+    const startFitTs = toFitTime(session.startTime);
+    const endMs = session.endTime || (sensorData[sensorData.length - 1].timestamp);
+    const endFitTs = toFitTime(endMs);
+    const elapsedSec = (endMs - session.startTime) / 1000;
+    const powers = sensorData.map(p => Number.isFinite(p.power) ? p.power : 0);
+    const avgPwr = powers.reduce((a, b) => a + b, 0) / (powers.length || 1);
+    const maxPwr = Math.max(...powers);
+    const distKm = session.totalDistance || 0;
+
+    // file_id
+    defFileId();
+    dataFileId(startFitTs);
+
+    // start event
+    defEvent();
+    dataEvent(startFitTs, 0, 0); // event=timer, event_type=start
+
+    // records
+    defRecord();
+    for (const pt of sensorData) {
+      dataRecord(toFitTime(pt.timestamp), pt);
+    }
+
+    // stop event
+    dataEvent(endFitTs, 0, 1); // event=timer, event_type=stop_all
+
+    // lap
+    defLap();
+    dataLap(endFitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr);
+
+    // session
+    defSession();
+    dataSession(endFitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr);
+
+    // activity
+    defActivity();
+    dataActivity(endFitTs, elapsedSec);
+
+    // ---- Build FIT header ----
+    const dataSize = buf.length;
+    const header = [];
+    const hPush8  = (v) => header.push(v & 0xFF);
+    const hPush16 = (v) => { header.push(v & 0xFF); header.push((v >> 8) & 0xFF); };
+    const hPush32 = (v) => { for (let i = 0; i < 4; i++) header.push((v >>> (i*8)) & 0xFF); };
+
+    hPush8(14);          // header size
+    hPush8(0x10);        // protocol version 1.0
+    hPush16(2117);       // profile version (21.17)
+    hPush32(dataSize);
+    // .FIT signature
+    [0x2E, 0x46, 0x49, 0x54].forEach(b => hPush8(b));
+
+    // Header CRC (CRC-16 over first 12 bytes)
+    const fitCrc = (bytes) => {
+      const TABLE = [0x0000,0xCC01,0xD801,0x1400,0xF001,0x3C00,0x2800,0xE401,
+                     0xA001,0x6C00,0x7800,0xB401,0x5000,0x9C01,0x8801,0x4400];
+      let crc = 0;
+      for (const b of bytes) {
+        let tmp = TABLE[crc & 0xF]; crc = (crc >> 4) & 0x0FFF; crc ^= tmp ^ TABLE[b & 0xF];
+        tmp = TABLE[crc & 0xF]; crc = (crc >> 4) & 0x0FFF; crc ^= tmp ^ TABLE[(b >> 4) & 0xF];
+      }
+      return crc;
+    };
+    const hCrc = fitCrc(header);
+    hPush16(hCrc);
+
+    // File CRC over entire body
+    const bodyCrc = fitCrc(buf);
+    buf.push(bodyCrc & 0xFF);
+    buf.push((bodyCrc >> 8) & 0xFF);
+
+    const allBytes = new Uint8Array([...header, ...buf]);
+    const blob = new Blob([allBytes], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const dateString = new Date(session.startTime).toISOString().slice(0, 10);
+    link.download = `Entrenamiento_RodilloInt_${session.id}_${dateString}.fit`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    console.log(`FIT exported successfully for session: ${session.id}`);
+    return true;
+  } catch (e) {
+    console.error('Error exporting session to FIT:', e);
+    return false;
+  }
+}
+
+/**
  * Parses a GPX/TCX file asynchronously using a Web Worker to avoid blocking the main UI thread.
  */
 function parseRouteAsync(fileText) {
@@ -428,5 +686,6 @@ window.GpxManager = {
   parseRoute,
   parseRouteAsync,
   exportSession,
-  exportSessionCsv
+  exportSessionCsv,
+  exportSessionFit
 };

@@ -4341,6 +4341,30 @@ async function handleSessionExport() {
 }
 window.handleSessionExport = handleSessionExport;
 
+async function handleSessionFitExport() {
+  if (!state.currentSessionId && !state.lastSavedSessionId) return;
+  const sessionId = state.lastSavedSessionId || state.currentSessionId;
+
+  try {
+    const session = await DbManager.getSessionById(sessionId);
+    const data = await DbManager.getSensorDataForSession(sessionId);
+
+    if (!session || data.length === 0) {
+      showToast("Error: No hay datos de telemetría válidos para exportar.", "error");
+      return;
+    }
+
+    const userName = state.currentUser ? state.currentUser.name : "Usuario";
+    if (!GpxManager.exportSessionFit(session, data, userName)) {
+      showToast("No se pudo generar el archivo FIT de esta sesión.", "error");
+    }
+  } catch (error) {
+    console.error("Error exportando FIT de la sesión:", error);
+    showToast("No se pudo exportar el FIT de la sesión.", "error");
+  }
+}
+window.handleSessionFitExport = handleSessionFitExport;
+
 async function handleSessionCsvExport() {
   if (!state.currentSessionId && !state.lastSavedSessionId) return;
   const sessionId = state.lastSavedSessionId || state.currentSessionId;
@@ -4436,7 +4460,7 @@ async function loadHistoryList() {
             : ""}
           ${s.gpxPath ? `<button class="btn btn-dark history-rename-route" id="btn-rename-${s.id}">Renombrar</button>` : ""}
           <button class="btn btn-secondary" id="btn-export-csv-${s.id}">CSV</button>
-          <button class="btn btn-primary" style="padding: 6px 12px; font-size: 11px; border-radius: 8px; background: #6366f1;" onclick="window.handleFitExport('${s.id}')">FIT</button>
+          <button class="btn btn-primary" style="padding: 6px 12px; font-size: 11px; border-radius: 8px; background: #6366f1;" id="btn-export-fit-${s.id}">FIT</button>
           <button class="btn btn-danger" style="padding: 6px 12px; font-size: 11px; border-radius: 8px;" id="btn-del-${s.id}">❌</button>
           </div>
         `;
@@ -4672,6 +4696,26 @@ async function downloadSpecificHistoryCsv(id) {
   }
 }
 window.downloadSpecificHistoryCsv = downloadSpecificHistoryCsv;
+
+async function downloadSpecificHistoryFit(id) {
+  try {
+    const session = await DbManager.getSessionById(id);
+    const data = await DbManager.getSensorDataForSession(id);
+    if (!session || data.length === 0) {
+      showToast("Esta sesión no posee datos de telemetría exportables.", "warning");
+      return;
+    }
+
+    const userName = state.currentUser ? state.currentUser.name : "Usuario";
+    if (!GpxManager.exportSessionFit(session, data, userName)) {
+      showToast("No se pudo generar el archivo FIT de esta sesión.", "error");
+    }
+  } catch (error) {
+    console.error("Error exportando FIT histórico:", error);
+    showToast("No se pudo exportar el FIT de esta sesión.", "error");
+  }
+}
+window.downloadSpecificHistoryFit = downloadSpecificHistoryFit;
 
 async function checkPendingSessions() {
   if (!state.currentUser) return;
@@ -5072,9 +5116,8 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-// Inyección forzada del botón FIT al cargar
+// Inyección del botón FIT en el resumen de sesión (fallback por si no existe en el HTML)
 window.addEventListener('load', () => {
-  // Buscamos el botón de GPX que sabemos que existe
   const gpxBtn = document.getElementById('btn-export-gpx');
   if (gpxBtn) {
     const container = gpxBtn.parentElement;
@@ -5082,14 +5125,10 @@ window.addEventListener('load', () => {
       const btn = document.createElement('button');
       btn.id = 'btn-export-fit';
       btn.className = 'btn btn-secondary';
-      // Ajustamos un poco el estilo para que encaje con los otros
       btn.style.background = '#6366f1';
       btn.style.color = '#fff';
       btn.textContent = 'Exportar FIT';
-      btn.onclick = () => {
-        const id = state.currentSessionId || state.lastSavedSessionId;
-        if(id) window.handleFitExport(id);
-      };
+      btn.onclick = () => handleSessionFitExport();
       container.appendChild(btn);
     }
   }
