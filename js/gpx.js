@@ -444,16 +444,18 @@ function exportSessionFit(session, sensorData, userName = 'Usuario') {
       writeUint8(0x00);
       writeUint8(0x00);
       writeUint16(34); // activity
-      writeUint8(3);
-      writeUint8(253); writeUint8(4); writeUint8(134); // timestamp
-      writeUint8(1);   writeUint8(4); writeUint8(134); // total_timer_time
-      writeUint8(5);   writeUint8(1); writeUint8(0);   // type (enum: 0=manual)
+      writeUint8(4);   // 4 fields
+      writeUint8(253); writeUint8(4); writeUint8(134); // timestamp (uint32)
+      writeUint8(0);   writeUint8(4); writeUint8(134); // total_timer_time (ms, uint32)
+      writeUint8(1);   writeUint8(2); writeUint8(132); // num_sessions (uint16)
+      writeUint8(2);   writeUint8(1); writeUint8(0);   // type (enum: 0=manual)
     };
     const dataActivity = (fitTs, elapsedSec) => {
       writeUint8(0x05);
       writeUint32(fitTs);
       writeUint32(Math.round(elapsedSec * 1000));
-      writeUint8(0); // type: manual
+      writeUint16(1); // num_sessions: 1
+      writeUint8(0);  // type: manual
     };
 
     // ---- Build FIT body ----
@@ -694,11 +696,13 @@ function parseRouteAsync(fileText) {
   });
 }
 
-// Export GPX functions globally
-window.GpxManager = {
+// Export GPX functions globally & as ES module
+export const GpxManager = {
   parseRoute,
   parseRouteAsync,
   exportSession,
   exportSessionCsv,
   exportSessionFit
 };
+window.GpxManager = GpxManager;
+

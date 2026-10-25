@@ -1,5 +1,6 @@
 /* bluetooth.js - Web Bluetooth & Virtual Simulator Manager for RodilloInt */
 import { state } from "./modules/state.js";
+import { calculateVirtualSpeed } from "./core/physics.js";
 
 // Bluetooth UUIDs
 const SERVICES = {
@@ -1029,59 +1030,7 @@ async function setTrainerSlope(slope) {
 }
 
 // --- PHYSICS ENGINE FOR SIMULATED OR SENSOR LACK workouts ---
-/**
- * Calculates virtual speed (km/h) based on Power (W) and Slope (%)
- * Formulas based on cycling power physics (gravity, rolling resistance, air drag)
- */
-function calculateVirtualSpeed(power, slope, userWeight = 75.0) {
-  if (power <= 0) return 0.0;
-
-  const bikeWeight = 10.0; // kg
-  const totalMass = userWeight + bikeWeight;
-  const g = 9.81; // m/s^2
-
-  // Resistance Coefficients
-  const Crr = 0.005; // Rolling resistance (good asphalt)
-  const CdA = 0.32; // Aero drag coefficient (standard road cyclist hoods)
-  const rho = 1.225; // Air density at sea level (kg/m^3)
-
-  // Slopes in radians approx
-  const slopeDecimal = slope / 100.0;
-
-  // Power = P_gravity + P_rolling + P_air
-  // We want to solve for speed V (m/s) in:
-  // Power = [totalMass * g * slopeDecimal * V] + [totalMass * g * Crr * V] + [0.5 * CdA * rho * V^3]
-  // We use numerical root-finding (Newton-Raphson) to find V:
-
-  let v = 5.0; // Initial guess: 18 km/h (5 m/s)
-  const tolerance = 0.01;
-  const maxIterations = 20;
-
-  for (let i = 0; i < maxIterations; i++) {
-    // f(v) = 0.5 * CdA * rho * v^3 + totalMass * g * (slopeDecimal + Crr) * v - Power
-    // We coerce slopeDecimal + Crr to not let V go negative in steep downhills without pedaling
-    const rollingGravityFactor =
-      totalMass * g * Math.max(-0.08, slopeDecimal + Crr);
-
-    const f_v =
-      0.5 * CdA * rho * Math.pow(v, 3) + rollingGravityFactor * v - power;
-    const f_prime_v = 1.5 * CdA * rho * Math.pow(v, 2) + rollingGravityFactor;
-
-    if (Math.abs(f_prime_v) < 0.0001) break;
-
-    const next_v = v - f_v / f_prime_v;
-    if (Math.abs(next_v - v) < tolerance) {
-      v = next_v;
-      break;
-    }
-    v = next_v;
-  }
-
-  // Clamped between 0 and 80 km/h
-  const speedMps = Math.max(0.0, Math.min(22.2, v));
-  const speedKph = speedMps * 3.6;
-  return isNaN(speedKph) ? 0.0 : speedKph;
-}
+// calculateVirtualSpeed importada desde core/physics.js
 
 // --- VIRTUAL SENSOR SIMULATOR ---
 function startSimulator(userWeight = 75.0) {
@@ -1378,8 +1327,8 @@ function setTargetPower(targetWatts, currentWatts = 150, durationSeconds = 3) {
   }, 1000 / stepsPerSecond);
 }
 
-// Export Bluetooth Manager globally
-window.BleManager = {
+// Export Bluetooth Manager globally & as ES module
+export const BleManager = {
   connections,
   setBleListener,
   connectDevice,
@@ -1394,3 +1343,5 @@ window.BleManager = {
   setSimulatedMetrics,
   simulator,
 };
+window.BleManager = BleManager;
+

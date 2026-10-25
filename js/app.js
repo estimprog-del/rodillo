@@ -33,23 +33,98 @@ import {
   calculateVirtualResistanceSlope,
 } from "./modules/virtualGears.js";
 import { exportAllData, getBackupStatus } from "./db.js";
+import {
+  calculateNormalizedPowerFromValues,
+  calculateIntensityFactor,
+  calculateTSS,
+  calculateKilojoulesStep,
+  calculateVirtualSpeed,
+  getPowerZone,
+} from "./core/physics.js";
+import {
+  changeTrainingCalendarMonth,
+  selectTrainingCalendarDate,
+  goToTrainingCalendarToday,
+  loadProgressStats,
+} from "./ui/calendarView.js";
+import {
+  initRoutesView,
+  renderRouteLibrary,
+  setRouteLibraryFilter,
+  saveUserRoute,
+  populateSessionSavedRoutes,
+  loadSavedRouteInSessionModal,
+} from "./ui/routesView.js";
+import {
+  initHistoryView,
+  loadHistoryList,
+  renameHistoryRoute,
+  openHistoricalSessionSummary,
+  downloadSpecificHistoryCsv,
+  downloadSpecificHistoryFit,
+  checkPendingSessions,
+} from "./ui/historyView.js";
+import {
+  initUserView,
+  loadProfilesGrid,
+  selectUser,
+  handleLogout,
+  handleAddUserSubmit,
+  handleEditUserSubmit,
+  handleImportUserSubmit,
+  handleDeleteProfile,
+  handleExportProfile,
+} from "./ui/userView.js";
+import {
+  SLOPE_AVERAGE_METERS,
+  SLOPE_PREVIEW_LONG_METERS,
+  initRouteOverviewSvg,
+  updateRouteOverviewPosition,
+  calculateTotalRouteAscent,
+  getElevationAtDistance,
+  getUpcomingSegmentData,
+  applySlopeTrendStyle,
+  refreshUpcomingPreview,
+} from "./ui/routeOverviewSvg.js";
+import {
+  MAP_VIEW_MODES,
+  initConfiguredMap,
+  initLeafletMap,
+  drawRouteOnMap,
+  positionMapNavigationControls,
+  createOrientationToggleButton,
+  toggleMapEngine,
+  updateFpvCamera,
+  startFpvCameraLoop,
+  stopFpvCameraLoop,
+  isFpvCameraLoopRunning,
+  isMapReady,
+  isValidLngLat,
+  normalizeLngLat,
+  logFpvDebug,
+} from "./ui/mapEngine.js";
+import {
+  applyWorkoutLayout,
+  cycleWorkoutLayout,
+  applyWorkoutPanels,
+  toggleWorkoutPanel,
+  updateFullscreenButton,
+  saveFullscreenPreference,
+  toggleFullscreen,
+  showFullscreenRecovery,
+  closeFullscreenRecovery,
+  reactivateFullscreen,
+  setWorkoutFontScale,
+  syncWorkoutSlopePosition,
+  observeWorkoutHudSize,
+  updateRouteProgressHud,
+  updateSessionAverages,
+  configureWorkoutHudForMode,
+} from "./ui/workoutHud.js";
 
-const SLOPE_AVERAGE_METERS = 10;
-const SLOPE_PREVIEW_LONG_METERS = 500;
 const MAX_SLOPE_CHANGE_PER_SEC = 0.5;
 const WHEEL_INACTIVITY_TIMEOUT_MS = 10000;
-const MAPTILER_API_KEY = import.meta.env.VITE_MAPTILER_API_KEY || "";
-const MAP_VIEW_MODES = ["2D", "3D_AEREO", "3D_FPV"];
-let fpvZoomLevel = 25;
 let activeRemoteRoomClient = null;
-let fpvAnimationFrame = null;
-let fpvDebugCalls = 0;
-let lastFpvDebugState = "";
-let mapReadyInstance = null;
-let workoutHudResizeObserver = null;
-let mapControlsResizeObserver = null;
-let observedMapControls = null;
-let observedMapHudGroup = null;
 let countdownTimer = null;
 let countdownFinishTimer = null;
 let movementWaitTimer = null;
@@ -58,226 +133,13 @@ let summaryRouteMap = null;
 let summaryRouteRenderId = 0;
 let kilojuliosAcumulados = 0;
 
-function logFpvDebug(message, details = {}) {
-  const stateKey = `${message}:${JSON.stringify(details)}`;
-  if (stateKey === lastFpvDebugState) return;
-  lastFpvDebugState = stateKey;
-  console.debug(`[FPV] ${message}`, details);
-}
-
-async function renameHistoryRoute(id) {
-  try {
-    const session = await DbManager.getSessionById(id);
-    if (!session || !session.gpxPath) return;
-    const currentName = session.routeName || session.gpxPath;
-    const newName = prompt("Nombre de la ruta:", currentName);
-    if (newName === null) return;
-    const routeName = newName.trim();
-    if (!routeName) {
-      showToast("El nombre de la ruta no puede estar vacío.", "warning");
-      return;
-    }
-    await DbManager.updateSession({ ...session, routeName });
-    await loadHistoryList();
-  } catch (error) {
-    console.error("Error renombrando la ruta histórica:", error);
-    showToast("No se pudo cambiar el nombre de la ruta.", "error");
-  }
-}
-
-function getMapSdk() {
-  return (
-    [globalThis.maptilersdk, globalThis.maplibregl].find(
-      (sdk) => sdk?.Map && sdk?.MercatorCoordinate,
-    ) || null
-  );
-}
-
-function isMapReady(map) {
-  return Boolean(
-    map &&
-      (map === mapReadyInstance ||
-        typeof map.isStyleLoaded !== "function" ||
-        map.isStyleLoaded()),
-  );
-}
-
-function applyWorkoutLayout() {
-  const viewport = document.querySelector(".workout-viewport");
-  if (!viewport) return;
-
-  const layouts = ["horizontal-1", "horizontal-2", "vertical-1", "vertical-2"];
-  const selectedLayout = state.workoutLayout;
-  const isVertical = window.matchMedia("(orientation: portrait)").matches;
-  const layout = layouts.includes(selectedLayout)
-    ? selectedLayout
-    : isVertical
-      ? (window.innerWidth < 700 ? "vertical-2" : "vertical-1")
-      : (window.innerWidth < 1100 ? "horizontal-2" : "horizontal-1");
-
-  viewport.classList.remove(...layouts.map((name) => `layout-${name}`));
-  viewport.classList.add(`layout-${layout}`);
-
-  requestAnimationFrame(() => {
-    if (!state.map) return;
-    if (typeof state.map.resize === "function") state.map.resize();
-    if (typeof state.map.invalidateSize === "function") state.map.invalidateSize();
-    positionMapNavigationControls();
-  });
-
-  const layoutLabels = {
-    auto: `Auto (${layoutLabelsForResolvedLayout(layout)})`,
-    "horizontal-1": "H1",
-    "horizontal-2": "H2",
-    "vertical-1": "V1",
-    "vertical-2": "V2",
-  };
-  const layoutButton = document.getElementById("btn-cycle-layout");
-  if (layoutButton) {
-    layoutButton.textContent = `▣ Diseño: ${selectedLayout === "auto" ? layoutLabels.auto : layoutLabels[layout]}`;
-  }
-}
-
-function layoutLabelsForResolvedLayout(layout) {
-  return { "horizontal-1": "H1", "horizontal-2": "H2", "vertical-1": "V1", "vertical-2": "V2" }[layout];
-}
-
-window.applyWorkoutLayout = applyWorkoutLayout;
-
-function updateFullscreenButton() {
-  const button = document.getElementById("btn-toggle-fullscreen");
-  if (!button) return;
-  button.textContent = document.fullscreenElement
-    ? "⛶ Salir de pantalla completa"
-    : "⛶ Pantalla completa";
-}
-
-function saveFullscreenPreference(value) {
-  state.fullscreenPreference = value;
-  saveStateToLocalStorage();
-}
-
-async function toggleFullscreen() {
-  if (!document.fullscreenEnabled) {
-    showToast("El navegador no permite pantalla completa en este dispositivo.", "warning");
-    return;
-  }
-
-  if (document.fullscreenElement) {
-    await document.exitFullscreen();
-    saveFullscreenPreference(false);
-  } else {
-    await document.documentElement.requestFullscreen();
-    saveFullscreenPreference(true);
-  }
-  updateFullscreenButton();
-}
-
-window.toggleFullscreen = toggleFullscreen;
-document.addEventListener("fullscreenchange", () => {
-  updateFullscreenButton();
-  if (!state.fullscreenFilePickerActive) {
-    saveFullscreenPreference(!!document.fullscreenElement);
-  }
-});
-
-function showFullscreenRecovery() {
-  showModal("fullscreen-recovery");
-}
-
-function closeFullscreenRecovery() {
-  hideModal("fullscreen-recovery");
-}
-
-async function reactivateFullscreen() {
-  closeFullscreenRecovery();
-  if (!document.fullscreenEnabled) {
-    showToast("El navegador no permite pantalla completa en este dispositivo.", "warning");
-    return;
-  }
-  await document.documentElement.requestFullscreen();
-  saveFullscreenPreference(true);
-  updateFullscreenButton();
-}
-
-window.closeFullscreenRecovery = closeFullscreenRecovery;
-window.reactivateFullscreen = reactivateFullscreen;
-
-function cycleWorkoutLayout() {
-  const layouts = ["auto", "horizontal-1", "horizontal-2", "vertical-1", "vertical-2"];
-  const currentIndex = layouts.indexOf(state.workoutLayout);
-  state.workoutLayout = layouts[(currentIndex + 1) % layouts.length];
-  saveStateToLocalStorage();
-  applyWorkoutLayout();
-}
-
-window.cycleWorkoutLayout = cycleWorkoutLayout;
+// --- WORKOUT HUD & LAYOUT (movido a ui/workoutHud.js) ---
 
 window.addEventListener("resize", () => {
   if (state.workoutLayout === "auto") applyWorkoutLayout();
   else positionMapNavigationControls();
 });
 
-function positionMapNavigationControls() {
-  const mapContainer = document.getElementById("workout-map");
-  const hudGroup = document.querySelector(".hud-bottom-right-group");
-  const controls = mapContainer?.querySelector(
-    ".maplibregl-ctrl-top-right, .leaflet-top.leaflet-right",
-  );
-  if (!mapContainer || !hudGroup || !controls) return;
-
-  const mapRect = mapContainer.getBoundingClientRect();
-  const hudRect = hudGroup.getBoundingClientRect();
-  const controlsRect = controls.getBoundingClientRect();
-  if (!controlsRect.height || !mapRect.height) return;
-
-  const top = Math.max(
-    80,
-    hudRect.top - mapRect.top - controlsRect.height - 10,
-  );
-  const right = Math.max(8, mapRect.right - hudRect.right);
-  controls.style.setProperty("top", `${top}px`, "important");
-  controls.style.setProperty("right", `${right}px`, "important");
-
-  if (typeof ResizeObserver !== "undefined") {
-    if (!mapControlsResizeObserver) {
-      mapControlsResizeObserver = new ResizeObserver(() => {
-        requestAnimationFrame(positionMapNavigationControls);
-      });
-    }
-    if (controls !== observedMapControls || hudGroup !== observedMapHudGroup) {
-      mapControlsResizeObserver.disconnect();
-      mapControlsResizeObserver.observe(hudGroup);
-      mapControlsResizeObserver.observe(controls);
-      observedMapControls = controls;
-      observedMapHudGroup = hudGroup;
-    }
-  }
-}
-
-function applyWorkoutPanels() {
-  const panels = {
-    virtual: document.getElementById("virtual-trainer-panel"),
-    progress: document.getElementById("hud-progress"),
-    elevation: document.getElementById("hud-elevation-footer"),
-    upcoming: document.getElementById("upcoming-profile-chart"),
-  };
-  Object.entries(panels).forEach(([name, panel]) => {
-    if (!panel) return;
-    panel.classList.toggle("workout-panel-collapsed", state.workoutPanels[name] === false);
-    const toggle = panel.querySelector(".panel-toggle");
-    if (toggle) toggle.textContent = state.workoutPanels[name] === false ? "+" : "−";
-  });
-}
-
-function toggleWorkoutPanel(name) {
-  if (!(name in state.workoutPanels)) return;
-  state.workoutPanels[name] = !state.workoutPanels[name];
-  saveStateToLocalStorage();
-  applyWorkoutPanels();
-}
-
-window.toggleWorkoutPanel = toggleWorkoutPanel;
 
 // Global Navigation function (injected)
 let navigateTo;
@@ -326,6 +188,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
 
   navigateTo = initNavigation(UI, state, navigationCallbacks);
+  initRoutesView({ navigateTo });
+  initHistoryView({ navigateTo, renderSummaryMetrics, renderSummaryRoute, setSessionSaveStatus });
+  initUserView({ navigateTo });
 
   // Bind UI Elements
   cacheUiElements();
@@ -558,6 +423,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }, 15000);
 
     window.addEventListener("beforeunload", async (e) => {
+      void releaseWorkoutWakeLock();
       if (state.isSessionActive && typeof flushTelemetryBuffer === 'function') {
         await flushTelemetryBuffer();
       }
@@ -681,952 +547,16 @@ function hideRouteModal() {
   if (UI.routeModal) UI.routeModal.classList.remove("active");
 }
 
-// --- ROUTE LIBRARY (pantalla "Rutas Guardadas") ---
+// --- ROUTE LIBRARY MOVED TO ui/routesView.js ---
 
-/** Filtro activo: 'all' | 'app' | 'user' */
-let _routeLibraryFilter = "all";
 
-/**
- * Renderiza la lista de rutas en #route-library-list.
- * Carga rutas de la app (public/rutas/catalog.json) + rutas del usuario (IndexedDB).
- */
-async function renderRouteLibrary() {
-  const container = document.getElementById("route-library-list");
-  if (!container) return;
-  container.innerHTML = "<p class='route-library-empty'>Cargando rutas...</p>";
+// --- ROUTE OVERVIEW SVG (movido a ui/routeOverviewSvg.js) ---
 
-  try {
-    const userId = state.currentUser?.id;
-    const filter = _routeLibraryFilter;
-
-    // --- Rutas de la app desde catalog.json ---
-    let appRoutes = [];
-    if (filter !== "user") {
-      try {
-        const res = await fetch("/rodillo/rutas/catalog.json");
-        if (res.ok) {
-          const catalog = await res.json();
-          appRoutes = (catalog.routes || []).map((r) => ({
-            ...r,
-            source: "app",
-            gpxUrl: "/rodillo/rutas/" + encodeURIComponent(r.file),
-          }));
-        }
-      } catch (e) {
-        console.warn("No se pudo cargar el catalogo de rutas de la app:", e);
-      }
-    }
-
-    // --- Rutas del usuario desde IndexedDB ---
-    let userRoutes = [];
-    if (filter !== "app" && userId) {
-      userRoutes = (await DbManager.getSavedRoutes(userId)).map((r) => ({
-        ...r,
-        source: "user",
-      }));
-    }
-
-    const allRoutes =
-      filter === "app"
-        ? appRoutes
-        : filter === "user"
-        ? userRoutes
-        : [...appRoutes, ...userRoutes];
-
-    if (allRoutes.length === 0) {
-      container.innerHTML =
-        "<p class='route-library-empty'>No hay rutas. Usa el boton Añadir ruta GPX/TCX para guardar una.</p>";
-      return;
-    }
-
-    container.innerHTML = "";
-    for (const route of allRoutes) {
-      const card = buildRouteCardEl(route);
-      container.appendChild(card);
-      loadRouteCardData(card, route);
-    }
-  } catch (err) {
-    console.error("Error cargando biblioteca de rutas:", err);
-    container.innerHTML =
-      "<p class='route-library-error'>Error al cargar las rutas. Intentalo de nuevo.</p>";
-  }
-}
-
-/**
- * Crea el elemento DOM de la tarjeta (sin datos GPX todavia).
- */
-function buildRouteCardEl(route) {
-  const card = document.createElement("div");
-  card.className = "route-library-card glass-card";
-  const isApp = route.source === "app";
-  const routeName = route.name || route.fileName || "Ruta sin nombre";
-  const sourceLabel = isApp ? "Rutas de la app" : "Mis rutas";
-
-  card.innerHTML =
-    '<div class="route-library-graphs">' +
-      '<svg class="rl-track-svg" viewBox="0 0 100 56" xmlns="http://www.w3.org/2000/svg">' +
-        '<rect width="100" height="56" fill="rgba(0,0,0,0.2)" rx="6"/>' +
-        '<text x="50" y="32" text-anchor="middle" fill="#666" font-size="9" font-family="sans-serif">Cargando...</text>' +
-      "</svg>" +
-      '<svg class="rl-elev-svg" viewBox="0 0 100 56" xmlns="http://www.w3.org/2000/svg">' +
-        '<rect width="100" height="56" fill="rgba(0,0,0,0.2)" rx="6"/>' +
-        '<text x="50" y="32" text-anchor="middle" fill="#666" font-size="9" font-family="sans-serif">Cargando...</text>' +
-      "</svg>" +
-    "</div>" +
-    '<div class="route-library-details">' +
-      '<div class="route-library-heading">' +
-        '<strong class="route-library-name">' + escapeHtml(routeName) + "</strong>" +
-      "</div>" +
-      '<dl class="route-library-stats">' +
-        "<dt>Distancia</dt><dd>--</dd>" +
-        "<dt>Desnivel +</dt><dd>--</dd>" +
-        "<dt>Alt. min</dt><dd>--</dd>" +
-        "<dt>Alt. max</dt><dd>--</dd>" +
-      "</dl>" +
-      '<span class="route-library-source">' + escapeHtml(sourceLabel) + "</span>" +
-      '<div style="display:flex;gap:8px;margin-top:auto;padding-top:6px;">' +
-        '<button class="route-library-select" type="button">▶ Usar ruta</button>' +
-        (isApp ? "" : '<button class="route-library-delete" type="button" title="Eliminar">🗑️</button>') +
-      "</div>" +
-    "</div>";
-
-  return card;
-}
-
-/**
- * Carga los datos GPX de la ruta y actualiza la tarjeta con SVGs y stats.
- */
-async function loadRouteCardData(card, route) {
-  const isApp = route.source === "app";
-  const routeName = route.name || route.fileName || "Ruta sin nombre";
-
-  try {
-    let gpxText;
-    if (isApp) {
-      const res = await fetch(route.gpxUrl);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      gpxText = await res.text();
-    } else {
-      gpxText = route.gpxText;
-    }
-
-    const parsed = GpxManager.parseRoute(gpxText);
-    if (!parsed || !parsed.points || parsed.points.length < 2) throw new Error("Sin puntos validos");
-
-    const { points, elevations, distances } = parsed;
-    route._parsed = { points, elevations, distances };
-    if (isApp) route._gpxText = gpxText;
-
-    const totalKm = distances[distances.length - 1] || 0;
-    const ascent = _computeAscent(elevations);
-    const minElev = Math.min.apply(null, elevations);
-    const maxElev = Math.max.apply(null, elevations);
-
-    // Actualizar stats
-    const statsDd = card.querySelectorAll(".route-library-stats dd");
-    if (statsDd.length >= 4) {
-      statsDd[0].textContent = totalKm.toFixed(1) + " km";
-      statsDd[1].textContent = Math.round(ascent) + " m";
-      statsDd[2].textContent = Math.round(minElev) + " m";
-      statsDd[3].textContent = Math.round(maxElev) + " m";
-    }
-
-    // SVG Traza
-    const trackSvg = card.querySelector(".rl-track-svg");
-    if (trackSvg) {
-      trackSvg.outerHTML = _buildTrackSvg(points);
-    }
-
-    // SVG Elevacion
-    const elevSvg = card.querySelector(".rl-elev-svg");
-    if (elevSvg) {
-      elevSvg.outerHTML = _buildElevSvg(distances, elevations);
-    }
-
-  } catch (e) {
-    console.warn("Error procesando ruta \"" + routeName + "\":", e);
-    const statsDd = card.querySelectorAll(".route-library-stats dd");
-    if (statsDd.length > 0) statsDd[0].textContent = "Error";
-  }
-
-  // Botón usar ruta
-  const selectBtn = card.querySelector(".route-library-select");
-  if (selectBtn) {
-    selectBtn.addEventListener("click", async () => {
-      selectBtn.disabled = true;
-      selectBtn.textContent = "Cargando...";
-      try {
-        if (!route._parsed) {
-          let gpxText = route._gpxText || route.gpxText;
-          if (!gpxText && isApp) {
-            const res = await fetch(route.gpxUrl);
-            gpxText = await res.text();
-            route._gpxText = gpxText;
-          }
-          const parsed = GpxManager.parseRoute(gpxText);
-          if (!parsed || !parsed.points || !parsed.points.length)
-            throw new Error("Sin puntos validos");
-          route._parsed = parsed;
-        }
-        const { points, elevations, distances } = route._parsed;
-        state.routePoints = points;
-        state.routeElevations = elevations;
-        state.routeDistances = distances;
-        state.gpxFilename = route.file || route.fileName || route.name;
-        state.routeName = route.name || route.file || route.fileName;
-        state.routeSelectedFromLibrary = true;
-        state.currentMode = "ROUTE";
-        navigateTo("connections");
-      } catch (err) {
-        console.error("Error cargando ruta:", err);
-        showToast("No se pudo cargar la ruta. Comprueba el archivo.", "error");
-        selectBtn.disabled = false;
-        selectBtn.textContent = "Usar ruta";
-      }
-    });
-  }
-
-  // Botón eliminar (solo rutas de usuario)
-  const deleteBtn = card.querySelector(".route-library-delete");
-  if (deleteBtn) {
-    const routeName2 = route.name || route.fileName || "Ruta";
-    deleteBtn.addEventListener("click", async () => {
-      if (!await showConfirm('¿Eliminar la ruta "' + routeName2 + '"?', 'Eliminar', 'danger')) return;
-      try {
-        await DbManager.deleteSavedRoute(route.id);
-        await renderRouteLibrary();
-      } catch (err) {
-        console.error("Error eliminando ruta:", err);
-        showToast("No se pudo eliminar la ruta.", "error");
-      }
-    });
-  }
-}
-
-/** Desnivel positivo acumulado */
-function _computeAscent(elevations) {
-  let total = 0;
-  for (let i = 1; i < elevations.length; i++) {
-    const d = elevations[i] - elevations[i - 1];
-    if (d > 0) total += d;
-  }
-  return total;
-}
-
-/** SVG de la traza 2D de la ruta */
-function _buildTrackSvg(points) {
-  const W = 100, H = 56, pad = 5;
-  const lats = points.map(function(p) { return p.lat; });
-  const lons = points.map(function(p) { return p.lon; });
-  const minLat = Math.min.apply(null, lats);
-  const maxLat = Math.max.apply(null, lats);
-  const minLon = Math.min.apply(null, lons);
-  const maxLon = Math.max.apply(null, lons);
-  const rangeW = (maxLon - minLon) || 1;
-  const rangeH = (maxLat - minLat) || 1;
-  const scale = Math.min((W - pad * 2) / rangeW, (H - pad * 2) / rangeH);
-  function toX(lon) { return pad + (lon - minLon) * scale; }
-  function toY(lat) { return H - pad - (lat - minLat) * scale; }
-  const step = Math.max(1, Math.floor(points.length / 250));
-  const parts = [];
-  for (let i = 0; i < points.length; i += step) {
-    parts.push((i === 0 ? "M" : "L") + toX(points[i].lon).toFixed(1) + "," + toY(points[i].lat).toFixed(1));
-  }
-  const p0 = points[0], pN = points[points.length - 1];
-  return '<svg class="rl-track-svg" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">' +
-    '<rect width="100" height="56" fill="rgba(0,0,0,0.25)" rx="6"/>' +
-    '<path d="' + parts.join(" ") + '" fill="none" stroke="#60a5fa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
-    '<circle cx="' + toX(p0.lon).toFixed(1) + '" cy="' + toY(p0.lat).toFixed(1) + '" r="2.5" fill="#4ade80"/>' +
-    '<circle cx="' + toX(pN.lon).toFixed(1) + '" cy="' + toY(pN.lat).toFixed(1) + '" r="2.5" fill="#f87171"/>' +
-  '</svg>';
-}
-
-/** SVG del perfil de elevacion */
-function _buildElevSvg(distances, elevations) {
-  const W = 100, H = 56, pad = 5;
-  const minE = Math.min.apply(null, elevations);
-  const maxE = Math.max.apply(null, elevations);
-  const rangeE = (maxE - minE) || 1;
-  const maxD = distances[distances.length - 1] || 1;
-  const step = Math.max(1, Math.floor(distances.length / 180));
-  const pts = [];
-  for (let i = 0; i < distances.length; i += step) {
-    const x = (pad + (distances[i] / maxD) * (W - pad * 2)).toFixed(1);
-    const y = (H - pad - ((elevations[i] - minE) / rangeE) * (H - pad * 2)).toFixed(1);
-    pts.push(x + "," + y);
-  }
-  const lineD = pts.map(function(p, i) { return (i === 0 ? "M" : "L") + p; }).join(" ");
-  const first = pts[0] ? pts[0].split(",")[0] : pad;
-  const last = pts[pts.length - 1] ? pts[pts.length - 1].split(",")[0] : W - pad;
-  const areaD = lineD + " L" + last + "," + (H - pad) + " L" + first + "," + (H - pad) + " Z";
-  return '<svg class="rl-elev-svg" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">' +
-    '<rect width="100" height="56" fill="rgba(0,0,0,0.25)" rx="6"/>' +
-    '<path d="' + areaD + '" fill="rgba(16,185,129,0.18)"/>' +
-    '<path d="' + lineD + '" fill="none" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
-  '</svg>';
-}
-
-/** Cambia el filtro activo y vuelve a renderizar */
-function setRouteLibraryFilter(value) {
-  _routeLibraryFilter = value || "all";
-  renderRouteLibrary();
-}
-
-/** Guarda un archivo GPX/TCX seleccionado por el usuario en la BD */
-async function saveUserRoute(file) {
-  const statusEl = document.getElementById("saved-route-library-status");
-  const setStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
-  if (!state.currentUser) {
-    setStatus("Selecciona un perfil antes de guardar rutas.");
-    return;
-  }
-  setStatus("Guardando ruta...");
-  try {
-    const gpxText = await file.text();
-    const parsed = GpxManager.parseRoute(gpxText);
-    if (!parsed || !parsed.points || !parsed.points.length) {
-      setStatus("El archivo no es valido o no contiene puntos de ruta.");
-      return;
-    }
-    const routeName = file.name.replace(/\.(gpx|tcx|xml)$/i, "");
-    await DbManager.saveRoute({
-      userId: state.currentUser.id,
-      name: routeName,
-      fileName: file.name,
-      gpxText,
-    });
-    setStatus("Ruta \"" + routeName + "\" guardada correctamente.");
-    await renderRouteLibrary();
-  } catch (err) {
-    console.error("Error guardando ruta:", err);
-    setStatus("Error al guardar la ruta.");
-  }
-}
-
-/**
- * Rellena el select del modal de sesion con las rutas guardadas + rutas de la app.
- */
-async function populateSessionSavedRoutes() {
-  const select = document.getElementById("session-saved-route-select");
-  const statusEl = document.getElementById("session-saved-route-status");
-  if (!select) return;
-  select.innerHTML = "<option value=''>Cargando rutas...</option>";
-  if (statusEl) statusEl.textContent = "";
-  try {
-    // Rutas de la app
-    let appRoutes = [];
-    try {
-      const res = await fetch("/rodillo/rutas/catalog.json");
-      if (res.ok) {
-        const catalog = await res.json();
-        appRoutes = catalog.routes || [];
-      }
-    } catch (e) {}
-    // Rutas del usuario
-    const userId = state.currentUser?.id;
-    const userRoutes = userId ? await DbManager.getSavedRoutes(userId) : [];
-    const allRoutes = [
-      ...appRoutes.map((r) => ({ id: "app:" + r.file, name: r.name, file: r.file, source: "app" })),
-      ...userRoutes.map((r) => ({ ...r, source: "user" })),
-    ];
-    if (allRoutes.length === 0) {
-      select.innerHTML = "<option value=''>No hay rutas disponibles</option>";
-      if (statusEl) statusEl.textContent = "Guarda rutas GPX/TCX en la seccion Rutas guardadas.";
-      return;
-    }
-    select.innerHTML = "<option value=''>-- Seleccionar ruta --</option>";
-    for (const route of allRoutes) {
-      const opt = document.createElement("option");
-      opt.value = String(route.id);
-      opt.textContent = (route.source === "app" ? "[App] " : "") + (route.name || route.fileName || ("Ruta " + route.id));
-      opt.dataset.source = route.source;
-      if (route.file) opt.dataset.file = route.file;
-      select.appendChild(opt);
-    }
-  } catch (err) {
-    console.error("Error cargando rutas en el modal:", err);
-    select.innerHTML = "<option value=''>Error al cargar rutas</option>";
-  }
-}
-
-/**
- * Carga la ruta seleccionada en el select del modal y la aplica al estado.
- */
-async function loadSavedRouteInSessionModal(button) {
-  const select = document.getElementById("session-saved-route-select");
-  const statusEl = document.getElementById("session-saved-route-status");
-  const setStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
-  const routeId = select?.value;
-  if (!routeId) {
-    setStatus("Elige una ruta de la lista primero.");
-    return;
-  }
-  if (button) button.disabled = true;
-  setStatus("Cargando ruta...");
-  try {
-    const selectedOpt = select.options[select.selectedIndex];
-    const isApp = selectedOpt?.dataset.source === "app";
-    let gpxText, routeName;
-    if (isApp) {
-      const file = selectedOpt.dataset.file;
-      const res = await fetch("/rodillo/rutas/" + encodeURIComponent(file));
-      if (!res.ok) throw new Error("No se pudo descargar el archivo de ruta.");
-      gpxText = await res.text();
-      routeName = selectedOpt.textContent.replace(/^\[App\] /, "");
-    } else {
-      const userId = state.currentUser?.id;
-      const routes = userId ? await DbManager.getSavedRoutes(userId) : [];
-      const route = routes.find((r) => String(r.id) === String(routeId));
-      if (!route) { setStatus("Ruta no encontrada."); return; }
-      gpxText = route.gpxText;
-      routeName = route.name || route.fileName;
-    }
-    const parsed = GpxManager.parseRoute(gpxText);
-    if (!parsed || !parsed.points || !parsed.points.length) {
-      setStatus("El archivo de ruta es invalido o esta corrupto.");
-      return;
-    }
-    state.routePoints = parsed.points;
-    state.routeElevations = parsed.elevations;
-    state.routeDistances = parsed.distances;
-    state.gpxFilename = routeName;
-    state.routeName = routeName;
-    state.routeSelectedFromLibrary = true;
-    const label = document.getElementById("gpx-filename-label");
-    if (label) label.textContent = "Ruta cargada: " + routeName;
-    setStatus("Ruta \"" + routeName + "\" cargada correctamente.");
-  } catch (err) {
-    console.error("Error cargando ruta desde el modal:", err);
-    setStatus("Error al cargar la ruta.");
-  } finally {
-    if (button) button.disabled = false;
-  }
-}
-
-/** Escapa HTML para evitar XSS en nombres de rutas */
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-
-// --- ROUTE OVERVIEW SVG (panel "VISTA GENERAL") ---
-
-/**
- * Variables de escala calculadas una vez al iniciar la ruta.
- * Reutilizadas en cada actualización de posición.
- */
-let _overviewScale = null;
-
-/**
- * Dibuja la traza completa de la ruta en el SVG de vista general.
- * Llamar al inicio de la sesión en modo ROUTE.
- */
-function initRouteOverviewSvg() {
-  const svg = document.getElementById("route-overview-svg");
-  const trackPath = document.getElementById("route-overview-track");
-  const completedPath = document.getElementById("route-overview-completed");
-  const startCircle = document.getElementById("route-overview-start");
-  const endCircle = document.getElementById("route-overview-end");
-  const posCircle = document.getElementById("route-overview-position");
-
-  if (!svg || !trackPath || !posCircle) return;
-  if (!state.routePoints || state.routePoints.length < 2) return;
-
-  const points = state.routePoints;
-  const W = 100, H = 100, pad = 7;
-
-  const lats = points.map((p) => p.lat);
-  const lons = points.map((p) => p.lon);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-  const rangeW = (maxLon - minLon) || 1e-9;
-  const rangeH = (maxLat - minLat) || 1e-9;
-  const scale = Math.min((W - pad * 2) / rangeW, (H - pad * 2) / rangeH);
-  const offX = pad + ((W - pad * 2) - rangeW * scale) / 2;
-  const offY = pad + ((H - pad * 2) - rangeH * scale) / 2;
-
-  // Guardamos la escala para actualizar la posición eficientemente
-  _overviewScale = { minLat, minLon, scale, offX, offY, H };
-
-  function toX(lon) { return offX + (lon - minLon) * scale; }
-  function toY(lat) { return H - offY - (lat - minLat) * scale; }
-
-  // Sample points (max 400 for performance)
-  const step = Math.max(1, Math.floor(points.length / 400));
-  const pathParts = [];
-  for (let i = 0; i < points.length; i += step) {
-    pathParts.push((i === 0 ? "M" : "L") + toX(points[i].lon).toFixed(2) + "," + toY(points[i].lat).toFixed(2));
-  }
-  const d = pathParts.join(" ");
-
-  trackPath.setAttribute("d", d);
-  if (completedPath) completedPath.setAttribute("d", "");
-
-  // Inicio (verde) y fin (rojo)
-  const p0 = points[0], pN = points[points.length - 1];
-  if (startCircle) {
-    startCircle.setAttribute("cx", toX(p0.lon).toFixed(2));
-    startCircle.setAttribute("cy", toY(p0.lat).toFixed(2));
-  }
-  if (endCircle) {
-    endCircle.setAttribute("cx", toX(pN.lon).toFixed(2));
-    endCircle.setAttribute("cy", toY(pN.lat).toFixed(2));
-  }
-
-  // Posición inicial al inicio
-  posCircle.setAttribute("cx", toX(p0.lon).toFixed(2));
-  posCircle.setAttribute("cy", toY(p0.lat).toFixed(2));
-}
-
-/**
- * Actualiza la posición actual del ciclista y el tramo completado en el SVG.
- * Llamar en cada tick del loop de sesión.
- * @param {number} currentIndex  Índice actual en state.routePoints
- */
-function updateRouteOverviewPosition(currentIndex) {
-  if (!_overviewScale || !state.routePoints || state.routePoints.length === 0) return;
-
-  const posCircle = document.getElementById("route-overview-position");
-  const completedPath = document.getElementById("route-overview-completed");
-  if (!posCircle) return;
-
-  const { minLat, minLon, scale, offX, offY, H } = _overviewScale;
-  function toX(lon) { return offX + (lon - minLon) * scale; }
-  function toY(lat) { return H - offY - (lat - minLat) * scale; }
-
-  const idx = Math.max(0, Math.min(currentIndex, state.routePoints.length - 1));
-  const pt = state.routePoints[idx];
-  posCircle.setAttribute("cx", toX(pt.lon).toFixed(2));
-  posCircle.setAttribute("cy", toY(pt.lat).toFixed(2));
-
-  // Tramo completado (trazo verde hasta la posición actual)
-  if (completedPath && idx > 0) {
-    const step = Math.max(1, Math.floor(state.routePoints.length / 400));
-    const parts = [];
-    for (let i = 0; i <= idx; i += step) {
-      parts.push((i === 0 ? "M" : "L") + toX(state.routePoints[i].lon).toFixed(2) + "," + toY(state.routePoints[i].lat).toFixed(2));
-    }
-    // Asegurar que el último punto es exactamente la posición actual
-    if (parts.length > 0) {
-      parts.push("L" + toX(pt.lon).toFixed(2) + "," + toY(pt.lat).toFixed(2));
-    }
-    completedPath.setAttribute("d", parts.join(" "));
-  }
-}
-
-function calculateTotalRouteAscent() {
-  if (state.routeElevations.length < 2) return 0;
-  let total = 0;
-  for (let i = 1; i < state.routeElevations.length; i++) {
-    const diff = state.routeElevations[i] - state.routeElevations[i - 1];
-    if (diff > 0) total += diff;
-  }
-  return total;
-}
-
-function updateRouteProgressHud() {
-  if (state.routeDistances.length === 0) return;
-
-  const totalKm = state.routeDistances[state.routeDistances.length - 1];
-  const remainingKm = Math.max(0, totalKm - state.totalDistance);
-  setElText("submetrics-remaining", `${remainingKm.toFixed(2)} km`);
-
-  if (!state.routeTotalAscent) {
-    state.routeTotalAscent = calculateTotalRouteAscent();
-  }
-  const remainingAscent = Math.max(
-    0,
-    state.routeTotalAscent - state.totalAscent,
-  );
-  setElText("submetrics-remaining-ascent", `${Math.round(remainingAscent)} m+`);
-}
-
-function updateSessionAverages() {
-  const avgPower =
-    state.powerHistory.length > 0
-      ? Math.round(
-          state.powerHistory.reduce((a, b) => a + b, 0) /
-            state.powerHistory.length,
-        )
-      : 0;
-  setElText("metrics-power-avg", `${avgPower} Ø`);
-
-  const avgHr =
-    state.hrHistory.length > 0
-      ? Math.round(
-          state.hrHistory.reduce((a, b) => a + b, 0) / state.hrHistory.length,
-        )
-      : 0;
-  setElText("metrics-hr-avg", `${avgHr} Ø`);
-
-  const avgSpeed =
-    state.elapsedSeconds > 0
-      ? (
-          state.totalDistance /
-          (state.elapsedSeconds / 3600.0)
-        ).toFixed(1)
-      : "0.0";
-  setElText("metrics-speed-avg", `${avgSpeed} Ø`);
-}
-
-function configureWorkoutHudForMode() {
-  const isRoute = state.currentMode === "ROUTE";
-  const isManual = state.currentMode === "MANUAL";
-  const isTraditional = state.currentMode === "TRADITIONAL"; // Suponiendo que este modo existe
-  const routeNameElement = document.getElementById("workout-route-name");
-  if (routeNameElement) {
-    const routeName = (
-      state.routeName ||
-      state.gpxFilename?.replace(/\.(gpx|tcx)$/i, "") ||
-      ""
-    ).trim();
-    routeNameElement.textContent = routeName;
-    routeNameElement.title = routeName;
-    routeNameElement.hidden = !isRoute || !routeName;
-  }
-
-  // Ocultar/Mostrar elementos según el modo
-  // route-side-stack es el contenedor padre de "VISTA GENERAL" y "PROGRESO RUTA"
-  setElDisplay("route-side-stack", isRoute ? "flex" : "none");
-  setElDisplay("hud-progress", isRoute ? "block" : "none");
-  setElDisplay("hud-profile", isRoute ? "flex" : "none");
-  setElDisplay("hud-elevation-footer", isRoute ? "block" : "none");
-  setElDisplay("workout-map", isRoute ? "block" : "none");
-
-  // Ocultar botones específicos de mapa/ruta
-  setElDisplay("btn-toggle-3d", isRoute ? "block" : "none");
-  setElDisplay("btn-orient-toggle", isRoute ? "block" : "none");
-  setElDisplay("metrics-slope", isRoute ? "flex" : "none");
-  // Usamos el ID correcto que muestra el inspector: upcoming-profile-chart
-  setElDisplay("upcoming-profile-chart", isRoute ? "block" : "none");
-  setElDisplay("hud-elevation-footer", isRoute ? "block" : "none");
-
-  // Mostrar panel Manual si aplica
-  setElDisplay("manual-mode-panel", isManual ? "flex" : "none");
-
-  // Ghost Rider is available for any route mode, regardless of trainer type.
-  const ghostBanner = document.getElementById("ghost-banner");
-  if (ghostBanner) {
-    ghostBanner.classList.toggle(
-      "visible",
-      isRoute && state.ghostEnabled && (state.ghostPoints?.length || 0) > 0,
-    );
-  }
-
-}
-
-function initConfiguredMap() {
-    const configuredMode = MAP_VIEW_MODES.includes(state.mapViewMode)
-        ? state.mapViewMode
-        : state.mapType === "leaflet"
-            ? "2D"
-            : "3D_AEREO";
-    const toggleButton = document.getElementById("btn-toggle-3d");
-
-    if (state.map) {
-        state.map.remove();
-        state.map = null;
-    }
-    mapReadyInstance = null;
-
-    if (configuredMode === "2D") {
-        state.mapViewMode = "2D";
-        state.mapType = "leaflet";
-        initLeafletMap();
-        drawRouteOnMap();
-        createOrientationToggleButton();
-        return;
-    }
-
-    if (!toggleButton || typeof window.toggleMapEngine !== "function") {
-        console.error("No se pudo inicializar el mapa 3D: falta el control del motor.");
-        return;
-    }
-
-    // Reutilizar el flujo probado del botón garantiza el mismo mapa al arrancar
-    // desde Ajustes y al cambiarlo manualmente durante la sesión.
-    state.mapViewMode = "2D";
-    state.mapType = "leaflet";
-    window.toggleMapEngine(toggleButton);
-
-    if (configuredMode === "3D_FPV") {
-        window.toggleMapEngine(toggleButton);
-    }
-}// --- Eventos movidos a modules/events.js ---
-// Se ha importado la función bindEvents al inicio del archivo.
-
-/*
-   La función original bindEvents ha sido eliminada para evitar duplicidad.
-*/
-
-// --- NAVIGATION ENGINE ---
-
-function setWorkoutFontScale(increment) {
-  const viewport = document.querySelector(".workout-viewport");
-  if (!viewport) return;
-
-  // Obtener valor actual o default 1.0
-  let currentScale = parseFloat(
-    getComputedStyle(viewport).getPropertyValue("--workout-text-multiplier") ||
-      1.0,
-  );
-
-  // Calcular nuevo valor: incrementar o decrementar
-  let newScale = currentScale + increment;
-
-  // Límite: entre 0.5 y 2.5
-  newScale = Math.min(Math.max(newScale, 0.5), 2.5);
-
-  // Aplicar
-  viewport.style.setProperty("--workout-text-multiplier", newScale);
-  localStorage.setItem("rodilloint_fontSize", newScale);
-  syncWorkoutSlopePosition();
-}
-
-function syncWorkoutSlopePosition() {
-  const viewport = document.querySelector(".workout-viewport");
-  const hud = document.getElementById("hud-top-bar");
-  if (!viewport || !hud) return;
-
-  viewport.style.setProperty(
-    "--workout-hud-height",
-    `${Math.ceil(hud.getBoundingClientRect().height)}px`,
-  );
-}
-
-function observeWorkoutHudSize() {
-  workoutHudResizeObserver?.disconnect();
-  const hud = document.getElementById("hud-top-bar");
-  if (!hud) return;
-
-  syncWorkoutSlopePosition();
-  if (typeof ResizeObserver === "undefined") return;
-
-  workoutHudResizeObserver = new ResizeObserver(() => {
-    syncWorkoutSlopePosition();
-  });
-  workoutHudResizeObserver.observe(hud);
-}
+// --- WORKOUT HUD METRICS & FONT SCALE (movido a ui/workoutHud.js) ---
 
 // --- Funciones UI movidas a modules/ui.js ---
 
-// --- USER PROFILE LOGIC ---
-async function loadProfilesGrid() {
-  const users = await DbManager.getAllUsers();
-  const container = document.getElementById("users-grid-container");
-  container.innerHTML = "";
-
-  if (users.length === 0) {
-    return;
-  }
-
-  // Si hay usuarios, los mostramos
-  users.forEach((u) => {
-    const card = document.createElement("div");
-    card.className = "glass-card user-card";
-    // Al hacer clic en la tarjeta de usuario, se selecciona y se navega al dashboard
-    card.onclick = () => {
-      selectUser(u);
-      navigateTo("dashboard"); // Asegurarse de que navega a dashboard
-    };
-
-    // Initials for avatar
-    const initials = u.name
-      .split(" ")
-      .map((n) => n[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase();
-
-    card.innerHTML = `
-      <button class="user-card-delete" title="Eliminar Perfil">&times;</button>
-      <div class="user-avatar">${initials}</div>
-      <div class="user-name">${u.name}</div>
-      <div class="user-meta">${u.weight} kg • FTP ${u.ftp}W</div>
-    `;
-
-    const deleteBtn = card.querySelector(".user-card-delete");
-    deleteBtn.onclick = (e) => {
-      e.stopPropagation(); // Evita que se active el onclick de la tarjeta
-      deleteProfileFromSelectScreen(u.id, u.name);
-    };
-
-    container.appendChild(card);
-  });
-}
-
-async function deleteProfileFromSelectScreen(id, name) {
-  const confirmDel = await showConfirm(
-    `¿Estás seguro de que quieres eliminar el perfil de ${name}? Esto borrará sus datos permanentemente.`,
-  );
-  if (confirmDel) {
-    try {
-      await DbManager.deleteUser(id);
-      await loadProfilesGrid();
-    } catch (e) {
-      console.error("Error al eliminar perfil:", e);
-    }
-  }
-}
-
-function selectUser(user) {
-  state.currentUser = user;
-  loadWorkoutLayoutForUser(user);
-  localStorage.setItem("rodilloint_userId", user.id);
-  // Asegurarse de que navega a dashboard después de seleccionar usuario
-  if (navigateTo) {
-    navigateTo("dashboard");
-  } else {
-    console.warn("navigateTo no está definido, no se puede navegar a dashboard.");
-  }
-}
-
-function handleLogout() {
-  state.currentUser = null;
-  localStorage.removeItem("rodilloint_userId");
-  loadProfilesGrid();
-  navigateTo("user-select");
-}
-
-async function handleAddUserSubmit(e) {
-  e.preventDefault();
-  const name = document.getElementById("new-user-name").value.trim();
-  const weight = parseFloat(document.getElementById("new-user-weight").value);
-  const ftp = parseInt(document.getElementById("new-user-ftp").value);
-  const maxHeartRate = parseInt(
-    document.getElementById("new-user-maxhr").value,
-  );
-  const age = parseInt(document.getElementById("new-user-age").value);
-  const height = parseInt(document.getElementById("new-user-height").value);
-
-  if (name.length > 0) {
-    try {
-      const newId = await DbManager.insertUser({
-        name,
-        weight,
-        ftp,
-        maxHeartRate,
-        age,
-        height,
-      });
-      const user = await DbManager.getUserById(newId);
-      hideModal("add-user");
-      UI.formAddUser.reset();
-      selectUser(user);
-    } catch (e) {
-      console.error(e);
-      showToast("Error al crear perfil.", "error");
-    }
-  }
-}
-
-async function handleEditUserSubmit(e) {
-  e.preventDefault();
-  if (!state.currentUser) return;
-
-  const name = document.getElementById("edit-user-name").value.trim();
-  const weight = parseFloat(document.getElementById("edit-user-weight").value);
-  const ftp = parseInt(document.getElementById("edit-user-ftp").value);
-  const maxHeartRate = parseInt(
-    document.getElementById("edit-user-maxhr").value,
-  );
-  const age = parseInt(document.getElementById("edit-user-age").value);
-  const height = parseInt(document.getElementById("edit-user-height").value);
-
-  const updatedUser = {
-    ...state.currentUser,
-    name,
-    weight,
-    ftp,
-    maxHeartRate,
-    age,
-    height,
-  };
-
-  try {
-    await DbManager.updateUser(updatedUser);
-    state.currentUser = updatedUser;
-    hideModal("edit-user");
-    loadDashboardHeader();
-  } catch (e) {
-    console.error(e);
-    showToast("Error al guardar ajustes.", "error");
-  }
-}
-
-async function handleImportUserSubmit() {
-  const jsonStr = document.getElementById("import-json-data").value.trim();
-  if (jsonStr.length === 0) return;
-
-  try {
-    const profile = JSON.parse(jsonStr);
-    if (!profile.name || !profile.ftp) {
-      showToast("Formato de perfil no válido. Faltan campos obligatorios (name, ftp).", "warning");
-      return;
-    }
-    const newId = await DbManager.insertUser({
-      uuid: profile.uuid || undefined,
-      name: profile.name,
-      weight: profile.weight || 75.0,
-      ftp: profile.ftp || 200,
-      maxHeartRate: profile.maxHeartRate || 190,
-      age: profile.age || 30,
-      height: profile.height || 175,
-    });
-
-    const user = await DbManager.getUserById(newId);
-    hideModal("import-user");
-    document.getElementById("import-json-data").value = "";
-    selectUser(user);
-  } catch (e) {
-    console.error(e);
-    showToast("Formato JSON no válido.", "error");
-  }
-}
-
-async function handleDeleteProfile() {
-  if (!state.currentUser) return;
-  const confirmDel = await showConfirm(
-    `¿Estás seguro de que quieres eliminar el perfil de ${state.currentUser.name}? Esto borrará sus datos permanentemente.`,
-  );
-  if (confirmDel) {
-    try {
-      await DbManager.deleteUser(state.currentUser.id);
-      hideModal("edit-user");
-      handleLogout();
-    } catch (e) {
-      console.error(e);
-    }
-  }
-}
-
-function handleExportProfile() {
-  if (!state.currentUser) return;
-  const profile = {
-    uuid: state.currentUser.uuid,
-    name: state.currentUser.name,
-    weight: state.currentUser.weight,
-    ftp: state.currentUser.ftp,
-    maxHeartRate: state.currentUser.maxHeartRate,
-    age: state.currentUser.age,
-    height: state.currentUser.height,
-  };
-  const jsonStr = JSON.stringify(profile, null, 2);
-
-  // Prompt copy
-  navigator.clipboard
-    .writeText(jsonStr)
-    .then(() => {
-      showToast("¡Código de Perfil copiado al portapapeles! Pégalo en otro dispositivo para importarlo.", "success");
-    })
-    .catch(() => {
-      showToast("Código de perfil copiado al portapapeles.", "success"); try { navigator.clipboard.writeText(jsonStr); } catch(e) {};
-    });
-}
+// --- USER PROFILE LOGIC (movido a ui/userView.js) ---
 
 // --- WORKOUT LAUNCH MODAL/FLOW ---
 function startModeFlow(mode) {
@@ -2012,29 +942,6 @@ function calculateNormalizedPower() {
   return calculateNormalizedPowerFromValues(state.powerHistory);
 }
 
-function calculateNormalizedPowerFromValues(values) {
-  if (values.length < 30) {
-    return (
-      values.reduce((a, b) => a + b, 0) / values.length || 0.0
-    );
-  }
-
-  // 1. Calculate 30-second rolling averages
-  const rollingAverages = [];
-  for (let i = 29; i < values.length; i++) {
-    const sum = values
-      .slice(i - 29, i + 1)
-      .reduce((a, b) => a + b, 0);
-    const avg = sum / 30.0;
-    rollingAverages.push(Math.pow(avg, 4.0));
-  }
-
-  // 2. Average the 4th powers, and take the 4th root
-  const avgPowers4 =
-    rollingAverages.reduce((a, b) => a + b, 0) / rollingAverages.length;
-  return Math.pow(avgPowers4, 0.25);
-}
-
 // --- Countdown Timer ---
 function startCountdown(onComplete, duration) {
   cancelCountdown();
@@ -2381,95 +1288,7 @@ async function loadGhostRiderSession() {
   }
 }
 
-// --- LEAFLET MAPS ENGINE ---
-function initLeafletMap() {
-  if (state.map) return;
-
-  // standard Madrid coordinates initial view
-  state.map = L.map("workout-map", {
-    zoomControl: false,
-    attributionControl: false,
-  }).setView([40.4168, -3.7038], 14);
-
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-  }).addTo(state.map);
-
-  // Custom zoom buttons
-  const zoomControl = L.control.zoom({ position: "topright" });
-  zoomControl.addTo(state.map);
-  requestAnimationFrame(positionMapNavigationControls);
-}
-
-function drawRouteOnMap() {
-  if (!state.map || state.routePoints.length === 0) return;
-
-  // Verificación de seguridad de coordenadas
-  const firstPoint = state.routePoints[0];
-  if (!firstPoint || isNaN(firstPoint.lat) || isNaN(firstPoint.lon)) return;
-
-  // Detectar motor: si existe addSource es MapLibre (3D)
-  if (state.map.addSource) {
-      if (!isMapReady(state.map)) {
-          return;
-      }
-
-      const geojson = {
-          type: 'Feature',
-          geometry: {
-              type: 'LineString',
-              coordinates: state.routePoints.map(p => [p.lon, p.lat])
-          }
-      };
-
-      // Añadir o actualizar la ruta en MapLibre
-      if (state.map.getSource('route')) {
-          state.map.getSource('route').setData(geojson);
-      } else {
-          state.map.addSource('route', { type: 'geojson', data: geojson });
-          state.map.addLayer({
-              id: 'route',
-              type: 'line',
-              source: 'route',
-              layout: { 'line-join': 'round', 'line-cap': 'round' },
-              paint: { 'line-color': '#ff5722', 'line-width': 6 }
-          });
-      }
-
-      // Posicionar cámara en el primer punto
-      state.map.jumpTo({
-          center: [firstPoint.lon, firstPoint.lat],
-          zoom: state.mapViewMode === "3D_FPV" ? 20 : 14,
-          pitch: state.mapViewMode === "3D_FPV" ? 82 : 60,
-      });
-  } else {
-      // Lógica original para Leaflet (2D)
-      if (state.routePolyline) state.map.removeLayer(state.routePolyline);
-      if (state.userMarker) state.map.removeLayer(state.userMarker);
-      if (state.ghostMarker) state.map.removeLayer(state.ghostMarker);
-
-      const latLngs = state.routePoints.map((p) => [p.lat, p.lon]);
-
-      state.routePolyline = L.polyline(latLngs, {
-          color: "#ff5722",
-          weight: 6,
-          opacity: 0.85,
-      }).addTo(state.map);
-
-      const userIcon = L.divIcon({
-          className: "custom-user-marker",
-          html: '<div class="user-marker-core"><div class="user-marker-pulse"></div></div>',
-          iconSize: [14, 14],
-      });
-
-      state.userMarker = L.marker(latLngs[0], {
-          icon: userIcon,
-          title: "Tú",
-      }).addTo(state.map);
-
-      state.map.fitBounds(state.routePolyline.getBounds(), { padding: [20, 20] });
-  }
-}
+// --- LEAFLET MAPS ENGINE (movido a ui/mapEngine.js) ---
 
 function initializeRemoteRoomPanel() {
   const panel = document.getElementById("remote-room-panel");
@@ -2556,6 +1375,40 @@ function disconnectRemoteRoom() {
   activeRemoteRoomClient = null;
   toggleRemoteRoomPanel(false);
 }
+
+// --- SCREEN WAKE LOCK (evita que la pantalla se apague en sesiones activas) ---
+let workoutWakeLock = null;
+
+async function requestWorkoutWakeLock() {
+  if (!("wakeLock" in navigator) || document.visibilityState !== "visible") return;
+  try {
+    if (!workoutWakeLock) {
+      workoutWakeLock = await navigator.wakeLock.request("screen");
+      workoutWakeLock.addEventListener("release", () => {
+        workoutWakeLock = null;
+      });
+      console.log("[WakeLock] Pantalla activa fijada para el entrenamiento");
+    }
+  } catch (err) {
+    console.warn("[WakeLock] No se pudo activar WakeLock:", err);
+  }
+}
+
+async function releaseWorkoutWakeLock() {
+  if (workoutWakeLock) {
+    try {
+      await workoutWakeLock.release();
+    } catch (e) {}
+    workoutWakeLock = null;
+    console.log("[WakeLock] Pantalla liberada");
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && state.isSessionActive && !state.isPaused) {
+    void requestWorkoutWakeLock();
+  }
+});
 
 // --- SESSION WORKFLOW CONTROL ---
 function togglePause() {
@@ -2721,6 +1574,7 @@ function confirmSessionSafety() {
 
 function startTimerInterval() {
   if (state.timerInterval) clearInterval(state.timerInterval);
+  void requestWorkoutWakeLock();
 
   // Guardamos el tiempo de inicio real de la sesión (ajustado por pausas previas)
   // Nota: startTime debe ser relativo a Date.now() menos el tiempo transcurrido
@@ -2742,7 +1596,7 @@ function startTimerInterval() {
 
       // Acumulación de Kilojulios (kJ) segundo a segundo
       const currentWatts = Number(state.currentPower) || 0;
-      kilojuliosAcumulados += (currentWatts / 1000);
+      kilojuliosAcumulados += calculateKilojoulesStep(currentWatts, 1);
       state.kilojoules = kilojuliosAcumulados;
       setElText("metrics-kj", String(Math.round(kilojuliosAcumulados)));
 
@@ -2839,6 +1693,7 @@ function pauseTimer() {
 
 function resumeTimer() {
   state.isPaused = false;
+  void requestWorkoutWakeLock();
 
   // Sumamos el tiempo transcurrido durante la pausa al total de tiempo pausado
   if (state.lastPauseTime) {
@@ -3174,6 +2029,7 @@ async function stopSessionFlow() {
   if (!confirmStop) return;
 
   BleManager.stopAutoReconnect();
+  void releaseWorkoutWakeLock();
   if (state.timerInterval) {
     clearInterval(state.timerInterval);
     state.timerInterval = null;
@@ -3209,11 +2065,8 @@ async function stopSessionFlow() {
   // Normalized Power, TSS, IF calculations
   const ftp = state.currentUser ? state.currentUser.ftp : 200;
   const np = Math.round(calculateNormalizedPower());
-  const intensityFactor = ftp > 0 ? parseFloat((np / ftp).toFixed(2)) : 0.0;
-  const tss =
-    ftp > 0
-      ? Math.round((state.elapsedSeconds * np * intensityFactor) / (ftp * 36))
-      : 0;
+  const intensityFactor = calculateIntensityFactor(np, ftp);
+  const tss = calculateTSS(state.elapsedSeconds, np, intensityFactor, ftp);
 
   // Distance / Speed averages
   const duration = document.getElementById("workout-timer").textContent;
@@ -3494,7 +2347,7 @@ function updateRouteSimulation(currentDistKm) {
                 posicionCiclistaSiguiente,
                 state.isMapFollowingRoute,
             );
-            if (fpvAnimationFrame === null) startFpvCameraLoop();
+            if (!isFpvCameraLoopRunning()) startFpvCameraLoop();
         } else if (state.isMapFollowingRoute) {
             // Calcular el rumbo (bearing) del movimiento actual
             const dx = posicionCiclistaSiguiente[0] - posicionCiclistaActual[0];
@@ -3727,121 +2580,7 @@ function adjustManualSlope(delta) {
   updateTrainerSlope(newSlope, true);
 }
 
-function getElevationAtDistance(distKm) {
-  if (state.routeElevations.length === 0) return 0;
-  if (distKm <= state.routeDistances[0]) return state.routeElevations[0];
-
-  const lastIdx = state.routeDistances.length - 1;
-  if (distKm >= state.routeDistances[lastIdx])
-    return state.routeElevations[lastIdx];
-
-  const idx = state.routeDistances.findIndex((d) => d >= distKm);
-  const d0 = state.routeDistances[idx - 1];
-  const d1 = state.routeDistances[idx];
-  const span = d1 - d0;
-  if (span < 0.00001) return state.routeElevations[idx - 1];
-
-  const t = (distKm - d0) / span;
-  return (
-    state.routeElevations[idx - 1] +
-    (state.routeElevations[idx] - state.routeElevations[idx - 1]) * t
-  );
-}
-
-// --- PREDICTIVE UPCOMING SLOPE AND RELIEF ---
-function getUpcomingSegmentData(
-  previewDistanceMeters = SLOPE_PREVIEW_LONG_METERS,
-  currentDistKm = null,
-) {
-  if (state.routePoints.length === 0) return null;
-
-  const currentDistanceKm =
-    currentDistKm !== null
-      ? currentDistKm
-      : state.routeDistances[state.currentRouteIndex];
-
-  const targetDistanceKm = currentDistanceKm + previewDistanceMeters / 1000.0;
-  const routeEndKm = state.routeDistances[state.routeDistances.length - 1];
-  const actualEndKm = Math.min(targetDistanceKm, routeEndKm);
-
-  const previewDistances = [];
-  const previewElevations = [];
-
-  let endIndex = state.currentRouteIndex;
-
-  for (let i = 0; i < state.routeDistances.length; i++) {
-    if (state.routeDistances[i] < currentDistanceKm) continue;
-
-    endIndex = i;
-    const relativeDistanceM =
-      (state.routeDistances[i] - currentDistanceKm) * 1000.0;
-    previewDistances.push(relativeDistanceM);
-    previewElevations.push(state.routeElevations[i]);
-
-    if (state.routeDistances[i] >= actualEndKm) {
-      break;
-    }
-  }
-
-  const distanceRun = (actualEndKm - currentDistanceKm) * 1000.0;
-  if (distanceRun < 3.0) return null;
-
-  const startEle = getElevationAtDistance(currentDistanceKm);
-  const endEle = getElevationAtDistance(actualEndKm);
-  const avgSlope = ((endEle - startEle) / distanceRun) * 100.0;
-
-  return {
-    distances: previewDistances,
-    elevations: previewElevations,
-    avgSlope: avgSlope,
-  };
-}
-
-function applySlopeTrendStyle(slope, slopeLabel, arrowLabel) {
-  if (!slopeLabel || !arrowLabel) return;
-
-  slopeLabel.textContent = `${slope >= 0 ? "+" : ""}${slope.toFixed(1)}%`;
-
-  if (slope > 1.0) {
-    arrowLabel.textContent = "🔺";
-    slopeLabel.style.color = "#ef4444";
-  } else if (slope > 0.2) {
-    arrowLabel.textContent = "↗️";
-    slopeLabel.style.color = "#f97316";
-  } else if (slope < -1.0) {
-    arrowLabel.textContent = "🔻";
-    slopeLabel.style.color = "#10b981";
-  } else if (slope < -0.2) {
-    arrowLabel.textContent = "↘️";
-    slopeLabel.style.color = "#10b981";
-  } else {
-    arrowLabel.textContent = "➡️";
-    slopeLabel.style.color = "#9ca3af";
-  }
-}
-
-function refreshUpcomingPreview(currentDistKm = null) {
-  const distKm =
-    currentDistKm !== null
-      ? currentDistKm
-      : state.routeDistances[state.currentRouteIndex] || 0;
-
-  const preview = getUpcomingSegmentData(SLOPE_PREVIEW_LONG_METERS, distKm);
-  if (!preview) return;
-
-  const slope = preview.avgSlope;
-  const upcomingSlopeLabel = document.getElementById("upcoming-slope-label");
-  if (upcomingSlopeLabel) {
-    upcomingSlopeLabel.textContent =
-      `⛰️ ${slope >= 0 ? "+" : ""}${slope.toFixed(1)}%`;
-  }
-
-  ChartsManager.updateUpcomingChart(
-    preview.distances,
-    preview.elevations,
-    slope,
-  );
-}
+// --- PREDICTIVE UPCOMING SLOPE AND RELIEF (movido a ui/routeOverviewSvg.js) ---
 
 // --- GHOST RIDER GAP AND METRICS UPDATE ---
 function updateGhostProgress() {
@@ -3942,378 +2681,8 @@ function updateGhostProgress() {
   }
 }
 
-function createOrientationToggleButton() {
-    console.log("Configurando funcionalidad del botón de orientación...");
-    const btn = document.getElementById("btn-orient-toggle");
-    if (!btn) {
-        console.warn("No se encontró el botón btn-orient-toggle en el DOM.");
-        return;
-    }
+// --- 3D MAP & FPV ENGINE (movido a ui/mapEngine.js) ---
 
-    // Inicializar texto según estado actual
-    btn.textContent = state.isMapFollowingRoute ? "⬆️ Ruta" : "🗺️ Norte";
-
-    // Solo añadimos el evento de clic y la actualización del estado
-    btn.onclick = () => {
-        state.isMapFollowingRoute = !state.isMapFollowingRoute;
-        btn.textContent = state.isMapFollowingRoute ? "⬆️ Ruta" : "🗺️ Norte";
-    };
-}
-
-window.toggleMapEngine = function(btn) {
-    console.log("¡Clic recibido en toggleMapEngine!");
-    stopFpvCameraLoop();
-    const container = document.getElementById("workout-map");
-    const currentMode = state.mapViewMode || (state.mapType === "leaflet" ? "2D" : "3D_AEREO");
-    const nextMode = MAP_VIEW_MODES[(MAP_VIEW_MODES.indexOf(currentMode) + 1) % MAP_VIEW_MODES.length];
-    state.mapViewMode = nextMode;
-    state.mapType = nextMode === "2D" ? "leaflet" : "maplibre";
-    if (nextMode === "3D_FPV") {
-        state.isMapFollowingRoute = true;
-    }
-    saveStateToLocalStorage();
-
-    if (nextMode === "2D") {
-        console.log("Cambiando a motor Leaflet 2D...");
-        if (state.map) {
-            state.map.remove();
-            state.map = null;
-        }
-        mapReadyInstance = null;
-        container.className = "workout-map-fullscreen";
-        container.style.height = "100%";
-        container.style.width = "100%";
-
-        btn.textContent = getMapViewLabel(nextMode);
-        initLeafletMap();
-        drawRouteOnMap();
-
-        // Re-configurar botón de orientación para 2D Leaflet
-        createOrientationToggleButton();
-    }
-    else {
-        console.log(`Cambiando a motor MapLibre ${nextMode}...`);
-        if (!MAPTILER_API_KEY) {
-            showToast("El mapa 3D no está configurado: falta la clave de MapTiler.", "warning");
-            return;
-        }
-
-        if (state.map) {
-            state.map.remove();
-            state.map = null;
-        }
-        mapReadyInstance = null;
-        btn.textContent = getMapViewLabel(nextMode);
-
-        container.className = "workout-map-fullscreen";
-        container.style.height = "100%";
-        container.style.width = "100%";
-
-        try {
-            const mapSdk = getMapSdk();
-            if (!mapSdk?.Map) {
-                throw new Error("El SDK 3D no está disponible.");
-            }
-
-            state.map = new mapSdk.Map({
-                container: 'workout-map',
-                style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_API_KEY}`,
-                center: state.routePoints.length > 0 ? [state.routePoints[0].lon, state.routePoints[0].lat] : [-1.9297, 43.3178],
-                zoom: 14,
-                pitch: nextMode === "3D_FPV" ? 82 : 60,
-                maxPitch: 85,
-                antialias: true
-            });
-            const mapInstance = state.map;
-
-            // Añadir controles de navegación (Zoom y Brújula)
-            state.map.addControl(new mapSdk.NavigationControl({
-                showCompass: true,
-                showZoom: true
-            }), 'top-right');
-
-            state.map.on("load", () => {
-                if (state.map !== mapInstance) return;
-                mapReadyInstance = mapInstance;
-                console.log(`Mapa ${nextMode} cargado correctamente.`);
-                logFpvDebug("Mapa cargado", {
-                    mode: nextMode,
-                    routePoints: state.routePoints.length,
-                    currentRouteIndex: state.currentRouteIndex,
-                    hasFreeCamera:
-                        typeof state.map.getFreeCameraOptions === "function" &&
-                        typeof state.map.setFreeCameraOptions === "function",
-                    sdk: getMapSdk()?.version || "desconocido",
-                });
-                if (typeof state.map.setFog === "function") {
-                    state.map.setFog({
-                        range: [0.5, 10],
-                        color: "#ffffff",
-                        "horizon-blend": 0.1,
-                    });
-                }
-                state.map.setMaxPitch(85);
-                if (nextMode === "3D_FPV") state.map.setPitch(85);
-                if (nextMode === "3D_FPV" && !state.map.getSource("terrain")) {
-                    state.map.addSource("terrain", {
-                        type: "raster-dem",
-                        url: `https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=${MAPTILER_API_KEY}`,
-                        tileSize: 256,
-                        encoding: "mapbox",
-                    });
-                    state.map.setTerrain({ source: "terrain", exaggeration: 1 });
-                }
-                state.map.resize();
-                requestAnimationFrame(positionMapNavigationControls);
-                drawRouteOnMap();
-
-                // Re-configurar botón de orientación para 3D MapLibre
-                createOrientationToggleButton();
-                if (nextMode === "3D_FPV" && state.routePoints.length > 0) {
-                    const point = state.routePoints[state.currentRouteIndex];
-                    const nextPoint = state.routePoints[Math.min(state.currentRouteIndex + 1, state.routePoints.length - 1)];
-                    updateFpvCamera(
-                        [point.lon, point.lat],
-                        [nextPoint.lon, nextPoint.lat],
-                        state.isMapFollowingRoute,
-                    );
-                    startFpvCameraLoop();
-                }
-            });
-
-            let mapErrorAlertShown = false;
-            const reportedMapErrors = new Set();
-            state.map.on("error", (e) => {
-                const mapError = e?.error;
-                const status = e?.error?.status;
-                if (!mapErrorAlertShown && (status === 401 || status === 403)) {
-                    mapErrorAlertShown = true;
-                    showToast("Error de autorización del mapa 3D. Revisa la clave de MapTiler.", "error");
-                }
-                const errorMessage = mapError?.message || String(mapError || "");
-                if (errorMessage && !reportedMapErrors.has(errorMessage)) {
-                    reportedMapErrors.add(errorMessage);
-                    console.warn("MapLibre notificó un recurso no disponible:", errorMessage);
-                }
-            });
-        } catch (err) {
-            console.error("Error inicialización MapLibre:", err);
-            state.mapViewMode = "3D_AEREO";
-            state.mapType = "maplibre";
-            btn.textContent = getMapViewLabel(state.mapViewMode);
-        }
-    }
-};
-
-function getMapViewLabel(mode) {
-    return {
-        "2D": "🗺️ 2D",
-        "3D_AEREO": "🗺️ 3D Aéreo",
-        "3D_FPV": "🚴 3D FPV",
-    }[mode] || "🗺️ 3D Aéreo";
-}
-
-// Función matemática para encontrar el punto exacto [lng, lat] intermedio en base a metros totales.
-function obtenerPuntoPorDistancia(puntos, distanciaObjetivoKm) {
-    if (!puntos || puntos.length === 0) return null;
-    const distanciaObjetivoMetros = distanciaObjetivoKm * 1000;
-
-    // Asumimos que state.routeDistances tiene los km acumulados
-    const distancias = state.routeDistances;
-    if (distanciaObjetivoKm <= 0) return [puntos[0].lon, puntos[0].lat];
-    if (distanciaObjetivoKm >= distancias[distancias.length - 1])
-        return [puntos[puntos.length - 1].lon, puntos[puntos.length - 1].lat];
-
-    for (let i = 0; i < distancias.length - 1; i++) {
-        if (distanciaObjetivoKm >= distancias[i] && distanciaObjetivoKm <= distancias[i + 1]) {
-            const p1 = puntos[i];
-            const p2 = puntos[i + 1];
-            const distTramo = (distancias[i + 1] - distancias[i]); // en km
-            const t = distTramo > 0 ? (distanciaObjetivoKm - distancias[i]) / distTramo : 0;
-
-            const lng = p1.lon + (p2.lon - p1.lon) * t;
-            const lat = p1.lat + (p2.lat - p1.lat) * t;
-            return [lng, lat];
-        }
-    }
-    return [puntos[puntos.length - 1].lon, puntos[puntos.length - 1].lat];
-}
-
-function updateFpvCamera(point, nextPoint, followRoute = true) {
-    if (!state.map || !isMapReady(state.map)) return;
-
-    const mapSdk = getMapSdk();
-    if (!mapSdk?.MercatorCoordinate) return;
-
-    // Usar la interpolación continua si es modo RUTA
-    let currentLngLat, targetLngLat;
-
-    if (state.currentMode === "ROUTE" && state.routePoints.length > 0) {
-        const metrosRecorridosKm = state.totalDistance; // state.totalDistance está en km
-        currentLngLat = obtenerPuntoPorDistancia(state.routePoints, metrosRecorridosKm);
-        targetLngLat = obtenerPuntoPorDistancia(state.routePoints, metrosRecorridosKm + 0.015); // +15 metros
-    } else {
-        currentLngLat = normalizeLngLat(point);
-        targetLngLat = normalizeLngLat(nextPoint) || currentLngLat;
-    }
-
-    if (!currentLngLat || !targetLngLat) return;
-
-    // 2. MODO AVANZADO: FreeCameraOptions
-    if (typeof state.map.getFreeCameraOptions === "function") {
-        try {
-            const camera = state.map.getFreeCameraOptions();
-
-            // Alturas basadas en elevación del terreno (usando interpolación si es posible)
-            const elevation = Wr(currentLngLat, 0);
-            const targetElevation = Wr(targetLngLat, 0);
-
-            camera.position = mapSdk.MercatorCoordinate.fromLngLat(currentLngLat, elevation + 1.7);
-            camera.lookAtPoint(mapSdk.MercatorCoordinate.fromLngLat(targetLngLat, targetElevation + 1.2));
-
-            state.map.setFreeCameraOptions(camera);
-            return;
-        } catch (errFPV) {
-            console.error("Error en estabilización FreeCamera:", errFPV);
-        }
-    }
-
-    // 3. MODO RESPALDO: jumpTo
-    if (typeof state.map.jumpTo === "function") {
-        const deltaLat = targetLngLat[1] - currentLngLat[1];
-        const deltaLng = targetLngLat[0] - currentLngLat[0];
-        const rumboEstabilizado = (Math.atan2(deltaLng, deltaLat) * 180 / Math.PI + 360) % 360;
-
-        state.map.jumpTo({
-            center: currentLngLat,
-            pitch: 85,
-            bearing: rumboEstabilizado,
-            zoom: fpvZoomLevel,
-        });
-    }
-}
-
-function getBearingBetween([lng1, lat1], [lng2, lat2]) {
-    const deltaLng = ((lng2 - lng1) * Math.PI) / 180;
-    const lat1Radians = (lat1 * Math.PI) / 180;
-    const lat2Radians = (lat2 * Math.PI) / 180;
-    const y = Math.sin(deltaLng) * Math.cos(lat2Radians);
-    const x =
-        Math.cos(lat1Radians) * Math.sin(lat2Radians) -
-        Math.sin(lat1Radians) *
-            Math.cos(lat2Radians) *
-            Math.cos(deltaLng);
-    const bearing = (Math.atan2(y, x) * 180) / Math.PI;
-    return (bearing + 360) % 360;
-}
-
-function getCameraElevation(position, fallbackElevation = 0) {
-    const fallback = Number.isFinite(Number(fallbackElevation))
-        ? Number(fallbackElevation)
-        : 0;
-    if (!state.map || typeof state.map.queryTerrainElevation !== "function") {
-        return fallback;
-    }
-
-    const terrainElevation = Number(state.map.queryTerrainElevation(position));
-    return Number.isFinite(terrainElevation) && (terrainElevation !== 0 || fallback === 0)
-        ? terrainElevation
-        : fallback;
-}
-
-function isValidLngLat(position) {
-    return Array.isArray(position) &&
-        position.length === 2 &&
-        Number.isFinite(position[0]) &&
-        Number.isFinite(position[1]) &&
-        position[0] >= -180 &&
-        position[0] <= 180 &&
-        position[1] >= -90 &&
-        position[1] <= 90;
-}
-
-function normalizeLngLat(position) {
-    if (Array.isArray(position)) {
-        const lng = Number(position[0]);
-        const lat = Number(position[1]);
-        return Number.isFinite(lng) && Number.isFinite(lat)
-            ? [lng, lat]
-            : null;
-    }
-    if (position && typeof position === "object") {
-        const lng = Number(
-            position.lng ?? position.lon ?? position.longitude,
-        );
-        const lat = Number(position.lat ?? position.latitude);
-        return Number.isFinite(lng) && Number.isFinite(lat)
-            ? [lng, lat]
-            : null;
-    }
-    return null;
-}
-
-function startFpvCameraLoop() {
-    stopFpvCameraLoop();
-
-    if (
-        !state.map ||
-        typeof state.map.getFreeCameraOptions !== "function" ||
-        typeof state.map.setFreeCameraOptions !== "function"
-    ) {
-        return;
-    }
-
-    const render = () => {
-        fpvAnimationFrame = null;
-        if (state.mapViewMode !== "3D_FPV" || !state.map) return;
-        if (state.routePoints.length === 0) {
-            fpvAnimationFrame = requestAnimationFrame(render);
-            return;
-        }
-        if (!isMapReady(state.map)) {
-            fpvAnimationFrame = requestAnimationFrame(render);
-            return;
-        }
-
-        const point = state.routePoints[state.currentRouteIndex];
-        if (!point) {
-            fpvAnimationFrame = requestAnimationFrame(render);
-            return;
-        }
-        const nextPoint = state.routePoints[
-            Math.min(state.currentRouteIndex + 1, state.routePoints.length - 1)
-        ] || point;
-        updateFpvCamera(
-            [point.lon, point.lat],
-            [nextPoint.lon, nextPoint.lat],
-            state.isMapFollowingRoute,
-        );
-        fpvAnimationFrame = requestAnimationFrame(render);
-    };
-
-    fpvAnimationFrame = requestAnimationFrame(render);
-}
-
-function stopFpvCameraLoop() {
-    if (fpvAnimationFrame !== null) {
-        cancelAnimationFrame(fpvAnimationFrame);
-        fpvAnimationFrame = null;
-    }
-}
-
-function offsetLngLat([lng, lat], bearingRadians, distanceMeters) {
-    const earthRadiusMeters = 6371000;
-    const latitudeRadians = (lat * Math.PI) / 180;
-    const deltaLat = (distanceMeters * Math.cos(bearingRadians)) / earthRadiusMeters;
-    const deltaLng =
-        (distanceMeters * Math.sin(bearingRadians)) /
-        (earthRadiusMeters * Math.cos(latitudeRadians));
-
-    return [
-        lng + (deltaLng * 180) / Math.PI,
-        lat + (deltaLat * 180) / Math.PI,
-    ];
-}
 
 async function handleSessionExport() {
   if (!state.currentSessionId && !state.lastSavedSessionId) return;
@@ -4389,738 +2758,11 @@ async function handleSessionCsvExport() {
 }
 window.handleSessionCsvExport = handleSessionCsvExport;
 
-// --- HISTORY AND STATISTICS SCREENS ---
-async function loadHistoryList() {
-  if (!state.currentUser) return;
+// --- HISTORY AND STATISTICS SCREENS MOVED TO ui/historyView.js ---
 
-  try {
-    const sessions = await DbManager.getAllSessions(state.currentUser.id);
-    const container = document.getElementById("history-items-container");
-    container.innerHTML = "";
+// --- TRAINING CALENDAR AND STATS MOVED TO ui/calendarView.js ---
 
-    if (sessions.length === 0) {
-      container.innerHTML = `
-        <div class="glass-card" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-          No se han registrado sesiones de entrenamiento en tu perfil.
-        </div>
-      `;
-      return;
-    }
+// --- FPV ZOOM CONTROLS (movido a ui/mapEngine.js) ---
 
-    sessions.forEach((s) => {
-      const date = new Date(s.startTime).toLocaleDateString("es-ES", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      const totalDuration = s.endTime
-        ? new Date(s.endTime - s.startTime).toISOString().substr(11, 8)
-        : "00:00:00";
-      const activeDuration = Number.isFinite(Number(s.activeDuration))
-        ? new Date(Number(s.activeDuration) * 1000)
-            .toISOString()
-            .substr(11, 8)
-        : totalDuration;
-
-      const modeText = s.gpxPath ? "Ruta" : "Manual";
-      const modeClass = s.gpxPath ? "route" : "manual";
-      const routeName = s.routeName || s.gpxPath || "Ruta";
-
-      const card = document.createElement("div");
-      card.className = "glass-card history-item";
-
-      card.innerHTML = `
-        <div class="history-date-box">
-          <span class="history-date">${date}</span>
-          <span class="history-type ${modeClass}">Modo: ${modeText} <span class="history-route-name" id="history-route-name-${s.id}"></span></span>
-        </div>
-
-        <div class="history-stats-row">
-          <div class="history-stat-unit">
-            <span class="history-stat-label">Distancia</span>
-            <span class="history-stat-value">${s.totalDistance.toFixed(2)} km</span>
-          </div>
-          <div class="history-stat-unit">
-            <span class="history-stat-label">Actividad</span>
-            <span class="history-stat-value">${activeDuration}</span>
-          </div>
-          <div class="history-stat-unit">
-            <span class="history-stat-label">Total sesión</span>
-            <span class="history-stat-value">${totalDuration}</span>
-          </div>
-          <div class="history-stat-unit">
-            <span class="history-stat-label">Pot. Media</span>
-            <span class="history-stat-value">${s.averagePower} W</span>
-          </div>
-          ${Array.isArray(s.routePoints) && s.routePoints.length > 0
-            ? `<button class="btn btn-primary history-repeat-route" id="btn-repeat-${s.id}">Repetir ruta</button>`
-            : ""}
-          ${s.gpxPath ? `<button class="btn btn-dark history-rename-route" id="btn-rename-${s.id}">Renombrar</button>` : ""}
-          <button class="btn btn-secondary" id="btn-export-csv-${s.id}">CSV</button>
-          <button class="btn btn-primary" style="padding: 6px 12px; font-size: 11px; border-radius: 8px; background: #6366f1;" id="btn-export-fit-${s.id}">FIT</button>
-          <button class="btn btn-danger" style="padding: 6px 12px; font-size: 11px; border-radius: 8px;" id="btn-del-${s.id}">❌</button>
-          </div>
-        `;
-
-      const routeNameElement = card.querySelector(`#history-route-name-${s.id}`);
-      if (routeNameElement) routeNameElement.textContent = `(${routeName})`;
-
-      card.querySelector(`#btn-del-${s.id}`).onclick = (e) => {
-        e.stopPropagation();
-        deleteHistorySession(s.id);
-      };
-      const repeatButton = card.querySelector(`#btn-repeat-${s.id}`);
-      if (repeatButton) {
-        repeatButton.onclick = (e) => {
-          e.stopPropagation();
-          repeatRouteFromHistory(s.id);
-        };
-      }
-      const csvButton = card.querySelector(`#btn-export-csv-${s.id}`);
-      csvButton.onclick = (e) => {
-        e.stopPropagation();
-        downloadSpecificHistoryCsv(s.id);
-      };
-      const fitButton = card.querySelector(`#btn-export-fit-${s.id}`);
-      if (fitButton) {
-        fitButton.onclick = (e) => {
-          e.stopPropagation();
-          downloadSpecificHistoryFit(s.id);
-        };
-      }
-      const renameButton = card.querySelector(`#btn-rename-${s.id}`);
-      if (renameButton) {
-        renameButton.onclick = (e) => {
-          e.stopPropagation();
-          renameHistoryRoute(s.id);
-        };
-      }
-
-      // Open the same summary screen used after finishing a live session
-      card.onclick = () => openHistoricalSessionSummary(s.id, "history");
-
-      container.appendChild(card);
-    });
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-async function repeatRouteFromHistory(id) {
-  try {
-    const session = await DbManager.getSessionById(id);
-    if (!session || !Array.isArray(session.routePoints) || session.routePoints.length === 0) {
-      showToast("Esta sesión no contiene una copia reutilizable de la ruta.", "info");
-      return;
-    }
-
-    state.currentMode = "ROUTE";
-    state.gpxFilename = session.gpxPath || `Ruta histórica ${id}.gpx`;
-    state.routeName = session.routeName || session.gpxPath || `Ruta histórica ${id}`;
-    state.routePoints = session.routePoints.map((point) => ({
-      lat: Number(point.lat),
-      lon: Number(point.lon),
-    }));
-    state.routeElevations = Array.isArray(session.routeElevations)
-      ? session.routeElevations.map(Number)
-      : state.routePoints.map(() => 0);
-    state.routeDistances = Array.isArray(session.routeDistances)
-      ? session.routeDistances.map(Number)
-      : [];
-    state.routeTotalAscent = Number(session.routeTotalAscent) || calculateTotalRouteAscent();
-    state.currentRouteIndex = 0;
-    state.routeLoadedFromHistory = true;
-    navigateTo("connections");
-  } catch (error) {
-    console.error("Error al repetir la ruta histórica:", error);
-    showToast("No se pudo cargar la ruta seleccionada.", "error");
-  }
-}
-
-async function openHistoricalSessionSummary(id, returnScreen = "history") {
-  try {
-    const session = await DbManager.getSessionById(id);
-    const telemetry = await DbManager.getSensorDataForSession(id);
-
-    if (!session) {
-      showToast("No se encontró la sesión seleccionada.", "error");
-      return;
-    }
-
-    const totalDurationSeconds = session.endTime
-      ? Math.max(0, (session.endTime - session.startTime) / 1000)
-      : 0;
-    const activeDurationSeconds =
-      Number.isFinite(Number(session.activeDuration)) &&
-      Number(session.activeDuration) >= 0
-        ? Number(session.activeDuration)
-        : totalDurationSeconds;
-    const duration = new Date(activeDurationSeconds * 1000)
-      .toISOString()
-      .substr(11, 8);
-    const totalDuration = new Date(totalDurationSeconds * 1000)
-      .toISOString()
-      .substr(11, 8);
-    const powers = telemetry.map((point) => Number(point.power) || 0);
-    const speeds = telemetry.map((point) => Number(point.speed) || 0);
-    const heartRates = telemetry
-      .map((point) => Number(point.heartRate) || 0)
-      .filter((value) => value > 0);
-    const avgPower = Number(session.averagePower) || 0;
-    const maxPower = Number.isFinite(Number(session.maxPower))
-      ? Number(session.maxPower)
-      : powers.length > 0
-        ? Math.max(...powers)
-        : 0;
-    const avgHr = Number(session.averageHeartRate) || 0;
-    const maxHr = Number.isFinite(Number(session.maxHeartRate))
-      ? Number(session.maxHeartRate)
-      : heartRates.length > 0
-        ? Math.max(...heartRates)
-        : 0;
-    const distance = Number(session.totalDistance) || 0;
-    const avgSpeed = Number.isFinite(Number(session.averageSpeed))
-      ? Number(session.averageSpeed)
-      : activeDurationSeconds > 0
-        ? distance / (activeDurationSeconds / 3600)
-        : 0;
-    const maxSpeed = Number.isFinite(Number(session.maxSpeed))
-      ? Number(session.maxSpeed)
-      : speeds.length > 0
-        ? Math.max(...speeds)
-        : 0;
-    const ftp = state.currentUser ? state.currentUser.ftp : 200;
-    const np = Number.isFinite(Number(session.normalizedPower))
-      ? Number(session.normalizedPower)
-      : Math.round(calculateNormalizedPowerFromValues(powers));
-    const intensityFactor = Number.isFinite(Number(session.intensityFactor))
-      ? Number(session.intensityFactor)
-      : ftp > 0
-        ? parseFloat((np / ftp).toFixed(2))
-        : 0;
-    const tss = Number.isFinite(Number(session.tss))
-      ? Number(session.tss)
-      : ftp > 0
-        ? Math.round((activeDurationSeconds * np * intensityFactor) / (ftp * 36))
-        : 0;
-    const timeInPowerZones = [0, 0, 0, 0, 0, 0];
-    const z = state.powerZones || [55, 75, 88, 95, 106];
-
-    powers.forEach((power) => {
-      const thresholds = z.map((value) => ftp * (value / 100));
-      let zone = thresholds.findIndex((threshold) => power < threshold);
-      if (zone === -1) zone = 5;
-      timeInPowerZones[zone]++;
-    });
-
-    state.lastSavedSessionId = id;
-    state.summaryReturnScreen = returnScreen;
-    setSessionSaveStatus("Sesión guardada correctamente", "var(--accent-green)");
-    renderSummaryMetrics({
-      duration,
-      totalDuration,
-      distance,
-      np,
-      tss,
-      intensityFactor,
-      calories: Number.isFinite(Number(session.calories))
-        ? Number(session.calories)
-        : Math.round(avgPower * (activeDurationSeconds / 3600) * 3.6),
-      kilojoules: Number.isFinite(Number(session.kilojoules))
-        ? Number(session.kilojoules)
-        : (Number.isFinite(Number(session.calories)) ? Math.round(Number(session.calories) * 1.05) : Math.round(avgPower * (activeDurationSeconds / 1000))),
-      avgPower,
-      maxPower,
-      avgSpeed,
-      maxSpeed,
-      avgHr,
-      maxHr,
-      timeInPowerZones,
-    });
-    navigateTo("summary");
-    renderSummaryRoute(session, distance);
-  } catch (e) {
-    console.error("Error loading historical session summary:", e);
-    showToast("No se pudo abrir el resumen de la sesión.", "error");
-  }
-}
-
-async function deleteHistorySession(id) {
-  const confirmDel = await showConfirm(
-    "¿Quieres eliminar permanentemente esta sesión de tu historial?",
-  );
-  if (confirmDel) {
-    try {
-      await DbManager.deleteSession(id);
-      await DbManager.deleteDataForSession(id);
-      loadHistoryList();
-    } catch (e) {
-      console.error(e);
-    }
-  }
-}
-
-async function downloadSpecificHistoryGpx(id) {
-  try {
-    const session = await DbManager.getSessionById(id);
-    const data = await DbManager.getSensorDataForSession(id);
-    if (session && data.length > 0) {
-      const uName = state.currentUser ? state.currentUser.name : "Usuario";
-      if (!session.gpxPath) {
-        showToast("Las sesiones manuales no tienen una ruta GPS para exportar.", "info");
-        return;
-      }
-      if (!GpxManager.exportSession(session, data, uName)) {
-        showToast("Esta sesión no contiene coordenadas GPS válidas para exportar.", "warning");
-      }
-    } else {
-      showToast("Esta sesión no posee datos de telemetría exportables.", "warning");
-    }
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-async function downloadSpecificHistoryCsv(id) {
-  try {
-    const session = await DbManager.getSessionById(id);
-    const data = await DbManager.getSensorDataForSession(id);
-    if (!session || data.length === 0) {
-      showToast("Esta sesión no posee datos de telemetría exportables.", "warning");
-      return;
-    }
-
-    const userName = state.currentUser ? state.currentUser.name : "Usuario";
-    if (!GpxManager.exportSessionCsv(session, data, userName)) {
-      showToast("No se pudo generar el archivo CSV de esta sesión.", "error");
-    }
-  } catch (error) {
-    console.error("Error exportando CSV histórico:", error);
-    showToast("No se pudo exportar el CSV de esta sesión.", "error");
-  }
-}
-window.downloadSpecificHistoryCsv = downloadSpecificHistoryCsv;
-
-async function downloadSpecificHistoryFit(id) {
-  try {
-    const session = await DbManager.getSessionById(id);
-    const data = await DbManager.getSensorDataForSession(id);
-    if (!session || data.length === 0) {
-      showToast("Esta sesión no posee datos de telemetría exportables.", "warning");
-      return;
-    }
-
-    const userName = state.currentUser ? state.currentUser.name : "Usuario";
-    if (!GpxManager.exportSessionFit(session, data, userName)) {
-      showToast("No se pudo generar el archivo FIT de esta sesión.", "error");
-    }
-  } catch (error) {
-    console.error("Error exportando FIT histórico:", error);
-    showToast("No se pudo exportar el FIT de esta sesión.", "error");
-  }
-}
-window.downloadSpecificHistoryFit = downloadSpecificHistoryFit;
-
-async function checkPendingSessions() {
-  if (!state.currentUser) return;
-  const sessions = await DbManager.getAllSessions(state.currentUser.id);
-  const pending = sessions.find((s) => !s.endTime);
-
-  if (pending) {
-    if (
-      await showConfirm(
-        "Parece que tienes una sesión de entrenamiento incompleta. ¿Quieres recuperarla y guardarla?",
-        "Recuperar sesión",
-        "primary"
-      )
-    ) {
-      pending.endTime = Date.now();
-      await DbManager.updateSession(pending);
-      showToast("Sesión recuperada con éxito.", "success");
-    } else {
-      await DbManager.deleteSession(pending.id);
-      await DbManager.deleteDataForSession(pending.id);
-    }
-  }
-}
-
-// --- TRAINING CALENDAR ---
-let calendarCurrentMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-let selectedCalendarDate = formatDateKey(new Date());
-let calendarSessions = [];
-
-function formatDateKey(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function getSessionDurationSeconds(session) {
-  const activeDuration = Number(session.activeDuration);
-  if (Number.isFinite(activeDuration) && activeDuration >= 0) {
-    return activeDuration;
-  }
-  return Math.max(0, (Number(session.endTime) - Number(session.startTime)) / 1000);
-}
-
-function getCompletedSessions(sessions) {
-  return (sessions || []).filter((s) => {
-    const startTime = Number(s.startTime);
-    return Boolean(s.endTime) && Number.isFinite(startTime);
-  });
-}
-
-function aggregateSessionMetrics(sessions) {
-  return sessions.reduce(
-    (acc, session) => {
-      acc.sessions += 1;
-      acc.distance += Math.max(0, Number(session.totalDistance) || 0);
-      acc.duration += getSessionDurationSeconds(session);
-      acc.ascent += Math.max(0, Number(session.totalAscent) || 0);
-      return acc;
-    },
-    { sessions: 0, distance: 0, duration: 0, ascent: 0 }
-  );
-}
-
-function formatActiveDuration(durationSeconds) {
-  const totalMinutes = Math.floor(Math.max(0, durationSeconds) / 60);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
-}
-
-function renderPeriodSummaryMetrics(container, sessions) {
-  if (!container) return;
-  const metrics = aggregateSessionMetrics(sessions);
-  container.replaceChildren();
-  [
-    ["Sesiones", String(metrics.sessions)],
-    ["Distancia", `${metrics.distance.toFixed(1)} km`],
-    ["Tiempo activo", formatActiveDuration(metrics.duration)],
-    ["Desnivel +", `${Math.round(metrics.ascent)} m`],
-  ].forEach(([label, value]) => {
-    const item = document.createElement("div");
-    item.className = "training-summary-metric";
-    const strong = document.createElement("strong");
-    strong.textContent = value;
-    const span = document.createElement("span");
-    span.textContent = label;
-    item.append(strong, span);
-    container.append(item);
-  });
-}
-
-function getWeekStartMonday(date) {
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function renderSelectedDaySessions(sessions) {
-  const heading = document.getElementById("training-selected-day-heading");
-  const container = document.getElementById("training-selected-day-sessions");
-  if (!heading || !container) return;
-
-  const [y, m, d] = selectedCalendarDate.split("-").map(Number);
-  const selectedDateObj = new Date(y, m - 1, d);
-  heading.textContent = `Sesiones del ${selectedDateObj.toLocaleDateString("es-ES", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  })}`;
-
-  const daySessions = sessions
-    .filter((s) => formatDateKey(new Date(Number(s.startTime))) === selectedCalendarDate)
-    .sort((a, b) => Number(a.startTime) - Number(b.startTime));
-
-  container.replaceChildren();
-  if (daySessions.length === 0) {
-    const p = document.createElement("p");
-    p.className = "training-calendar-empty";
-    p.textContent = "No hay sesiones finalizadas en este día.";
-    container.append(p);
-    return;
-  }
-
-  daySessions.forEach((session) => {
-    const article = document.createElement("article");
-    article.className = "training-day-session";
-    article.style.cursor = "pointer";
-    article.setAttribute("role", "button");
-    article.setAttribute("tabindex", "0");
-    article.title = "Haz clic para ver el resumen de esta sesión";
-
-    const details = document.createElement("div");
-    details.className = "training-day-session-details";
-    const strong = document.createElement("strong");
-    strong.textContent = session.routeName || (session.gpxPath ? "Ruta" : "Sesión manual");
-    const timeSpan = document.createElement("span");
-    timeSpan.textContent = new Date(Number(session.startTime)).toLocaleTimeString("es-ES", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    details.append(strong, timeSpan);
-
-    const metricsDiv = document.createElement("div");
-    metricsDiv.className = "training-day-session-metrics";
-    [
-      `${(Number(session.totalDistance) || 0).toFixed(2)} km`,
-      formatActiveDuration(getSessionDurationSeconds(session)),
-      `${Math.round(Number(session.totalAscent) || 0)} m+`,
-    ].forEach((text) => {
-      const sp = document.createElement("span");
-      sp.textContent = text;
-      metricsDiv.append(sp);
-    });
-
-    const actionSpan = document.createElement("span");
-    actionSpan.style.color = "var(--accent-green, #10b981)";
-    actionSpan.style.fontWeight = "600";
-    actionSpan.style.marginLeft = "auto";
-    actionSpan.textContent = "Ver detalle →";
-    metricsDiv.append(actionSpan);
-
-    article.append(details, metricsDiv);
-
-    const openSummary = () => {
-      openHistoricalSessionSummary(session.id, "stats");
-    };
-
-    article.addEventListener("click", openSummary);
-    article.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        openSummary();
-      }
-    });
-
-    container.append(article);
-  });
-}
-
-function renderTrainingCalendar() {
-  const grid = document.getElementById("training-calendar-grid");
-  const monthLabel = document.getElementById("training-calendar-month");
-  if (!grid || !monthLabel) return;
-
-  const year = calendarCurrentMonth.getFullYear();
-  const month = calendarCurrentMonth.getMonth();
-  const firstDayOfMonth = new Date(year, month, 1);
-  const lastDayOfMonth = new Date(year, month + 1, 0);
-
-  const firstDayWeekdayOffset = (firstDayOfMonth.getDay() + 6) % 7;
-  const startDate = new Date(year, month, 1 - firstDayWeekdayOffset);
-  const totalDaysToShow = Math.ceil((firstDayWeekdayOffset + lastDayOfMonth.getDate()) / 7) * 7;
-  const completedSessions = getCompletedSessions(calendarSessions);
-
-  const rawMonthName = firstDayOfMonth.toLocaleDateString("es-ES", {
-    month: "long",
-    year: "numeric",
-  });
-  monthLabel.textContent =
-    rawMonthName.charAt(0).toLocaleUpperCase("es-ES") + rawMonthName.slice(1);
-
-  // Resumen del mes mostrado
-  const monthSessions = completedSessions.filter((s) => {
-    const d = new Date(Number(s.startTime));
-    return d.getFullYear() === year && d.getMonth() === month;
-  });
-  renderPeriodSummaryMetrics(
-    document.getElementById("training-month-summary"),
-    monthSessions
-  );
-
-  // Resumen de la semana de la fecha seleccionada
-  const [y, m, d] = selectedCalendarDate.split("-").map(Number);
-  const selectedDateObj = new Date(y, m - 1, d);
-  const weekStart = getWeekStartMonday(selectedDateObj);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 6);
-  weekEnd.setHours(23, 59, 59, 999);
-
-  const weekSessions = completedSessions.filter((s) => {
-    const startTime = Number(s.startTime);
-    return startTime >= weekStart.getTime() && startTime <= weekEnd.getTime();
-  });
-
-  const weekHeading = document.getElementById("training-week-heading");
-  if (weekHeading) {
-    weekHeading.textContent = `Semana ${weekStart.toLocaleDateString("es-ES", {
-      day: "numeric",
-      month: "short",
-    })} – ${weekEnd.toLocaleDateString("es-ES", {
-      day: "numeric",
-      month: "short",
-    })}`;
-  }
-  renderPeriodSummaryMetrics(
-    document.getElementById("training-week-summary"),
-    weekSessions
-  );
-
-  // Cuadrícula de días
-  grid.replaceChildren();
-  ["L", "M", "X", "J", "V", "S", "D"].forEach((weekday) => {
-    const sp = document.createElement("span");
-    sp.className = "training-calendar-weekday";
-    sp.setAttribute("aria-hidden", "true");
-    sp.textContent = weekday;
-    grid.append(sp);
-  });
-
-  const todayKey = formatDateKey(new Date());
-
-  for (let i = 0; i < totalDaysToShow; i++) {
-    const date = new Date(startDate);
-    date.setDate(startDate.getDate() + i);
-    const dateKey = formatDateKey(date);
-    const daySessions = completedSessions.filter(
-      (s) => formatDateKey(new Date(Number(s.startTime))) === dateKey
-    );
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "training-calendar-day";
-    btn.dataset.calendarDate = dateKey;
-    btn.setAttribute("aria-pressed", String(dateKey === selectedCalendarDate));
-    btn.setAttribute(
-      "aria-label",
-      `${date.toLocaleDateString("es-ES", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })}${daySessions.length ? `, ${daySessions.length} sesiones` : ""}`
-    );
-
-    if (date.getMonth() !== month) btn.classList.add("outside-month");
-    if (dateKey === selectedCalendarDate) btn.classList.add("selected");
-    if (dateKey === todayKey) btn.classList.add("today");
-
-    const numSpan = document.createElement("span");
-    numSpan.className = "training-calendar-day-number";
-    numSpan.textContent = String(date.getDate());
-    btn.append(numSpan);
-
-    if (daySessions.length > 0) {
-      const actSpan = document.createElement("span");
-      actSpan.className = "training-calendar-day-activity";
-      const totalKm = daySessions.reduce(
-        (acc, s) => acc + (Number(s.totalDistance) || 0),
-        0
-      );
-      actSpan.textContent = `${daySessions.length} ses. · ${totalKm.toFixed(0)} km`;
-      btn.append(actSpan);
-    }
-
-    btn.addEventListener("click", () => selectTrainingCalendarDate(dateKey));
-    grid.append(btn);
-  }
-
-  renderSelectedDaySessions(completedSessions);
-}
-
-function changeTrainingCalendarMonth(delta) {
-  const [y, m, d] = selectedCalendarDate.split("-").map(Number);
-  const currentSelDate = new Date(y, m - 1, d);
-  calendarCurrentMonth = new Date(
-    calendarCurrentMonth.getFullYear(),
-    calendarCurrentMonth.getMonth() + delta,
-    1
-  );
-  const maxDaysInNewMonth = new Date(
-    calendarCurrentMonth.getFullYear(),
-    calendarCurrentMonth.getMonth() + 1,
-    0
-  ).getDate();
-  currentSelDate.setFullYear(
-    calendarCurrentMonth.getFullYear(),
-    calendarCurrentMonth.getMonth(),
-    Math.min(currentSelDate.getDate(), maxDaysInNewMonth)
-  );
-  selectedCalendarDate = formatDateKey(currentSelDate);
-  renderTrainingCalendar();
-}
-
-function selectTrainingCalendarDate(dateKey) {
-  const [y, m, d] = dateKey.split("-").map(Number);
-  const dateObj = new Date(y, m - 1, d);
-  selectedCalendarDate = dateKey;
-  calendarCurrentMonth = new Date(dateObj.getFullYear(), dateObj.getMonth(), 1);
-  renderTrainingCalendar();
-}
-
-function goToTrainingCalendarToday() {
-  selectTrainingCalendarDate(formatDateKey(new Date()));
-}
-
-async function loadProgressStats() {
-  if (!state.currentUser) return;
-
-  try {
-    const sessions = await DbManager.getAllSessions(state.currentUser.id);
-    calendarSessions = sessions;
-    renderTrainingCalendar();
-
-    let totalSessions = sessions.length;
-    let totalDist = 0.0;
-    let totalMillis = 0;
-    let maxPowerVal = 0;
-
-    for (const s of sessions) {
-      totalDist += s.totalDistance;
-      if (s.endTime) {
-        totalMillis += s.endTime - s.startTime;
-      }
-
-      // Query sensor max power
-      const data = await DbManager.getSensorDataForSession(s.id);
-      const powers = data.map((d) => d.power || 0);
-      if (powers.length > 0) {
-        const localMax = Math.max(...powers);
-        if (localMax > maxPowerVal) maxPowerVal = localMax;
-      }
-    }
-
-    // Format times
-    const totalHours = Math.floor(totalMillis / 3600000);
-    const totalMinutes = Math.floor((totalMillis % 3600000) / 60000);
-
-    document.getElementById("stats-total-sessions").textContent = totalSessions;
-    document.getElementById("stats-total-distance").textContent =
-      `${totalDist.toFixed(1)} km`;
-    document.getElementById("stats-total-time").textContent =
-      `${totalHours}h ${totalMinutes}m`;
-    document.getElementById("stats-max-power").textContent = `${maxPowerVal} W`;
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-window.changeFpvZoom = function(delta) {
-    // Ajustar valor entre 1 y 22
-    fpvZoomLevel = Math.max(1, Math.min(32, fpvZoomLevel + delta));
-    console.log("Nuevo nivel de zoom:", fpvZoomLevel);
-
-    // Si estamos en FPV y el mapa está activo, forzar actualización de la vista
-    if (state.map && typeof state.map.setZoom === 'function') {
-        state.map.setZoom(fpvZoomLevel);
-    }
-};
-
-window.addEventListener('keydown', (e) => {
-    if (e.key === '+') {
-        changeFpvZoom(1);
-    } else if (e.key === '-') {
-        changeFpvZoom(-1);
-    }
-});
 
 

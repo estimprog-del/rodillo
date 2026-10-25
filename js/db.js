@@ -632,7 +632,7 @@ export async function importAllData(file) {
   }
 }
 // Export database functions globally
-window.DbManager = {
+export const DbManager = {
   initDb,
   getAllUsers,
   getUserById,
@@ -658,3 +658,5 @@ window.DbManager = {
   previewImportData,
   importAllData
 };
+window.DbManager = DbManager;
+

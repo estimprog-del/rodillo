@@ -667,6 +667,15 @@ export function bindEvents(handlers) {
     } else if (event.key.toLowerCase() === "s" || event.key === "ArrowDown") {
       event.preventDefault();
       changeVirtualGear(-1);
+    } else if (event.code === "Space" && state.isSessionActive) {
+      event.preventDefault();
+      if (typeof togglePause === "function") togglePause();
+    } else if (event.key.toLowerCase() === "m" && state.isSessionActive) {
+      event.preventDefault();
+      const btn = document.getElementById("btn-toggle-3d");
+      if (btn && typeof window.toggleMapEngine === "function") {
+        window.toggleMapEngine(btn);
+      }
     }
   });
 
