@@ -4,11 +4,137 @@ import { state, loadWorkoutLayoutForUser } from "../modules/state.js";
 import { hideModal } from "../modules/ui.js";
 import { showToast, showConfirm } from "../modules/toast.js";
 import { loadDashboardHeader } from "./dashboard.js";
+import { processAvatarImage } from "../utils/imageUtils.js";
 
 let _navigateTo = null;
+let newAvatarDataUrl = null;
+let editAvatarDataUrl = null;
 
 export function initUserView({ navigateTo }) {
   _navigateTo = navigateTo;
+  initAvatarUploadControls();
+}
+
+/**
+ * Resetea los controles del modal de añadir perfil
+ */
+export function resetAddUserAvatar() {
+  newAvatarDataUrl = null;
+  const fileInput = document.getElementById("new-user-avatar-input");
+  if (fileInput) fileInput.value = "";
+  const preview = document.getElementById("new-user-avatar-preview");
+  if (preview) {
+    preview.innerHTML = '<span class="avatar-preview-placeholder">👤</span>';
+  }
+  const removeBtn = document.getElementById("new-user-avatar-remove");
+  if (removeBtn) removeBtn.style.display = "none";
+}
+
+/**
+ * Prepara los controles del modal de editar perfil con la foto actual del usuario
+ */
+export function prepareEditUserAvatar() {
+  const u = state.currentUser;
+  editAvatarDataUrl = u?.avatarUrl || u?.imageUri || null;
+
+  const fileInput = document.getElementById("edit-user-avatar-input");
+  if (fileInput) fileInput.value = "";
+
+  const preview = document.getElementById("edit-user-avatar-preview");
+  const removeBtn = document.getElementById("edit-user-avatar-remove");
+
+  if (preview) {
+    if (editAvatarDataUrl) {
+      preview.innerHTML = `<img src="${editAvatarDataUrl}" alt="${u?.name || 'Avatar'}" class="avatar-img" />`;
+    } else {
+      const initials = (u?.name || "")
+        .split(" ")
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase();
+      preview.innerHTML = `<span class="avatar-preview-placeholder">${initials || "👤"}</span>`;
+    }
+  }
+
+  if (removeBtn) {
+    removeBtn.style.display = editAvatarDataUrl ? "inline-flex" : "none";
+  }
+}
+
+/**
+ * Inicializa los eventos para la carga de avatar (input file, preview, remove)
+ */
+function initAvatarUploadControls() {
+  // 1. Modal Añadir Usuario
+  const newFileInput = document.getElementById("new-user-avatar-input");
+  if (newFileInput) {
+    newFileInput.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const dataUrl = await processAvatarImage(file, 180, 0.85);
+        newAvatarDataUrl = dataUrl;
+        const preview = document.getElementById("new-user-avatar-preview");
+        if (preview) {
+          preview.innerHTML = `<img src="${dataUrl}" alt="Avatar Preview" class="avatar-img" />`;
+        }
+        const removeBtn = document.getElementById("new-user-avatar-remove");
+        if (removeBtn) removeBtn.style.display = "inline-flex";
+      } catch (err) {
+        console.error("Error al procesar avatar:", err);
+        showToast(err.message || "Error al procesar la imagen.", "error");
+      }
+    });
+  }
+
+  const newRemoveBtn = document.getElementById("new-user-avatar-remove");
+  if (newRemoveBtn) {
+    newRemoveBtn.addEventListener("click", () => {
+      resetAddUserAvatar();
+    });
+  }
+
+  // 2. Modal Editar Usuario
+  const editFileInput = document.getElementById("edit-user-avatar-input");
+  if (editFileInput) {
+    editFileInput.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const dataUrl = await processAvatarImage(file, 180, 0.85);
+        editAvatarDataUrl = dataUrl;
+        const preview = document.getElementById("edit-user-avatar-preview");
+        if (preview) {
+          preview.innerHTML = `<img src="${dataUrl}" alt="Avatar Preview" class="avatar-img" />`;
+        }
+        const removeBtn = document.getElementById("edit-user-avatar-remove");
+        if (removeBtn) removeBtn.style.display = "inline-flex";
+      } catch (err) {
+        console.error("Error al procesar avatar:", err);
+        showToast(err.message || "Error al procesar la imagen.", "error");
+      }
+    });
+  }
+
+  const editRemoveBtn = document.getElementById("edit-user-avatar-remove");
+  if (editRemoveBtn) {
+    editRemoveBtn.addEventListener("click", () => {
+      editAvatarDataUrl = null;
+      if (editFileInput) editFileInput.value = "";
+      const preview = document.getElementById("edit-user-avatar-preview");
+      if (preview) {
+        const initials = (state.currentUser?.name || "")
+          .split(" ")
+          .map((n) => n[0])
+          .slice(0, 2)
+          .join("")
+          .toUpperCase();
+        preview.innerHTML = `<span class="avatar-preview-placeholder">${initials || "👤"}</span>`;
+      }
+      editRemoveBtn.style.display = "none";
+    });
+  }
 }
 
 /**
@@ -39,9 +165,14 @@ export async function loadProfilesGrid() {
       .join("")
       .toUpperCase();
 
+    const avatarSrc = u.avatarUrl || u.imageUri;
+    const avatarContent = avatarSrc
+      ? `<img src="${avatarSrc}" alt="${u.name}" class="avatar-img" />`
+      : initials;
+
     card.innerHTML = `
       <button class="user-card-delete" title="Eliminar Perfil">&times;</button>
-      <div class="user-avatar">${initials}</div>
+      <div class="user-avatar">${avatarContent}</div>
       <div class="user-name">${u.name}</div>
       <div class="user-meta">${u.weight} kg • FTP ${u.ftp}W</div>
     `;
@@ -128,11 +259,14 @@ export async function handleAddUserSubmit(e) {
         maxHeartRate,
         age,
         height,
+        avatarUrl: newAvatarDataUrl,
+        imageUri: newAvatarDataUrl,
       });
       const user = await DbManager.getUserById(newId);
       hideModal("add-user");
       const form = document.getElementById("form-add-user");
       if (form) form.reset();
+      resetAddUserAvatar();
       selectUser(user);
     } catch (err) {
       console.error(err);
@@ -163,6 +297,8 @@ export async function handleEditUserSubmit(e) {
     maxHeartRate,
     age,
     height,
+    avatarUrl: editAvatarDataUrl,
+    imageUri: editAvatarDataUrl,
   };
 
   try {
@@ -170,6 +306,7 @@ export async function handleEditUserSubmit(e) {
     state.currentUser = updatedUser;
     hideModal("edit-user");
     loadDashboardHeader();
+    showToast("Perfil actualizado correctamente.", "success");
   } catch (err) {
     console.error(err);
     showToast("Error al guardar ajustes.", "error");
@@ -198,6 +335,8 @@ export async function handleImportUserSubmit() {
       maxHeartRate: profile.maxHeartRate || 190,
       age: profile.age || 30,
       height: profile.height || 175,
+      avatarUrl: profile.avatarUrl || profile.imageUri || null,
+      imageUri: profile.avatarUrl || profile.imageUri || null,
     });
 
     const user = await DbManager.getUserById(newId);
@@ -243,6 +382,7 @@ export function handleExportProfile() {
     maxHeartRate: state.currentUser.maxHeartRate,
     age: state.currentUser.age,
     height: state.currentUser.height,
+    avatarUrl: state.currentUser.avatarUrl || state.currentUser.imageUri || null,
   };
   const jsonStr = JSON.stringify(profile, null, 2);
 

@@ -1593,6 +1593,33 @@
                     </button>
                 </div>
                 <form id="form-add-user">
+                    <div class="avatar-upload-group">
+                        <div class="avatar-preview-container" id="new-user-avatar-preview">
+                            <span class="avatar-preview-placeholder">👤</span>
+                        </div>
+                        <div class="avatar-upload-controls">
+                            <div class="avatar-upload-actions">
+                                <label for="new-user-avatar-input" class="avatar-btn-upload">
+                                    📷 Elegir Avatar
+                                </label>
+                                <input
+                                    type="file"
+                                    id="new-user-avatar-input"
+                                    accept="image/*"
+                                    style="display: none"
+                                />
+                                <button
+                                    type="button"
+                                    class="avatar-btn-remove"
+                                    id="new-user-avatar-remove"
+                                    style="display: none"
+                                >
+                                    Quitar
+                                </button>
+                            </div>
+                            <span class="avatar-help-text">Se recorta y adapta automáticamente.</span>
+                        </div>
+                    </div>
                     <div class="input-group">
                         <label for="new-user-name">Nombre</label>
                         <input
@@ -1718,6 +1745,33 @@
                     </button>
                 </div>
                 <form id="form-edit-user">
+                    <div class="avatar-upload-group">
+                        <div class="avatar-preview-container" id="edit-user-avatar-preview">
+                            <span class="avatar-preview-placeholder">👤</span>
+                        </div>
+                        <div class="avatar-upload-controls">
+                            <div class="avatar-upload-actions">
+                                <label for="edit-user-avatar-input" class="avatar-btn-upload">
+                                    📷 Cambiar Avatar
+                                </label>
+                                <input
+                                    type="file"
+                                    id="edit-user-avatar-input"
+                                    accept="image/*"
+                                    style="display: none"
+                                />
+                                <button
+                                    type="button"
+                                    class="avatar-btn-remove"
+                                    id="edit-user-avatar-remove"
+                                    style="display: none"
+                                >
+                                    Quitar Foto
+                                </button>
+                            </div>
+                            <span class="avatar-help-text">Se recorta y adapta automáticamente.</span>
+                        </div>
+                    </div>
                     <div class="input-group">
                         <label for="edit-user-name">Nombre</label>
                         <input

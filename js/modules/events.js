@@ -137,6 +137,15 @@ export function bindEvents(handlers) {
     });
   }
 
+  // Edit user form submission
+  const editUserForm = document.getElementById("form-edit-user");
+  if (editUserForm) {
+    editUserForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      handleEditUserSubmit(e);
+    });
+  }
+
   document.body.addEventListener("click", (e) => {
     const target = e.target.closest(
       "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-workout-fullscreen, #btn-cycle-layout, #btn-compact-panels, #btn-close-compact-panels, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, #btn-export-csv, #btn-export-fit, [id^='btn-export-csv-'], [id^='btn-export-fit-'], [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-history-back-top, #btn-stats-back-top, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-settings-help, #btn-open-help, #btn-help-back, #btn-toggle-3d, #btn-toggle-manual-mode, #btn-session-safety-confirm, #btn-session-safety-cancel",
