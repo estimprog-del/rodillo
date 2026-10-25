@@ -4484,6 +4484,13 @@ async function loadHistoryList() {
         e.stopPropagation();
         downloadSpecificHistoryCsv(s.id);
       };
+      const fitButton = card.querySelector(`#btn-export-fit-${s.id}`);
+      if (fitButton) {
+        fitButton.onclick = (e) => {
+          e.stopPropagation();
+          downloadSpecificHistoryFit(s.id);
+        };
+      }
       const renameButton = card.querySelector(`#btn-rename-${s.id}`);
       if (renameButton) {
         renameButton.onclick = (e) => {
