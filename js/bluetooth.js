@@ -651,6 +651,29 @@ const intentionalDisconnects = {
   CSC: false,
 };
 
+// Período de gracia para microcortes Bluetooth por interferencias RF (2.4 GHz)
+const DISCONNECT_GRACE_PERIOD_MS = 6000;
+const disconnectGraceTimers = {
+  TRAINER: null,
+  HRM: null,
+  POWER: null,
+  CSC: null,
+};
+const inGracePeriod = {
+  TRAINER: false,
+  HRM: false,
+  POWER: false,
+  CSC: false,
+};
+
+function clearGraceTimer(type) {
+  if (disconnectGraceTimers[type] !== null) {
+    clearTimeout(disconnectGraceTimers[type]);
+    disconnectGraceTimers[type] = null;
+  }
+  inGracePeriod[type] = false;
+}
+
 function clearReconnectTimer(type) {
   if (reconnectTimers[type] !== null) {
     clearTimeout(reconnectTimers[type]);
@@ -658,7 +681,7 @@ function clearReconnectTimer(type) {
   }
 }
 
-function scheduleAutoReconnect(type, device) {
+function scheduleAutoReconnect(type, device, immediate = false) {
   if (
     !state.isSessionActive ||
     intentionalDisconnects[type] ||
@@ -667,7 +690,11 @@ function scheduleAutoReconnect(type, device) {
   ) {
     return;
   }
-  const delay = Math.min(2000 * 2 ** Math.min(reconnectAttempts[type], 3), 15000);
+  // En microcortes el primer intento es inmediato (300ms) para reconectar de forma transparente
+  const delay = immediate
+    ? 300
+    : Math.min(2000 * 2 ** Math.min(reconnectAttempts[type], 3), 15000);
+
   reconnectTimers[type] = setTimeout(() => {
     reconnectTimers[type] = null;
     void attemptAutoReconnect(type, device);
@@ -677,15 +704,21 @@ function scheduleAutoReconnect(type, device) {
 async function attemptAutoReconnect(type, device) {
   if (reconnectInProgress[type]) return;
   if (!state.isSessionActive || intentionalDisconnects[type] || !device) {
+    clearGraceTimer(type);
     updateStatus(type, "DESCONECTADO");
     return;
   }
 
   reconnectInProgress[type] = true;
   reconnectAttempts[type]++;
-  updateStatus(type, "CONECTANDO");
+
+  // Solo alteramos el estado visual si ya expiró el período de gracia
+  if (!inGracePeriod[type]) {
+    updateStatus(type, "CONECTANDO");
+  }
+
   console.log(
-    `[Auto-Reconnect] Intentando reconectar ${type} (intento ${reconnectAttempts[type]}; reintento indefinido durante la sesión)...`,
+    `[Auto-Reconnect] Intentando reconectar ${type} (intento ${reconnectAttempts[type]}; período de gracia: ${inGracePeriod[type] ? "ACTIVO" : "INACTIVO"})...`,
   );
 
   try {
@@ -752,6 +785,7 @@ async function attemptAutoReconnect(type, device) {
     }
 
     reconnectAttempts[type] = 0;
+    clearGraceTimer(type);
     updateStatus(type, "CONECTADO");
     console.log(`[Auto-Reconnect] ${type} reconectado con éxito.`);
   } catch (error) {
@@ -760,7 +794,10 @@ async function attemptAutoReconnect(type, device) {
       error,
     );
     reconnectInProgress[type] = false;
-    updateStatus(type, "DESCONECTADO");
+    // Solo mostramos "DESCONECTADO" si ya no estamos en el período de gracia
+    if (!inGracePeriod[type]) {
+      updateStatus(type, "DESCONECTADO");
+    }
     scheduleAutoReconnect(type, device);
   } finally {
     reconnectInProgress[type] = false;
@@ -782,16 +819,32 @@ function handleDisconnect(type) {
   }
 
   if (intentionalDisconnects[type] || !device) {
+    clearGraceTimer(type);
     conn.device = null;
     conn.name = "";
     updateStatus(type, "DESCONECTADO");
+  } else if (state.isSessionActive) {
+    // Micro-desconexión involuntaria durante la sesión: activar período de gracia transparente
+    clearGraceTimer(type);
+    inGracePeriod[type] = true;
+    console.log(
+      `[Bluetooth] Microcorte detectado en ${type}. Iniciando período de gracia de ${DISCONNECT_GRACE_PERIOD_MS / 1000}s e intentando reconectar en segundo plano...`,
+    );
+
+    disconnectGraceTimers[type] = setTimeout(() => {
+      disconnectGraceTimers[type] = null;
+      inGracePeriod[type] = false;
+      console.warn(
+        `[Bluetooth] Período de gracia expirado para ${type}. Notificando desconexión a la interfaz.`,
+      );
+      updateStatus(type, "DESCONECTADO");
+    }, DISCONNECT_GRACE_PERIOD_MS);
+
+    // Intentar reconectar de forma inmediata (300ms) sin pausar ni asustar al usuario
+    scheduleAutoReconnect(type, device, true);
   } else {
-    if (state.isSessionActive) {
-      updateStatus(type, "DESCONECTADO");
-      scheduleAutoReconnect(type, device);
-    } else {
-      updateStatus(type, "DESCONECTADO");
-    }
+    clearGraceTimer(type);
+    updateStatus(type, "DESCONECTADO");
   }
 }
 
@@ -850,6 +903,7 @@ function updateStatus(type, status) {
 
 function disconnectDevice(type) {
   intentionalDisconnects[type] = true;
+  clearGraceTimer(type);
   clearReconnectTimer(type);
   const conn = connections[type];
   if (conn.device && conn.device.gatt.connected) {
@@ -862,6 +916,7 @@ async function disconnectAll() {
   stopSimulator();
   for (const type in connections) {
     intentionalDisconnects[type] = true;
+    clearGraceTimer(type);
     clearReconnectTimer(type);
     if (connections[type].device && connections[type].device.gatt.connected) {
       connections[type].device.gatt.disconnect();
@@ -873,6 +928,7 @@ async function disconnectAll() {
 function stopAutoReconnect() {
   for (const type of Object.keys(reconnectTimers)) {
     clearReconnectTimer(type);
+    clearGraceTimer(type);
     reconnectAttempts[type] = 0;
   }
 }

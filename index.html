@@ -1852,7 +1852,10 @@
         <script>
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-              navigator.serviceWorker.register('sw.js')
+              const basePath = window.location.pathname.endsWith('/')
+                ? window.location.pathname
+                : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+              navigator.serviceWorker.register(`${basePath}sw.js`)
                 .then(reg => console.log('[PWA] SW registrado:', reg.scope))
                 .catch(err => console.warn('[PWA] SW error:', err));
             });

@@ -1,43 +1,30 @@
 /**
  * sw.js - Service Worker para RodilloInt Training Lab
- * Cachea assets estáticos para funcionamiento offline e instalación PWA.
+ * Soporte offline para despliegue en GitHub Pages (/rodillo/) y local.
  */
 
-const CACHE_NAME = "rodilloint-v1";
+const CACHE_NAME = "rodilloint-v2";
 
-// Assets estáticos que se cachean en la instalación
+// Resuelve una ruta relativa con el scope del service worker (ej. '/rodillo/' en GitHub Pages)
+const getScopedUrl = (relPath) => new URL(relPath, self.registration.scope).pathname;
+
+// Assets base que se precachean en la instalación
 const PRECACHE_ASSETS = [
-  "/",
-  "/index.html",
-  "/styles.css",
-  "/js/app.js",
-  "/js/db.js",
-  "/js/gpx.js",
-  "/js/bluetooth.js",
-  "/js/charts.js",
-  "/js/modules/toast.js",
-  "/js/modules/state.js",
-  "/js/modules/events.js",
-  "/js/modules/ui.js",
-  "/js/modules/remoteRoom.js",
-  "/js/modules/virtualGears.js",
-  "/js/modules/privacyConsent.js",
-  "/js/ui/navigation.js",
-  "/js/ui/dashboard.js",
-  "/js/ui/uiHelpers.js",
-  "/rutas/catalog.json",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
+  getScopedUrl("./"),
+  getScopedUrl("./index.html"),
+  getScopedUrl("./rutas/catalog.json"),
+  getScopedUrl("./icons/icon-192.png"),
+  getScopedUrl("./icons/icon-512.png"),
 ];
 
-// Instalar: cachear assets estáticos
+// Instalar: precachear assets base
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return Promise.allSettled(
         PRECACHE_ASSETS.map((url) =>
           cache.add(url).catch((err) => {
-            console.warn(`[SW] No se pudo cachear: ${url}`, err);
+            console.warn(`[SW] Precache ignorado o no disponible: ${url}`, err);
           })
         )
       );
@@ -58,16 +45,34 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Fetch: estrategia Network-first para HTML/JS/CSS, Cache-first para GPX/imágenes
+// Fetch: estrategia para soportar tanto assets locales empaquetados como librerías CDN
 self.addEventListener("fetch", (event) => {
   const { request } = event;
+  if (request.method !== "GET") return;
+
   const url = new URL(request.url);
 
-  // Solo manejar peticiones al mismo origen
-  if (url.origin !== location.origin) return;
+  // CDNs críticos para Leaflet, MapLibre, ApexCharts y tipografías
+  const isCdn =
+    url.hostname.includes("unpkg.com") ||
+    url.hostname.includes("jsdelivr.net") ||
+    url.hostname.includes("googleapis.com") ||
+    url.hostname.includes("gstatic.com");
 
-  // Archivos GPX grandes: cache-first (no cambian con frecuencia)
-  if (url.pathname.endsWith(".gpx")) {
+  // Si no es del mismo origen ni de un CDN permitido, no intervenir
+  if (url.origin !== location.origin && !isCdn) return;
+
+  // 1. Cache-first para GPX, imágenes, fuentes y librerías CDN (recursos pesados e inmutables)
+  const isCacheFirst =
+    url.pathname.endsWith(".gpx") ||
+    url.pathname.endsWith(".tcx") ||
+    url.pathname.endsWith(".png") ||
+    url.pathname.endsWith(".jpg") ||
+    url.pathname.endsWith(".svg") ||
+    url.pathname.endsWith(".woff2") ||
+    isCdn;
+
+  if (isCacheFirst) {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;
@@ -77,13 +82,13 @@ self.addEventListener("fetch", (event) => {
             caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           }
           return response;
-        });
+        }).catch(() => caches.match(request));
       })
     );
     return;
   }
 
-  // Para todo lo demás: Network-first, fallback a cache
+  // 2. Network-first con fallback a caché para HTML, bundle JS de Vite y estilos CSS
   event.respondWith(
     fetch(request)
       .then((response) => {
@@ -93,6 +98,17 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(request))
+      .catch(() =>
+        caches.match(request).then((cached) => {
+          if (cached) return cached;
+          // Si el usuario recarga sin conexión en modo navegación, servir index.html precacheado
+          if (request.mode === "navigate") {
+            return (
+              caches.match(getScopedUrl("./index.html")) ||
+              caches.match(getScopedUrl("./"))
+            );
+          }
+        })
+      )
   );
 });

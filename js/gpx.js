@@ -388,13 +388,15 @@ function exportSessionFit(session, sensorData, userName = 'Usuario') {
       writeUint8(0x00);
       writeUint8(0x00);
       writeUint16(19); // lap
-      writeUint8(6);
+      writeUint8(8);   // num fields
       writeUint8(253); writeUint8(4); writeUint8(134); // timestamp
       writeUint8(2);   writeUint8(4); writeUint8(134); // start_time
       writeUint8(7);   writeUint8(4); writeUint8(134); // total_elapsed_time (ms→scale 1000→uint32)
       writeUint8(9);   writeUint8(4); writeUint8(134); // total_distance (cm→scale 100→uint32)
       writeUint8(15);  writeUint8(2); writeUint8(132); // avg_power
       writeUint8(16);  writeUint8(2); writeUint8(132); // max_power
+      writeUint8(25);  writeUint8(1); writeUint8(0);   // sport (enum: 2=cycling)
+      writeUint8(26);  writeUint8(1); writeUint8(0);   // sub_sport (enum: 58=virtual_cycling)
     };
     const dataLap = (fitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr) => {
       writeUint8(0x03);
@@ -404,6 +406,8 @@ function exportSessionFit(session, sensorData, userName = 'Usuario') {
       writeUint32(Math.round(distKm * 100000));
       writeUint16(Math.min(0xFFFE, Math.round(avgPwr)));
       writeUint16(Math.min(0xFFFE, Math.round(maxPwr)));
+      writeUint8(2);  // sport: cycling
+      writeUint8(58); // sub_sport: virtual_cycling
     };
 
     // Local msg 4 → session (mesg_num = 18)
@@ -412,7 +416,7 @@ function exportSessionFit(session, sensorData, userName = 'Usuario') {
       writeUint8(0x00);
       writeUint8(0x00);
       writeUint16(18); // session
-      writeUint8(7);
+      writeUint8(8);   // num fields
       writeUint8(253); writeUint8(4); writeUint8(134); // timestamp
       writeUint8(2);   writeUint8(4); writeUint8(134); // start_time
       writeUint8(7);   writeUint8(4); writeUint8(134); // total_elapsed_time
@@ -420,6 +424,7 @@ function exportSessionFit(session, sensorData, userName = 'Usuario') {
       writeUint8(15);  writeUint8(2); writeUint8(132); // avg_power
       writeUint8(16);  writeUint8(2); writeUint8(132); // max_power
       writeUint8(25);  writeUint8(1); writeUint8(0);   // sport (enum: 2=cycling)
+      writeUint8(26);  writeUint8(1); writeUint8(0);   // sub_sport (enum: 58=virtual_cycling)
     };
     const dataSession = (fitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr) => {
       writeUint8(0x04);
@@ -429,7 +434,8 @@ function exportSessionFit(session, sensorData, userName = 'Usuario') {
       writeUint32(Math.round(distKm * 100000));
       writeUint16(Math.min(0xFFFE, Math.round(avgPwr)));
       writeUint16(Math.min(0xFFFE, Math.round(maxPwr)));
-      writeUint8(2); // sport: cycling
+      writeUint8(2);  // sport: cycling
+      writeUint8(58); // sub_sport: virtual_cycling
     };
 
     // Local msg 5 → activity (mesg_num = 34)
@@ -455,9 +461,14 @@ function exportSessionFit(session, sensorData, userName = 'Usuario') {
     const endMs = session.endTime || (sensorData[sensorData.length - 1].timestamp);
     const endFitTs = toFitTime(endMs);
     const elapsedSec = (endMs - session.startTime) / 1000;
-    const powers = sensorData.map(p => Number.isFinite(p.power) ? p.power : 0);
-    const avgPwr = powers.reduce((a, b) => a + b, 0) / (powers.length || 1);
-    const maxPwr = Math.max(...powers);
+    let totalPwr = 0;
+    let maxPwr = 0;
+    for (let i = 0; i < sensorData.length; i++) {
+      const p = Number.isFinite(sensorData[i].power) ? sensorData[i].power : 0;
+      totalPwr += p;
+      if (p > maxPwr) maxPwr = p;
+    }
+    const avgPwr = totalPwr / (sensorData.length || 1);
     const distKm = session.totalDistance || 0;
 
     // file_id
@@ -522,7 +533,9 @@ function exportSessionFit(session, sensorData, userName = 'Usuario') {
     buf.push(bodyCrc & 0xFF);
     buf.push((bodyCrc >> 8) & 0xFF);
 
-    const allBytes = new Uint8Array([...header, ...buf]);
+    const allBytes = new Uint8Array(header.length + buf.length);
+    allBytes.set(header, 0);
+    allBytes.set(buf, header.length);
     const blob = new Blob([allBytes], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');

@@ -2,7 +2,8 @@
   "name": "RodilloInt Training Lab",
   "short_name": "RodilloInt",
   "description": "Aplicación de entrenamiento en rodillo con soporte para sensores Bluetooth, rutas GPX y análisis de sesiones.",
-  "start_url": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "landscape",
   "background_color": "#0a0e1a",
@@ -11,13 +12,13 @@
   "categories": ["sports", "fitness", "health"],
   "icons": [
     {
-      "src": "/icons/icon-192.png",
+      "src": "icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
@@ -27,7 +28,7 @@
   "shortcuts": [
     {
       "name": "Nueva sesión",
-      "url": "/?screen=dashboard",
+      "url": "./?screen=dashboard",
       "description": "Ir directo al dashboard para iniciar sesión"
     }
   ]
