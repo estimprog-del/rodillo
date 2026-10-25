@@ -5123,20 +5123,4 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-// Inyección del botón FIT en el resumen de sesión (fallback por si no existe en el HTML)
-window.addEventListener('load', () => {
-  const gpxBtn = document.getElementById('btn-export-gpx');
-  if (gpxBtn) {
-    const container = gpxBtn.parentElement;
-    if (container && !document.getElementById('btn-export-fit')) {
-      const btn = document.createElement('button');
-      btn.id = 'btn-export-fit';
-      btn.className = 'btn btn-secondary';
-      btn.style.background = '#6366f1';
-      btn.style.color = '#fff';
-      btn.textContent = 'Exportar FIT';
-      btn.onclick = () => handleSessionFitExport();
-      container.appendChild(btn);
-    }
-  }
-});
+
