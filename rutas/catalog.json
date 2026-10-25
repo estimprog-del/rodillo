@@ -1,8 +1,8 @@
 {
   "routes": [
     {
-      "file": "baztan-real-v3.gpx",
-      "name": "Baztan Real V3"
+      "file": "BAZTAN-REAL-V3.gpx",
+      "name": "BAZTAN REAL V3"
     },
     {
       "file": "la-cantabrona-2026-gran-fondo.gpx",
@@ -13,8 +13,8 @@
       "name": "La Perico Gran Fondo"
     },
     {
-      "file": "legendaria-granfondo-legendaria.gpx",
-      "name": "Legendaria Granfondo Legendaria"
+      "file": "Legendaria-GranFondo-Legendaria.gpx",
+      "name": "Legendaria GranFondo Legendaria"
     },
     {
       "file": "oiartzun-artikutza.gpx",
@@ -25,7 +25,7 @@
       "name": "Oiartzun Artikutza Oiartzun"
     },
     {
-      "file": "quebrantahuesos-2021.gpx",
+      "file": "Quebrantahuesos-2021.gpx",
       "name": "Quebrantahuesos 2021"
     },
     {
@@ -41,8 +41,8 @@
       "name": "Snl Subida Al Veleta"
     },
     {
-      "file": "xxxix-prueba-vitoria.gpx",
-      "name": "Xxxix Prueba Vitoria"
+      "file": "XXXIX-Prueba-Vitoria.gpx",
+      "name": "XXXIX Prueba Vitoria"
     }
   ]
 }
