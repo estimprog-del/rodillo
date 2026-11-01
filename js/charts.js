@@ -1,5 +1,7 @@
 /* charts.js - ApexCharts Configuration and Realtime Updates for RodilloInt */
 
+import ApexCharts from "apexcharts";
+
 let realtimeChart = null;
 let elevationChart = null;
 let zonesChart = null;

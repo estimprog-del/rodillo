@@ -80,6 +80,11 @@ async function startBackupDownload(options = {}) {
 }
 
 export function bindEvents(handlers) {
+  document.getElementById("active-profile-header")?.addEventListener("click", (event) => {
+    if (event.target.closest("#btn-open-user-profile-trigger")) return;
+    document.getElementById("btn-open-user-profile-trigger")?.click();
+  });
+
   const {
     handleAddUserSubmit,
     handleEditUserSubmit,
@@ -139,7 +144,7 @@ export function bindEvents(handlers) {
 
   document.body.addEventListener("click", (e) => {
     const target = e.target.closest(
-      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-traditional, #btn-workout-pause, #btn-workout-stop, #btn-workout-fullscreen, #btn-cycle-layout, #btn-compact-panels, #btn-close-compact-panels, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, #btn-export-csv, #btn-export-fit, [id^='btn-export-csv-'], [id^='btn-export-fit-'], [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-history-back-top, #btn-stats-back-top, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-settings-help, #btn-open-help, #btn-help-back, #btn-toggle-3d, #btn-toggle-manual-mode, #btn-session-safety-confirm, #btn-session-safety-cancel",
+      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-erg, #mode-erg-workout, #mode-traditional, #btn-workouts-back, #btn-import-workout, #btn-workout-bias-minus, #btn-workout-bias-plus, #btn-workout-bias-reset, #btn-workout-pause, #btn-workout-stop, #btn-workout-fullscreen, #btn-cycle-layout, #btn-compact-panels, #btn-close-compact-panels, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, #btn-export-csv, #btn-export-fit, [id^='btn-export-csv-'], [id^='btn-export-fit-'], [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-history-back-top, #btn-stats-back-top, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-settings-help, #btn-open-help, #btn-help-back, #btn-toggle-3d, #btn-toggle-manual-mode, #btn-session-safety-confirm, #btn-session-safety-cancel",
     );
 
     if (!target) return;
@@ -358,7 +363,10 @@ export function bindEvents(handlers) {
         void startBackupDownload();
       }
 
-      if (id === "btn-dashboard-connections") navigateTo("connections");
+      if (id === "btn-dashboard-connections") {
+        state.connectionsReturnScreen = "dashboard";
+        navigateTo("connections");
+      }
       if (id === "btn-summary-close") {
         navigateTo(state.summaryReturnScreen || "dashboard");
       }
@@ -374,11 +382,14 @@ export function bindEvents(handlers) {
       }
       if (id === "btn-help-back") navigateTo("dashboard");
       if (id === "btn-routes-back") navigateTo("dashboard");
+      if (id === "btn-workouts-back") navigateTo("dashboard");
       if (id === "btn-open-saved-routes") navigateTo("routes");
       if (id === "btn-logout") handleLogout();
       if (id === "btn-connections-back") {
         state.routeSelectedFromLibrary = false;
-        navigateTo("dashboard");
+        const returnScreen = state.connectionsReturnScreen || "dashboard";
+        state.connectionsReturnScreen = "dashboard";
+        navigateTo(returnScreen);
       }
       if (id === "btn-stats-back") navigateTo("dashboard");
       if (id === "btn-stats-back-top") navigateTo("dashboard");
@@ -386,16 +397,37 @@ export function bindEvents(handlers) {
       // Modos
       if (id === "mode-route") {
         state.currentMode = "ROUTE";
+        state.connectionsReturnScreen = "dashboard";
         state.routeSelectedFromLibrary = false;
         navigateTo("connections");
       }
       if (id === "mode-manual") {
         state.currentMode = "MANUAL";
+        state.connectionsReturnScreen = "dashboard";
+        state.manualMode = "SLOPE";
         navigateTo("connections");
+      }
+      if (id === "mode-erg" || id === "mode-erg-workout") {
+        navigateTo("workouts");
       }
       if (id === "mode-traditional") {
         state.currentMode = "TRADITIONAL";
+        state.connectionsReturnScreen = "dashboard";
         navigateTo("connections");
+      }
+
+      // Bias y controles de workout ERG
+      if (id === "btn-import-workout") {
+        document.getElementById("workout-file-input")?.click();
+      }
+      if (id === "btn-workout-bias-minus" && typeof window.adjustWorkoutBias === "function") {
+        window.adjustWorkoutBias(-5);
+      }
+      if (id === "btn-workout-bias-plus" && typeof window.adjustWorkoutBias === "function") {
+        window.adjustWorkoutBias(5);
+      }
+      if (id === "btn-workout-bias-reset" && typeof window.resetWorkoutBias === "function") {
+        window.resetWorkoutBias();
       }
 
       // Controles entrenamiento

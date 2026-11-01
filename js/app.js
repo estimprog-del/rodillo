@@ -1,3 +1,8 @@
+import L from "leaflet";
+import * as maplibregl from "maplibre-gl";
+import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
+import "leaflet/dist/leaflet.css";
+import "maplibre-gl/dist/maplibre-gl.css";
 import {
   showModal,
   hideModal,
@@ -21,29 +26,106 @@ import {
   RemoteRoomClient,
   buildQrUrl,
   buildRemoteUrl,
+  createRemoteRoom,
   createRoomId,
   getRemoteRoomId,
   isRemoteRoute,
+  isRemoteAuthConfigured,
 } from "./modules/remoteRoom.js";
 import {
   clampVirtualGear,
   DEFAULT_VIRTUAL_GEAR,
   formatVirtualGear,
   getVirtualGearRatio,
-  calculateVirtualResistanceSlope,
 } from "./modules/virtualGears.js";
 import { exportAllData, getBackupStatus } from "./db.js";
+import {
+  loadProfilesGrid,
+  selectUser,
+  handleLogout,
+  handleAddUserSubmit,
+  handleEditUserSubmit,
+  handleImportUserSubmit,
+  handleDeleteProfile,
+  handleExportProfile,
+} from "./core/userProfile.js";
+import {
+  loadHistoryList,
+  openHistoricalSessionSummary,
+  checkPendingSessions,
+  downloadSpecificHistoryCsv,
+  downloadSpecificHistoryFit,
+  loadProgressStats,
+  repeatRouteFromHistory,
+  deleteHistorySession,
+  changeTrainingCalendarMonth,
+  selectTrainingCalendarDate,
+  goToTrainingCalendarToday,
+} from "./core/history.js";
+import {
+  renderRouteLibrary,
+  setRouteLibraryFilter,
+  saveUserRoute,
+  populateSessionSavedRoutes,
+  loadSavedRouteInSessionModal,
+} from "./core/routeLibrary.js";
+import { renderWorkoutLibrary } from "./core/workoutLibrary.js";
+import { createWorkoutEditorController } from "./core/workoutEditor.js";
+import { initializeRemoteController } from "./modules/remoteController.js";
+import { createSensorConnectionsController } from "./modules/sensorConnections.js";
+import { createMapCameraController } from "./modules/mapCamera.js";
+import {
+  calculateTotalRouteAscent,
+  createRouteOverviewController,
+} from "./modules/routeOverview.js";
+import { createRouteSimulationController } from "./modules/routeSimulation.js";
+import { createSessionTimerController } from "./modules/sessionTimer.js";
+import {
+  flushTelemetryBuffer,
+  recoverTelemetryBackup,
+  saveTelemetryPoint,
+} from "./modules/telemetryStorage.js";
+import {
+  getWorkoutPowerAdherence,
+  renderSummaryMetrics,
+  renderSummaryRoute,
+  setSessionSaveStatus,
+} from "./core/sessionSummary.js";
+import {
+  initWorkoutEngine,
+  resetWorkoutEngine,
+  tickWorkout,
+  adjustWorkoutBias,
+  resetWorkoutBias,
+  getWorkoutBias,
+  renderActiveWorkoutHudSvg,
+} from "./core/workoutEngine.js";
 
-const SLOPE_AVERAGE_METERS = 10;
-const SLOPE_PREVIEW_LONG_METERS = 500;
+window.adjustWorkoutBias = adjustWorkoutBias;
+window.resetWorkoutBias = resetWorkoutBias;
+globalThis.L = L;
+globalThis.maplibregl = maplibregl;
+maplibregl.setWorkerUrl(mapLibreWorkerUrl);
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    const serviceWorkerUrl = new URL(
+      `${import.meta.env.BASE_URL}sw.js`,
+      window.location.origin,
+    );
+    navigator.serviceWorker.register(serviceWorkerUrl)
+      .then((registration) => console.log("[PWA] SW registrado:", registration.scope))
+      .catch((error) => console.warn("[PWA] SW error:", error));
+  }, { once: true });
+}
+
+
 const MAX_SLOPE_CHANGE_PER_SEC = 0.5;
 const WHEEL_INACTIVITY_TIMEOUT_MS = 10000;
 const MAPTILER_API_KEY = import.meta.env.VITE_MAPTILER_API_KEY || "";
 const MAP_VIEW_MODES = ["2D", "3D_AEREO", "3D_FPV"];
-let fpvZoomLevel = 25;
 let activeRemoteRoomClient = null;
-let fpvAnimationFrame = null;
-let fpvDebugCalls = 0;
+let remoteRoomInitialization = 0;
 let lastFpvDebugState = "";
 let mapReadyInstance = null;
 let workoutHudResizeObserver = null;
@@ -54,8 +136,9 @@ let countdownTimer = null;
 let countdownFinishTimer = null;
 let movementWaitTimer = null;
 let sessionSafetyAcknowledged = false;
-let summaryRouteMap = null;
-let summaryRouteRenderId = 0;
+let lastPowerReceivedAt = 0;
+let lastCadenceReceivedAt = 0;
+let workoutPowerSamples = [];
 let kilojuliosAcumulados = 0;
 
 function logFpvDebug(message, details = {}) {
@@ -65,25 +148,6 @@ function logFpvDebug(message, details = {}) {
   console.debug(`[FPV] ${message}`, details);
 }
 
-async function renameHistoryRoute(id) {
-  try {
-    const session = await DbManager.getSessionById(id);
-    if (!session || !session.gpxPath) return;
-    const currentName = session.routeName || session.gpxPath;
-    const newName = prompt("Nombre de la ruta:", currentName);
-    if (newName === null) return;
-    const routeName = newName.trim();
-    if (!routeName) {
-      showToast("El nombre de la ruta no puede estar vacío.", "warning");
-      return;
-    }
-    await DbManager.updateSession({ ...session, routeName });
-    await loadHistoryList();
-  } catch (error) {
-    console.error("Error renombrando la ruta histórica:", error);
-    showToast("No se pudo cambiar el nombre de la ruta.", "error");
-  }
-}
 
 function getMapSdk() {
   return (
@@ -101,6 +165,15 @@ function isMapReady(map) {
         map.isStyleLoaded()),
   );
 }
+
+const mapCamera = createMapCameraController({
+  state,
+  getMapSdk,
+  isMapReady,
+});
+const routeOverview = createRouteOverviewController(state);
+const routeSimulation = createRouteSimulationController(state);
+const sessionTimer = createSessionTimerController(state);
 
 function applyWorkoutLayout() {
   const viewport = document.querySelector(".workout-viewport");
@@ -279,8 +352,122 @@ function toggleWorkoutPanel(name) {
 
 window.toggleWorkoutPanel = toggleWorkoutPanel;
 
+function formatWorkoutTimer(totalSeconds) {
+  const safeSeconds = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function updateWorkoutErgHud(workoutStatus) {
+  if (!workoutStatus || !state.currentWorkout) {
+    setElDisplay("workout-erg-panel", "none");
+    return;
+  }
+
+  const step = workoutStatus.step || {};
+  const stepTypeLabel = {
+    warmup: "Calentamiento",
+    steady: "Sostenido",
+    interval: "Intervalo",
+    ramp: "Rampa",
+    cooldown: "Recuperación",
+  }[step.type] || "Bloque";
+
+  const stepTag = document.getElementById("workout-step-tag");
+  const stepCounter = document.getElementById("workout-step-counter");
+  const countdown = document.getElementById("workout-step-countdown");
+  const progressBar = document.getElementById("workout-step-progress-bar");
+  const powerLabel = document.getElementById("workout-target-power-val");
+  const actualPowerLabel = document.getElementById("workout-current-power-val");
+  const actualPowerDelta = document.getElementById("workout-power-delta");
+  const cadenceLabel = document.getElementById("workout-target-cadence-val");
+  const actualCadenceLabel = document.getElementById("workout-current-cadence-val");
+  const actualPowerPill = document.getElementById("workout-current-power-pill");
+  const messageBanner = document.getElementById("workout-message-banner");
+  const nextName = document.getElementById("workout-next-step-name");
+  const nextMeta = document.getElementById("workout-next-step-meta");
+  const biasLabel = document.getElementById("workout-bias-label");
+  const timelineProgress = document.getElementById("workout-timeline-progress");
+  const timelineContainer = document.getElementById("workout-timeline-container");
+
+  if (stepTag) stepTag.textContent = stepTypeLabel;
+  if (stepCounter) stepCounter.textContent = `Bloque ${workoutStatus.stepIndex || 1} de ${workoutStatus.totalSteps || 1}`;
+  if (countdown) countdown.textContent = formatWorkoutTimer(workoutStatus.stepRemaining || 0);
+
+  const progressValue = step.durationSeconds > 0 ? Math.min(100, Math.max(0, ((step.durationSeconds - (workoutStatus.stepRemaining || 0)) / step.durationSeconds) * 100)) : 0;
+  if (progressBar) progressBar.style.width = `${progressValue}%`;
+  if (powerLabel) powerLabel.textContent = `${Math.round(workoutStatus.targetWatts || 0)} W`;
+  if (cadenceLabel) cadenceLabel.textContent = `${workoutStatus.targetCadence ?? "--"} rpm`;
+  const hasRecentPower = Date.now() - lastPowerReceivedAt < 5000;
+  const hasRecentCadence = Date.now() - lastCadenceReceivedAt < 5000;
+  const currentPower = hasRecentPower ? Math.round(Number(state.currentPower) || 0) : null;
+  const currentCadence = hasRecentCadence ? Math.round(Number(state.currentCadence) || 0) : null;
+  if (actualPowerLabel) actualPowerLabel.textContent = currentPower === null ? "-- W" : `${currentPower} W`;
+  if (actualCadenceLabel) actualCadenceLabel.textContent = currentCadence === null ? "-- rpm" : `${currentCadence} rpm`;
+  if (actualPowerDelta && actualPowerPill) {
+    const delta = currentPower === null ? null : currentPower - workoutStatus.targetWatts;
+    const tolerance = Math.max(5, workoutStatus.targetWatts * 0.05);
+    actualPowerDelta.textContent = delta === null
+      ? "Esperando potenciómetro"
+      : `${delta > tolerance ? "Por encima" : delta < -tolerance ? "Por debajo" : "En objetivo"} · ${delta > 0 ? "+" : ""}${delta} W`;
+    actualPowerPill.classList.toggle("is-above", delta !== null && delta > tolerance);
+    actualPowerPill.classList.toggle("is-below", delta !== null && delta < -tolerance);
+    actualPowerPill.classList.toggle("is-on-target", delta !== null && Math.abs(delta) <= tolerance);
+  }
+  if (messageBanner) messageBanner.textContent = workoutStatus.textMessage || step.text || "Mantén el ritmo";
+
+  if (nextName) {
+    nextName.textContent = workoutStatus.nextStep ? (workoutStatus.nextStep.text || stepTypeLabel) : "Fin del entrenamiento";
+  }
+  if (nextMeta) {
+    nextMeta.textContent = workoutStatus.nextStep
+      ? `${formatWorkoutTimer(workoutStatus.nextStep.durationSeconds)} · ${Math.round(workoutStatus.nextStepWatts || 0)} W`
+      : "Sesión completa";
+  }
+  if (biasLabel) biasLabel.textContent = `Bias: ${Math.round(workoutStatus.biasWatts || 0)} W`;
+  if (timelineProgress) {
+    const total = Math.max(1, state.currentWorkout.totalDurationSeconds || 1);
+    timelineProgress.textContent = `${formatWorkoutTimer(state.elapsedSeconds || 0)} / ${formatWorkoutTimer(total)}`;
+  }
+
+  if (timelineContainer) {
+    const svg = renderActiveWorkoutHudSvg(
+      state.currentWorkout,
+      state.elapsedSeconds || 0,
+      state.currentUser?.ftp || 200,
+      640,
+      110,
+      workoutPowerSamples,
+    );
+    timelineContainer.innerHTML = svg || "";
+  }
+}
+
+function loadWorkoutsScreen(filter = "all") {
+  const filterElement = document.getElementById("workout-library-filter");
+  if (filterElement) filterElement.value = filter;
+
+  renderWorkoutLibrary(filter, (workout) => {
+    state.currentWorkout = workout;
+    state.currentMode = "ERG";
+    state.connectionsReturnScreen = "workouts";
+    saveStateToLocalStorage();
+    showToast(`Entrenamiento cargado: ${workout.name}`, "success");
+    navigateTo("connections");
+  }, undefined, (workout) => {
+    workoutEditor.openWorkoutEditor(workout, "copy");
+  }, (workout) => {
+    workoutEditor.openWorkoutEditor(workout, "edit");
+  }, (workout) => workoutEditor.exportWorkoutAsZwo(workout));
+}
+
 // Global Navigation function (injected)
 let navigateTo;
+const sensorConnections = createSensorConnectionsController();
+const workoutEditor = createWorkoutEditorController({
+  refreshLibrary: (filter) => loadWorkoutsScreen(filter),
+});
 
 // UI Elements references
 const UI = {
@@ -321,11 +508,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     workout: () => enterWorkoutScreen(),
     history: () => loadHistoryList(),
     stats: () => loadProgressStats(),
-    connections: () => syncBluetoothScreenStatus(),
+    connections: () => sensorConnections.syncBluetoothScreenStatus(),
     routes: () => renderRouteLibrary(),
+    workouts: () => loadWorkoutsScreen(),
   };
 
   navigateTo = initNavigation(UI, state, navigationCallbacks);
+
+  // Exponer bridges para que los módulos core/ puedan acceder a funciones de app.js
+  window._navigateTo = navigateTo;
+  window._renderSummaryMetrics = renderSummaryMetrics;
+  window._renderSummaryRoute = renderSummaryRoute;
+  window._loadDashboardHeader = loadDashboardHeader;
 
   // Bind UI Elements
   cacheUiElements();
@@ -338,7 +532,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     handleLogout,
     startModeFlow,
     navigateTo,
-    triggerBleConnection,
+    triggerBleConnection: sensorConnections.triggerBleConnection,
     togglePause,
     stopSessionFlow,
     handleGpxUpload,
@@ -356,187 +550,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     selectTrainingCalendarDate,
     goToTrainingCalendarToday,
   });
+
+  workoutEditor.bindEvents();
+  loadWorkoutsScreen();
   initPrivacyConsent();
-
-  function initializeRemoteController() {
-    document.documentElement.classList.add("remote-route");
-    document.body.classList.add("remote-route");
-    document.querySelectorAll(".screen").forEach((screen) => {
-      screen.classList.remove("active");
-    });
-    document.getElementById("screen-remote")?.classList.add("active");
-
-    const roomId = getRemoteRoomId();
-    const status = document.getElementById("remote-status");
-    const label = document.getElementById("remote-room-label");
-    const reconnectButton = document.getElementById("btn-remote-reconnect");
-    const client = roomId ? new RemoteRoomClient(roomId, "remote") : null;
-    let isConnecting = false;
-    let wasHidden = false;
-    let connectionState = "initialized";
-    let sessionFinished = false;
-    let remoteWakeLock = null;
-    const setRemoteStatus = (text, state = "") => {
-      if (status) {
-        status.textContent = text;
-        if (state) connectionState = state;
-        status.dataset.connectionState = connectionState;
-      }
-      if (reconnectButton) {
-        reconnectButton.disabled = isConnecting || !client;
-        reconnectButton.hidden = sessionFinished ||
-          connectionState === "connected" ||
-          connectionState === "connecting" ||
-          connectionState === "initialized";
-        reconnectButton.textContent = isConnecting ? "…" : "↻";
-      }
-    };
-    const requestRemoteWakeLock = async () => {
-      if (!("wakeLock" in navigator) || document.visibilityState !== "visible") return;
-      try {
-        remoteWakeLock = await navigator.wakeLock.request("screen");
-        remoteWakeLock.addEventListener("release", () => {
-          remoteWakeLock = null;
-        }, { once: true });
-      } catch (error) {
-        console.warn("[Mando móvil] No se pudo mantener la pantalla activa:", error);
-      }
-    };
-    void requestRemoteWakeLock();
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") {
-        wasHidden = true;
-        return;
-      }
-      if (document.visibilityState === "visible") {
-        void requestRemoteWakeLock();
-        if (wasHidden && client) {
-          wasHidden = false;
-          void connectRemote(true);
-        }
-      }
-    });
-    const requestRemoteFullscreen = () => {
-      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-        void document.documentElement.requestFullscreen().catch(() => {});
-      }
-    };
-    requestRemoteFullscreen();
-    document.addEventListener("click", requestRemoteFullscreen, { once: true });
-
-    if (label) label.textContent = roomId ? `Sala: ${roomId}` : "Falta el identificador de sala";
-    setRemoteStatus(client ? "Mando preparado" : "Enlace de sala no válido");
-
-    const emitGearCommand = async (eventName) => {
-      if (!client) return;
-      try {
-        await client.emit(eventName, {});
-        setRemoteStatus("Orden enviada a Ably");
-      } catch (error) {
-        console.error(`[Mando móvil] No se pudo enviar ${eventName}:`, error);
-        setRemoteStatus(`No enviada: ${error.message}`, "disconnected");
-      }
-    };
-    const emitGearChange = async (direction) => {
-      if (!client) return;
-      try {
-        await client.emit("CHANGE_GEAR", { direction });
-        setRemoteStatus(`Orden enviada a Ably: ${direction === "up" ? "subir" : "bajar"}`);
-      } catch (error) {
-        console.error("[Mando móvil] No se pudo enviar el cambio de marcha:", error);
-        setRemoteStatus(`No enviada: ${error.message}`, "disconnected");
-      }
-    };
-
-    const showRemoteSummary = (summary) => {
-      const controls = document.getElementById("remote-controls");
-      const panel = document.getElementById("remote-summary");
-      if (!controls || !panel) return;
-      controls.hidden = true;
-      panel.hidden = false;
-      sessionFinished = true;
-      document.querySelector(".remote-controller")?.classList.add("remote-session-finished");
-      const values = {
-        "remote-summary-duration": summary.duration || "--",
-        "remote-summary-distance": `${Number(summary.distance || 0).toFixed(2)} km`,
-        "remote-summary-speed": `${Number(summary.avgSpeed || 0).toFixed(1)} km/h`,
-        "remote-summary-max-speed": `${Number(summary.maxSpeed || 0).toFixed(1)} km/h`,
-        "remote-summary-power": `${Math.round(Number(summary.avgPower || 0))} W`,
-        "remote-summary-max-power": `${Math.round(Number(summary.maxPower || 0))} W`,
-        "remote-summary-hr": `${Math.round(Number(summary.avgHr || 0))} bpm`,
-        "remote-summary-max-hr": `${Math.round(Number(summary.maxHr || 0))} bpm`,
-        "remote-summary-ascent": `${Math.round(Number(summary.ascent || 0))} m`,
-        "remote-summary-calories": `${Math.round(Number(summary.calories || 0))} kcal`,
-        "remote-summary-training-load": `${Math.round(Number(summary.np || 0))} W / ${Math.round(Number(summary.tss || 0))}`,
-      };
-      Object.entries(values).forEach(([id, value]) => {
-        const element = document.getElementById(id);
-        if (element) element.textContent = value;
-      });
-      setRemoteStatus("Sesión finalizada");
-    };
-
-    const showRemoteAccessDenied = (payload) => {
-      if (payload?.targetSenderId &&
-          payload.targetSenderId !== client?.getConnectionId()) {
-        return;
-      }
-      document.getElementById("remote-controls")?.setAttribute("hidden", "");
-      setRemoteStatus("Mando no autorizado: ya hay otro conectado", "failed");
-    };
-
-    const connectRemote = async (forceReconnect = false) => {
-      if (!client || isConnecting) return;
-      isConnecting = true;
-      setRemoteStatus(forceReconnect ? "Reconectando con la sala..." : "Conectando con la sala...");
-      try {
-        if (forceReconnect) await client.reconnect();
-        else await client.connect();
-        setRemoteStatus("Conectado a la sala", "connected");
-      } catch (error) {
-        console.error("[Mando móvil] No se pudo conectar con Ably:", error);
-        setRemoteStatus(
-          error?.message?.includes("Falta configurar")
-            ? "Ably no está configurado"
-            : `Sin conexión: ${error?.message || "error de conexión"}`,
-          "failed",
-        );
-      } finally {
-        isConnecting = false;
-        if (reconnectButton) reconnectButton.disabled = !client;
-      }
-    };
-
-    client?.onConnectionStateChange((change) => {
-      const stateMessages = {
-        connecting: "Conectando con Ably...",
-        connected: "Conectado a la sala",
-        disconnected: "Conexión perdida. Reconectando...",
-        suspended: "Conexión suspendida. Pulsa Reconectar.",
-        closing: "Cerrando conexión...",
-        closed: "Desconectado. Pulsa Reconectar.",
-        failed: `Error de conexión: ${change.reason?.message || "Ably no disponible"}`,
-      };
-      connectionState = change.current;
-      setRemoteStatus(
-        stateMessages[change.current] || `Estado de conexión: ${change.current}`,
-        "",
-      );
-    });
-    document.getElementById("btn-remote-gear-up")?.addEventListener("click", () => emitGearChange("up"));
-    document.getElementById("btn-remote-gear-down")?.addEventListener("click", () => emitGearChange("down"));
-    document.getElementById("btn-remote-pause")?.addEventListener("click", () => emitGearCommand("TOGGLE_PAUSE"));
-    document.getElementById("btn-remote-stop")?.addEventListener("click", async () => {
-      if (await showConfirm("¿Finalizar la sesión?", "Finalizar", "danger")) void emitGearCommand("STOP_SESSION");
-    });
-    reconnectButton?.addEventListener("click", () => void connectRemote(true));
-
-    if (client) {
-      client.on("SESSION_SUMMARY", showRemoteSummary);
-      client.on("REMOTE_ACCESS_DENIED", showRemoteAccessDenied);
-      void connectRemote();
-    }
-  }
 
   // Init Database and listeners
   try {
@@ -592,9 +609,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     onHeartRateReceived,
     onCadenceReceived,
     onSpeedReceived,
-    onStatusChanged,
+    onStatusChanged: sensorConnections.onStatusChanged,
   });
-  initSensorReconnectControls();
+  sensorConnections.initSensorReconnectControls();
 });
 
 function cacheUiElements() {
@@ -603,7 +620,9 @@ function cacheUiElements() {
     "user-select",
     "dashboard",
     "connections",
+    "workouts",
     "workout",
+    "remote",
     "summary",
     "history",
     "stats",
@@ -643,13 +662,11 @@ function showRouteModal() {
   if (UI.routeModal) {
     UI.routeModal.classList.add("active");
 
-    // Recuperar valor guardado y actualizar estado
     const savedRealism = localStorage.getItem("rodilloint_realism");
     if (savedRealism) {
       state.realismFactor = parseFloat(savedRealism);
     }
 
-    // Inicializar slider de realismo al abrir el modal de ruta
     const realismSlider = document.getElementById("realism-slider");
     const realismValue = document.getElementById("realism-value");
     if (realismSlider && realismValue) {
@@ -660,12 +677,9 @@ function showRouteModal() {
         const val = e.target.value;
         realismValue.textContent = `${val}%`;
         state.realismFactor = parseFloat(val) / 100;
-
-        // Guardar persistente
         localStorage.setItem("rodilloint_realism", state.realismFactor);
         saveStateToLocalStorage();
 
-        // Sincronizar también el slider de sesión en vivo por si está visible
         const sessionSlider = document.getElementById("realism-slider-session");
         const sessionValue = document.getElementById("realism-value-session");
         if (sessionSlider && sessionValue) {
@@ -681,552 +695,9 @@ function hideRouteModal() {
   if (UI.routeModal) UI.routeModal.classList.remove("active");
 }
 
-// --- ROUTE LIBRARY (pantalla "Rutas Guardadas") ---
-
-/** Filtro activo: 'all' | 'app' | 'user' */
-let _routeLibraryFilter = "all";
-
-/**
- * Renderiza la lista de rutas en #route-library-list.
- * Carga rutas de la app (public/rutas/catalog.json) + rutas del usuario (IndexedDB).
- */
-async function renderRouteLibrary() {
-  const container = document.getElementById("route-library-list");
-  if (!container) return;
-  container.innerHTML = "<p class='route-library-empty'>Cargando rutas...</p>";
-
-  try {
-    const userId = state.currentUser?.id;
-    const filter = _routeLibraryFilter;
-
-    // --- Rutas de la app desde catalog.json ---
-    let appRoutes = [];
-    if (filter !== "user") {
-      try {
-        const res = await fetch("/rodillo/rutas/catalog.json");
-        if (res.ok) {
-          const catalog = await res.json();
-          appRoutes = (catalog.routes || []).map((r) => ({
-            ...r,
-            source: "app",
-            gpxUrl: "/rodillo/rutas/" + encodeURIComponent(r.file),
-          }));
-        }
-      } catch (e) {
-        console.warn("No se pudo cargar el catalogo de rutas de la app:", e);
-      }
-    }
-
-    // --- Rutas del usuario desde IndexedDB ---
-    let userRoutes = [];
-    if (filter !== "app" && userId) {
-      userRoutes = (await DbManager.getSavedRoutes(userId)).map((r) => ({
-        ...r,
-        source: "user",
-      }));
-    }
-
-    const allRoutes =
-      filter === "app"
-        ? appRoutes
-        : filter === "user"
-        ? userRoutes
-        : [...appRoutes, ...userRoutes];
-
-    if (allRoutes.length === 0) {
-      container.innerHTML =
-        "<p class='route-library-empty'>No hay rutas. Usa el boton Añadir ruta GPX/TCX para guardar una.</p>";
-      return;
-    }
-
-    container.innerHTML = "";
-    for (const route of allRoutes) {
-      const card = buildRouteCardEl(route);
-      container.appendChild(card);
-      loadRouteCardData(card, route);
-    }
-  } catch (err) {
-    console.error("Error cargando biblioteca de rutas:", err);
-    container.innerHTML =
-      "<p class='route-library-error'>Error al cargar las rutas. Intentalo de nuevo.</p>";
-  }
-}
-
-/**
- * Crea el elemento DOM de la tarjeta (sin datos GPX todavia).
- */
-function buildRouteCardEl(route) {
-  const card = document.createElement("div");
-  card.className = "route-library-card glass-card";
-  const isApp = route.source === "app";
-  const routeName = route.name || route.fileName || "Ruta sin nombre";
-  const sourceLabel = isApp ? "Rutas de la app" : "Mis rutas";
-
-  card.innerHTML =
-    '<div class="route-library-graphs">' +
-      '<svg class="rl-track-svg" viewBox="0 0 100 56" xmlns="http://www.w3.org/2000/svg">' +
-        '<rect width="100" height="56" fill="rgba(0,0,0,0.2)" rx="6"/>' +
-        '<text x="50" y="32" text-anchor="middle" fill="#666" font-size="9" font-family="sans-serif">Cargando...</text>' +
-      "</svg>" +
-      '<svg class="rl-elev-svg" viewBox="0 0 100 56" xmlns="http://www.w3.org/2000/svg">' +
-        '<rect width="100" height="56" fill="rgba(0,0,0,0.2)" rx="6"/>' +
-        '<text x="50" y="32" text-anchor="middle" fill="#666" font-size="9" font-family="sans-serif">Cargando...</text>' +
-      "</svg>" +
-    "</div>" +
-    '<div class="route-library-details">' +
-      '<div class="route-library-heading">' +
-        '<strong class="route-library-name">' + escapeHtml(routeName) + "</strong>" +
-      "</div>" +
-      '<dl class="route-library-stats">' +
-        "<dt>Distancia</dt><dd>--</dd>" +
-        "<dt>Desnivel +</dt><dd>--</dd>" +
-        "<dt>Alt. min</dt><dd>--</dd>" +
-        "<dt>Alt. max</dt><dd>--</dd>" +
-      "</dl>" +
-      '<span class="route-library-source">' + escapeHtml(sourceLabel) + "</span>" +
-      '<div style="display:flex;gap:8px;margin-top:auto;padding-top:6px;">' +
-        '<button class="route-library-select" type="button">▶ Usar ruta</button>' +
-        (isApp ? "" : '<button class="route-library-delete" type="button" title="Eliminar">🗑️</button>') +
-      "</div>" +
-    "</div>";
-
-  return card;
-}
-
-/**
- * Carga los datos GPX de la ruta y actualiza la tarjeta con SVGs y stats.
- */
-async function loadRouteCardData(card, route) {
-  const isApp = route.source === "app";
-  const routeName = route.name || route.fileName || "Ruta sin nombre";
-
-  try {
-    let gpxText;
-    if (isApp) {
-      const res = await fetch(route.gpxUrl);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      gpxText = await res.text();
-    } else {
-      gpxText = route.gpxText;
-    }
-
-    const parsed = GpxManager.parseRoute(gpxText);
-    if (!parsed || !parsed.points || parsed.points.length < 2) throw new Error("Sin puntos validos");
-
-    const { points, elevations, distances } = parsed;
-    route._parsed = { points, elevations, distances };
-    if (isApp) route._gpxText = gpxText;
-
-    const totalKm = distances[distances.length - 1] || 0;
-    const ascent = _computeAscent(elevations);
-    const minElev = Math.min.apply(null, elevations);
-    const maxElev = Math.max.apply(null, elevations);
-
-    // Actualizar stats
-    const statsDd = card.querySelectorAll(".route-library-stats dd");
-    if (statsDd.length >= 4) {
-      statsDd[0].textContent = totalKm.toFixed(1) + " km";
-      statsDd[1].textContent = Math.round(ascent) + " m";
-      statsDd[2].textContent = Math.round(minElev) + " m";
-      statsDd[3].textContent = Math.round(maxElev) + " m";
-    }
-
-    // SVG Traza
-    const trackSvg = card.querySelector(".rl-track-svg");
-    if (trackSvg) {
-      trackSvg.outerHTML = _buildTrackSvg(points);
-    }
-
-    // SVG Elevacion
-    const elevSvg = card.querySelector(".rl-elev-svg");
-    if (elevSvg) {
-      elevSvg.outerHTML = _buildElevSvg(distances, elevations);
-    }
-
-  } catch (e) {
-    console.warn("Error procesando ruta \"" + routeName + "\":", e);
-    const statsDd = card.querySelectorAll(".route-library-stats dd");
-    if (statsDd.length > 0) statsDd[0].textContent = "Error";
-  }
-
-  // Botón usar ruta
-  const selectBtn = card.querySelector(".route-library-select");
-  if (selectBtn) {
-    selectBtn.addEventListener("click", async () => {
-      selectBtn.disabled = true;
-      selectBtn.textContent = "Cargando...";
-      try {
-        if (!route._parsed) {
-          let gpxText = route._gpxText || route.gpxText;
-          if (!gpxText && isApp) {
-            const res = await fetch(route.gpxUrl);
-            gpxText = await res.text();
-            route._gpxText = gpxText;
-          }
-          const parsed = GpxManager.parseRoute(gpxText);
-          if (!parsed || !parsed.points || !parsed.points.length)
-            throw new Error("Sin puntos validos");
-          route._parsed = parsed;
-        }
-        const { points, elevations, distances } = route._parsed;
-        state.routePoints = points;
-        state.routeElevations = elevations;
-        state.routeDistances = distances;
-        state.gpxFilename = route.file || route.fileName || route.name;
-        state.routeName = route.name || route.file || route.fileName;
-        state.routeSelectedFromLibrary = true;
-        state.currentMode = "ROUTE";
-        navigateTo("connections");
-      } catch (err) {
-        console.error("Error cargando ruta:", err);
-        showToast("No se pudo cargar la ruta. Comprueba el archivo.", "error");
-        selectBtn.disabled = false;
-        selectBtn.textContent = "Usar ruta";
-      }
-    });
-  }
-
-  // Botón eliminar (solo rutas de usuario)
-  const deleteBtn = card.querySelector(".route-library-delete");
-  if (deleteBtn) {
-    const routeName2 = route.name || route.fileName || "Ruta";
-    deleteBtn.addEventListener("click", async () => {
-      if (!await showConfirm('¿Eliminar la ruta "' + routeName2 + '"?', 'Eliminar', 'danger')) return;
-      try {
-        await DbManager.deleteSavedRoute(route.id);
-        await renderRouteLibrary();
-      } catch (err) {
-        console.error("Error eliminando ruta:", err);
-        showToast("No se pudo eliminar la ruta.", "error");
-      }
-    });
-  }
-}
-
-/** Desnivel positivo acumulado */
-function _computeAscent(elevations) {
-  let total = 0;
-  for (let i = 1; i < elevations.length; i++) {
-    const d = elevations[i] - elevations[i - 1];
-    if (d > 0) total += d;
-  }
-  return total;
-}
-
-/** SVG de la traza 2D de la ruta */
-function _buildTrackSvg(points) {
-  const W = 100, H = 56, pad = 5;
-  const lats = points.map(function(p) { return p.lat; });
-  const lons = points.map(function(p) { return p.lon; });
-  const minLat = Math.min.apply(null, lats);
-  const maxLat = Math.max.apply(null, lats);
-  const minLon = Math.min.apply(null, lons);
-  const maxLon = Math.max.apply(null, lons);
-  const rangeW = (maxLon - minLon) || 1;
-  const rangeH = (maxLat - minLat) || 1;
-  const scale = Math.min((W - pad * 2) / rangeW, (H - pad * 2) / rangeH);
-  function toX(lon) { return pad + (lon - minLon) * scale; }
-  function toY(lat) { return H - pad - (lat - minLat) * scale; }
-  const step = Math.max(1, Math.floor(points.length / 250));
-  const parts = [];
-  for (let i = 0; i < points.length; i += step) {
-    parts.push((i === 0 ? "M" : "L") + toX(points[i].lon).toFixed(1) + "," + toY(points[i].lat).toFixed(1));
-  }
-  const p0 = points[0], pN = points[points.length - 1];
-  return '<svg class="rl-track-svg" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">' +
-    '<rect width="100" height="56" fill="rgba(0,0,0,0.25)" rx="6"/>' +
-    '<path d="' + parts.join(" ") + '" fill="none" stroke="#60a5fa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
-    '<circle cx="' + toX(p0.lon).toFixed(1) + '" cy="' + toY(p0.lat).toFixed(1) + '" r="2.5" fill="#4ade80"/>' +
-    '<circle cx="' + toX(pN.lon).toFixed(1) + '" cy="' + toY(pN.lat).toFixed(1) + '" r="2.5" fill="#f87171"/>' +
-  '</svg>';
-}
-
-/** SVG del perfil de elevacion */
-function _buildElevSvg(distances, elevations) {
-  const W = 100, H = 56, pad = 5;
-  const minE = Math.min.apply(null, elevations);
-  const maxE = Math.max.apply(null, elevations);
-  const rangeE = (maxE - minE) || 1;
-  const maxD = distances[distances.length - 1] || 1;
-  const step = Math.max(1, Math.floor(distances.length / 180));
-  const pts = [];
-  for (let i = 0; i < distances.length; i += step) {
-    const x = (pad + (distances[i] / maxD) * (W - pad * 2)).toFixed(1);
-    const y = (H - pad - ((elevations[i] - minE) / rangeE) * (H - pad * 2)).toFixed(1);
-    pts.push(x + "," + y);
-  }
-  const lineD = pts.map(function(p, i) { return (i === 0 ? "M" : "L") + p; }).join(" ");
-  const first = pts[0] ? pts[0].split(",")[0] : pad;
-  const last = pts[pts.length - 1] ? pts[pts.length - 1].split(",")[0] : W - pad;
-  const areaD = lineD + " L" + last + "," + (H - pad) + " L" + first + "," + (H - pad) + " Z";
-  return '<svg class="rl-elev-svg" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">' +
-    '<rect width="100" height="56" fill="rgba(0,0,0,0.25)" rx="6"/>' +
-    '<path d="' + areaD + '" fill="rgba(16,185,129,0.18)"/>' +
-    '<path d="' + lineD + '" fill="none" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
-  '</svg>';
-}
-
-/** Cambia el filtro activo y vuelve a renderizar */
-function setRouteLibraryFilter(value) {
-  _routeLibraryFilter = value || "all";
-  renderRouteLibrary();
-}
-
-/** Guarda un archivo GPX/TCX seleccionado por el usuario en la BD */
-async function saveUserRoute(file) {
-  const statusEl = document.getElementById("saved-route-library-status");
-  const setStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
-  if (!state.currentUser) {
-    setStatus("Selecciona un perfil antes de guardar rutas.");
-    return;
-  }
-  setStatus("Guardando ruta...");
-  try {
-    const gpxText = await file.text();
-    const parsed = GpxManager.parseRoute(gpxText);
-    if (!parsed || !parsed.points || !parsed.points.length) {
-      setStatus("El archivo no es valido o no contiene puntos de ruta.");
-      return;
-    }
-    const routeName = file.name.replace(/\.(gpx|tcx|xml)$/i, "");
-    await DbManager.saveRoute({
-      userId: state.currentUser.id,
-      name: routeName,
-      fileName: file.name,
-      gpxText,
-    });
-    setStatus("Ruta \"" + routeName + "\" guardada correctamente.");
-    await renderRouteLibrary();
-  } catch (err) {
-    console.error("Error guardando ruta:", err);
-    setStatus("Error al guardar la ruta.");
-  }
-}
-
-/**
- * Rellena el select del modal de sesion con las rutas guardadas + rutas de la app.
- */
-async function populateSessionSavedRoutes() {
-  const select = document.getElementById("session-saved-route-select");
-  const statusEl = document.getElementById("session-saved-route-status");
-  if (!select) return;
-  select.innerHTML = "<option value=''>Cargando rutas...</option>";
-  if (statusEl) statusEl.textContent = "";
-  try {
-    // Rutas de la app
-    let appRoutes = [];
-    try {
-      const res = await fetch("/rodillo/rutas/catalog.json");
-      if (res.ok) {
-        const catalog = await res.json();
-        appRoutes = catalog.routes || [];
-      }
-    } catch (e) {}
-    // Rutas del usuario
-    const userId = state.currentUser?.id;
-    const userRoutes = userId ? await DbManager.getSavedRoutes(userId) : [];
-    const allRoutes = [
-      ...appRoutes.map((r) => ({ id: "app:" + r.file, name: r.name, file: r.file, source: "app" })),
-      ...userRoutes.map((r) => ({ ...r, source: "user" })),
-    ];
-    if (allRoutes.length === 0) {
-      select.innerHTML = "<option value=''>No hay rutas disponibles</option>";
-      if (statusEl) statusEl.textContent = "Guarda rutas GPX/TCX en la seccion Rutas guardadas.";
-      return;
-    }
-    select.innerHTML = "<option value=''>-- Seleccionar ruta --</option>";
-    for (const route of allRoutes) {
-      const opt = document.createElement("option");
-      opt.value = String(route.id);
-      opt.textContent = (route.source === "app" ? "[App] " : "") + (route.name || route.fileName || ("Ruta " + route.id));
-      opt.dataset.source = route.source;
-      if (route.file) opt.dataset.file = route.file;
-      select.appendChild(opt);
-    }
-  } catch (err) {
-    console.error("Error cargando rutas en el modal:", err);
-    select.innerHTML = "<option value=''>Error al cargar rutas</option>";
-  }
-}
-
-/**
- * Carga la ruta seleccionada en el select del modal y la aplica al estado.
- */
-async function loadSavedRouteInSessionModal(button) {
-  const select = document.getElementById("session-saved-route-select");
-  const statusEl = document.getElementById("session-saved-route-status");
-  const setStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
-  const routeId = select?.value;
-  if (!routeId) {
-    setStatus("Elige una ruta de la lista primero.");
-    return;
-  }
-  if (button) button.disabled = true;
-  setStatus("Cargando ruta...");
-  try {
-    const selectedOpt = select.options[select.selectedIndex];
-    const isApp = selectedOpt?.dataset.source === "app";
-    let gpxText, routeName;
-    if (isApp) {
-      const file = selectedOpt.dataset.file;
-      const res = await fetch("/rodillo/rutas/" + encodeURIComponent(file));
-      if (!res.ok) throw new Error("No se pudo descargar el archivo de ruta.");
-      gpxText = await res.text();
-      routeName = selectedOpt.textContent.replace(/^\[App\] /, "");
-    } else {
-      const userId = state.currentUser?.id;
-      const routes = userId ? await DbManager.getSavedRoutes(userId) : [];
-      const route = routes.find((r) => String(r.id) === String(routeId));
-      if (!route) { setStatus("Ruta no encontrada."); return; }
-      gpxText = route.gpxText;
-      routeName = route.name || route.fileName;
-    }
-    const parsed = GpxManager.parseRoute(gpxText);
-    if (!parsed || !parsed.points || !parsed.points.length) {
-      setStatus("El archivo de ruta es invalido o esta corrupto.");
-      return;
-    }
-    state.routePoints = parsed.points;
-    state.routeElevations = parsed.elevations;
-    state.routeDistances = parsed.distances;
-    state.gpxFilename = routeName;
-    state.routeName = routeName;
-    state.routeSelectedFromLibrary = true;
-    const label = document.getElementById("gpx-filename-label");
-    if (label) label.textContent = "Ruta cargada: " + routeName;
-    setStatus("Ruta \"" + routeName + "\" cargada correctamente.");
-  } catch (err) {
-    console.error("Error cargando ruta desde el modal:", err);
-    setStatus("Error al cargar la ruta.");
-  } finally {
-    if (button) button.disabled = false;
-  }
-}
-
-/** Escapa HTML para evitar XSS en nombres de rutas */
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-
-// --- ROUTE OVERVIEW SVG (panel "VISTA GENERAL") ---
-
-/**
- * Variables de escala calculadas una vez al iniciar la ruta.
- * Reutilizadas en cada actualización de posición.
- */
-let _overviewScale = null;
-
-/**
- * Dibuja la traza completa de la ruta en el SVG de vista general.
- * Llamar al inicio de la sesión en modo ROUTE.
- */
-function initRouteOverviewSvg() {
-  const svg = document.getElementById("route-overview-svg");
-  const trackPath = document.getElementById("route-overview-track");
-  const completedPath = document.getElementById("route-overview-completed");
-  const startCircle = document.getElementById("route-overview-start");
-  const endCircle = document.getElementById("route-overview-end");
-  const posCircle = document.getElementById("route-overview-position");
-
-  if (!svg || !trackPath || !posCircle) return;
-  if (!state.routePoints || state.routePoints.length < 2) return;
-
-  const points = state.routePoints;
-  const W = 100, H = 100, pad = 7;
-
-  const lats = points.map((p) => p.lat);
-  const lons = points.map((p) => p.lon);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-  const rangeW = (maxLon - minLon) || 1e-9;
-  const rangeH = (maxLat - minLat) || 1e-9;
-  const scale = Math.min((W - pad * 2) / rangeW, (H - pad * 2) / rangeH);
-  const offX = pad + ((W - pad * 2) - rangeW * scale) / 2;
-  const offY = pad + ((H - pad * 2) - rangeH * scale) / 2;
-
-  // Guardamos la escala para actualizar la posición eficientemente
-  _overviewScale = { minLat, minLon, scale, offX, offY, H };
-
-  function toX(lon) { return offX + (lon - minLon) * scale; }
-  function toY(lat) { return H - offY - (lat - minLat) * scale; }
-
-  // Sample points (max 400 for performance)
-  const step = Math.max(1, Math.floor(points.length / 400));
-  const pathParts = [];
-  for (let i = 0; i < points.length; i += step) {
-    pathParts.push((i === 0 ? "M" : "L") + toX(points[i].lon).toFixed(2) + "," + toY(points[i].lat).toFixed(2));
-  }
-  const d = pathParts.join(" ");
-
-  trackPath.setAttribute("d", d);
-  if (completedPath) completedPath.setAttribute("d", "");
-
-  // Inicio (verde) y fin (rojo)
-  const p0 = points[0], pN = points[points.length - 1];
-  if (startCircle) {
-    startCircle.setAttribute("cx", toX(p0.lon).toFixed(2));
-    startCircle.setAttribute("cy", toY(p0.lat).toFixed(2));
-  }
-  if (endCircle) {
-    endCircle.setAttribute("cx", toX(pN.lon).toFixed(2));
-    endCircle.setAttribute("cy", toY(pN.lat).toFixed(2));
-  }
-
-  // Posición inicial al inicio
-  posCircle.setAttribute("cx", toX(p0.lon).toFixed(2));
-  posCircle.setAttribute("cy", toY(p0.lat).toFixed(2));
-}
-
-/**
- * Actualiza la posición actual del ciclista y el tramo completado en el SVG.
- * Llamar en cada tick del loop de sesión.
- * @param {number} currentIndex  Índice actual en state.routePoints
- */
-function updateRouteOverviewPosition(currentIndex) {
-  if (!_overviewScale || !state.routePoints || state.routePoints.length === 0) return;
-
-  const posCircle = document.getElementById("route-overview-position");
-  const completedPath = document.getElementById("route-overview-completed");
-  if (!posCircle) return;
-
-  const { minLat, minLon, scale, offX, offY, H } = _overviewScale;
-  function toX(lon) { return offX + (lon - minLon) * scale; }
-  function toY(lat) { return H - offY - (lat - minLat) * scale; }
-
-  const idx = Math.max(0, Math.min(currentIndex, state.routePoints.length - 1));
-  const pt = state.routePoints[idx];
-  posCircle.setAttribute("cx", toX(pt.lon).toFixed(2));
-  posCircle.setAttribute("cy", toY(pt.lat).toFixed(2));
-
-  // Tramo completado (trazo verde hasta la posición actual)
-  if (completedPath && idx > 0) {
-    const step = Math.max(1, Math.floor(state.routePoints.length / 400));
-    const parts = [];
-    for (let i = 0; i <= idx; i += step) {
-      parts.push((i === 0 ? "M" : "L") + toX(state.routePoints[i].lon).toFixed(2) + "," + toY(state.routePoints[i].lat).toFixed(2));
-    }
-    // Asegurar que el último punto es exactamente la posición actual
-    if (parts.length > 0) {
-      parts.push("L" + toX(pt.lon).toFixed(2) + "," + toY(pt.lat).toFixed(2));
-    }
-    completedPath.setAttribute("d", parts.join(" "));
-  }
-}
-
-function calculateTotalRouteAscent() {
-  if (state.routeElevations.length < 2) return 0;
-  let total = 0;
-  for (let i = 1; i < state.routeElevations.length; i++) {
-    const diff = state.routeElevations[i] - state.routeElevations[i - 1];
-    if (diff > 0) total += diff;
-  }
-  return total;
-}
+// --- ROUTE LIBRARY --- (migrado a js/core/routeLibrary.js)
+// renderRouteLibrary, buildRouteCardEl, loadRouteCardData, setRouteLibraryFilter,
+// saveUserRoute, populateSessionSavedRoutes, loadSavedRouteInSessionModal, escapeHtml
 
 function updateRouteProgressHud() {
   if (state.routeDistances.length === 0) return;
@@ -1236,7 +707,7 @@ function updateRouteProgressHud() {
   setElText("submetrics-remaining", `${remainingKm.toFixed(2)} km`);
 
   if (!state.routeTotalAscent) {
-    state.routeTotalAscent = calculateTotalRouteAscent();
+    state.routeTotalAscent = calculateTotalRouteAscent(state.routeElevations);
   }
   const remainingAscent = Math.max(
     0,
@@ -1276,7 +747,7 @@ function updateSessionAverages() {
 function configureWorkoutHudForMode() {
   const isRoute = state.currentMode === "ROUTE";
   const isManual = state.currentMode === "MANUAL";
-  const isTraditional = state.currentMode === "TRADITIONAL"; // Suponiendo que este modo existe
+  const isErg = state.currentMode === "ERG";
   const routeNameElement = document.getElementById("workout-route-name");
   if (routeNameElement) {
     const routeName = (
@@ -1289,26 +760,34 @@ function configureWorkoutHudForMode() {
     routeNameElement.hidden = !isRoute || !routeName;
   }
 
-  // Ocultar/Mostrar elementos según el modo
-  // route-side-stack es el contenedor padre de "VISTA GENERAL" y "PROGRESO RUTA"
   setElDisplay("route-side-stack", isRoute ? "flex" : "none");
   setElDisplay("hud-progress", isRoute ? "block" : "none");
   setElDisplay("hud-profile", isRoute ? "flex" : "none");
   setElDisplay("hud-elevation-footer", isRoute ? "block" : "none");
   setElDisplay("workout-map", isRoute ? "block" : "none");
+  setElDisplay("workout-erg-panel", isErg ? "block" : "none");
 
-  // Ocultar botones específicos de mapa/ruta
   setElDisplay("btn-toggle-3d", isRoute ? "block" : "none");
   setElDisplay("btn-orient-toggle", isRoute ? "block" : "none");
   setElDisplay("metrics-slope", isRoute ? "flex" : "none");
-  // Usamos el ID correcto que muestra el inspector: upcoming-profile-chart
   setElDisplay("upcoming-profile-chart", isRoute ? "block" : "none");
-  setElDisplay("hud-elevation-footer", isRoute ? "block" : "none");
 
-  // Mostrar panel Manual si aplica
   setElDisplay("manual-mode-panel", isManual ? "flex" : "none");
+  if (isManual) {
+    const label = document.getElementById("manual-slope-label");
+    const modeText = document.getElementById("manual-mode-label-text");
+    const btn = document.getElementById("btn-toggle-manual-mode");
+    if (state.manualMode === "ERG") {
+      if (modeText) modeText.textContent = "Potencia Objetivo";
+      if (label) label.textContent = `${state.targetWatts || 150} W`;
+      if (btn) btn.textContent = "Cambiar a Modo Pendiente (%)";
+    } else {
+      if (modeText) modeText.textContent = "Pendiente";
+      if (label) label.textContent = `${(state.currentSlope || 0).toFixed(1)}%`;
+      if (btn) btn.textContent = "Cambiar a Modo ERG (W)";
+    }
+  }
 
-  // Ghost Rider is available for any route mode, regardless of trainer type.
   const ghostBanner = document.getElementById("ghost-banner");
   if (ghostBanner) {
     ghostBanner.classList.toggle(
@@ -1317,6 +796,12 @@ function configureWorkoutHudForMode() {
     );
   }
 
+  if (isErg) {
+    const workoutTitle = document.getElementById("workout-timeline-name");
+    if (workoutTitle) {
+      workoutTitle.textContent = state.currentWorkout?.name || "Entrenamiento";
+    }
+  }
 }
 
 function initConfiguredMap() {
@@ -1412,221 +897,12 @@ function observeWorkoutHudSize() {
   workoutHudResizeObserver.observe(hud);
 }
 
-// --- Funciones UI movidas a modules/ui.js ---
 
-// --- USER PROFILE LOGIC ---
-async function loadProfilesGrid() {
-  const users = await DbManager.getAllUsers();
-  const container = document.getElementById("users-grid-container");
-  container.innerHTML = "";
+// --- USER PROFILE LOGIC --- (migrado a js/core/userProfile.js)
+// loadProfilesGrid, selectUser, handleLogout, handleAddUserSubmit,
+// handleEditUserSubmit, handleImportUserSubmit, handleDeleteProfile,
+// handleExportProfile, deleteProfileFromSelectScreen
 
-  if (users.length === 0) {
-    return;
-  }
-
-  // Si hay usuarios, los mostramos
-  users.forEach((u) => {
-    const card = document.createElement("div");
-    card.className = "glass-card user-card";
-    // Al hacer clic en la tarjeta de usuario, se selecciona y se navega al dashboard
-    card.onclick = () => {
-      selectUser(u);
-      navigateTo("dashboard"); // Asegurarse de que navega a dashboard
-    };
-
-    // Initials for avatar
-    const initials = u.name
-      .split(" ")
-      .map((n) => n[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase();
-
-    card.innerHTML = `
-      <button class="user-card-delete" title="Eliminar Perfil">&times;</button>
-      <div class="user-avatar">${initials}</div>
-      <div class="user-name">${u.name}</div>
-      <div class="user-meta">${u.weight} kg • FTP ${u.ftp}W</div>
-    `;
-
-    const deleteBtn = card.querySelector(".user-card-delete");
-    deleteBtn.onclick = (e) => {
-      e.stopPropagation(); // Evita que se active el onclick de la tarjeta
-      deleteProfileFromSelectScreen(u.id, u.name);
-    };
-
-    container.appendChild(card);
-  });
-}
-
-async function deleteProfileFromSelectScreen(id, name) {
-  const confirmDel = await showConfirm(
-    `¿Estás seguro de que quieres eliminar el perfil de ${name}? Esto borrará sus datos permanentemente.`,
-  );
-  if (confirmDel) {
-    try {
-      await DbManager.deleteUser(id);
-      await loadProfilesGrid();
-    } catch (e) {
-      console.error("Error al eliminar perfil:", e);
-    }
-  }
-}
-
-function selectUser(user) {
-  state.currentUser = user;
-  loadWorkoutLayoutForUser(user);
-  localStorage.setItem("rodilloint_userId", user.id);
-  // Asegurarse de que navega a dashboard después de seleccionar usuario
-  if (navigateTo) {
-    navigateTo("dashboard");
-  } else {
-    console.warn("navigateTo no está definido, no se puede navegar a dashboard.");
-  }
-}
-
-function handleLogout() {
-  state.currentUser = null;
-  localStorage.removeItem("rodilloint_userId");
-  loadProfilesGrid();
-  navigateTo("user-select");
-}
-
-async function handleAddUserSubmit(e) {
-  e.preventDefault();
-  const name = document.getElementById("new-user-name").value.trim();
-  const weight = parseFloat(document.getElementById("new-user-weight").value);
-  const ftp = parseInt(document.getElementById("new-user-ftp").value);
-  const maxHeartRate = parseInt(
-    document.getElementById("new-user-maxhr").value,
-  );
-  const age = parseInt(document.getElementById("new-user-age").value);
-  const height = parseInt(document.getElementById("new-user-height").value);
-
-  if (name.length > 0) {
-    try {
-      const newId = await DbManager.insertUser({
-        name,
-        weight,
-        ftp,
-        maxHeartRate,
-        age,
-        height,
-      });
-      const user = await DbManager.getUserById(newId);
-      hideModal("add-user");
-      UI.formAddUser.reset();
-      selectUser(user);
-    } catch (e) {
-      console.error(e);
-      showToast("Error al crear perfil.", "error");
-    }
-  }
-}
-
-async function handleEditUserSubmit(e) {
-  e.preventDefault();
-  if (!state.currentUser) return;
-
-  const name = document.getElementById("edit-user-name").value.trim();
-  const weight = parseFloat(document.getElementById("edit-user-weight").value);
-  const ftp = parseInt(document.getElementById("edit-user-ftp").value);
-  const maxHeartRate = parseInt(
-    document.getElementById("edit-user-maxhr").value,
-  );
-  const age = parseInt(document.getElementById("edit-user-age").value);
-  const height = parseInt(document.getElementById("edit-user-height").value);
-
-  const updatedUser = {
-    ...state.currentUser,
-    name,
-    weight,
-    ftp,
-    maxHeartRate,
-    age,
-    height,
-  };
-
-  try {
-    await DbManager.updateUser(updatedUser);
-    state.currentUser = updatedUser;
-    hideModal("edit-user");
-    loadDashboardHeader();
-  } catch (e) {
-    console.error(e);
-    showToast("Error al guardar ajustes.", "error");
-  }
-}
-
-async function handleImportUserSubmit() {
-  const jsonStr = document.getElementById("import-json-data").value.trim();
-  if (jsonStr.length === 0) return;
-
-  try {
-    const profile = JSON.parse(jsonStr);
-    if (!profile.name || !profile.ftp) {
-      showToast("Formato de perfil no válido. Faltan campos obligatorios (name, ftp).", "warning");
-      return;
-    }
-    const newId = await DbManager.insertUser({
-      uuid: profile.uuid || undefined,
-      name: profile.name,
-      weight: profile.weight || 75.0,
-      ftp: profile.ftp || 200,
-      maxHeartRate: profile.maxHeartRate || 190,
-      age: profile.age || 30,
-      height: profile.height || 175,
-    });
-
-    const user = await DbManager.getUserById(newId);
-    hideModal("import-user");
-    document.getElementById("import-json-data").value = "";
-    selectUser(user);
-  } catch (e) {
-    console.error(e);
-    showToast("Formato JSON no válido.", "error");
-  }
-}
-
-async function handleDeleteProfile() {
-  if (!state.currentUser) return;
-  const confirmDel = await showConfirm(
-    `¿Estás seguro de que quieres eliminar el perfil de ${state.currentUser.name}? Esto borrará sus datos permanentemente.`,
-  );
-  if (confirmDel) {
-    try {
-      await DbManager.deleteUser(state.currentUser.id);
-      hideModal("edit-user");
-      handleLogout();
-    } catch (e) {
-      console.error(e);
-    }
-  }
-}
-
-function handleExportProfile() {
-  if (!state.currentUser) return;
-  const profile = {
-    uuid: state.currentUser.uuid,
-    name: state.currentUser.name,
-    weight: state.currentUser.weight,
-    ftp: state.currentUser.ftp,
-    maxHeartRate: state.currentUser.maxHeartRate,
-    age: state.currentUser.age,
-    height: state.currentUser.height,
-  };
-  const jsonStr = JSON.stringify(profile, null, 2);
-
-  // Prompt copy
-  navigator.clipboard
-    .writeText(jsonStr)
-    .then(() => {
-      showToast("¡Código de Perfil copiado al portapapeles! Pégalo en otro dispositivo para importarlo.", "success");
-    })
-    .catch(() => {
-      showToast("Código de perfil copiado al portapapeles.", "success"); try { navigator.clipboard.writeText(jsonStr); } catch(e) {};
-    });
-}
 
 // --- WORKOUT LAUNCH MODAL/FLOW ---
 function startModeFlow(mode) {
@@ -1638,7 +914,7 @@ function startModeFlow(mode) {
   const hasSpeed = BleManager.connections.CSC.status === "CONECTADO";
   const isVirtual = BleManager.simulator.isActive;
 
-  if (mode === "ROUTE" || mode === "MANUAL") {
+  if (mode === "ROUTE" || mode === "MANUAL" || mode === "ERG") {
     // Requires a controllable trainer, speed or power sensors to calculate virtual metrics
     if (!hasControllable && !hasPower && !hasSpeed && !isVirtual) {
       showToast("Se necesita conectar al menos un sensor (Rodillo inteligente, potenciómetro, sensor de velocidad) o activar el Rodillo Virtual para iniciar entrenamientos interactivos.", "warning");
@@ -1647,221 +923,20 @@ function startModeFlow(mode) {
     }
   }
 
+  if (mode === "ERG" && !state.currentWorkout) {
+    showToast("Primero selecciona un entrenamiento ERG o importa uno .zwo/.erg.", "warning");
+    navigateTo("workouts");
+    return;
+  }
+
   navigateTo("workout");
-}
-
-// --- BLUETOOTH CONNECTION CENTER ---
-function syncBluetoothScreenStatus() {
-  const hasBluetooth = !!navigator.bluetooth;
-  setElDisplay("bluetooth-support-warning", hasBluetooth ? "none" : "block");
-
-  for (const type in BleManager.connections) {
-    const conn = BleManager.connections[type];
-    const card = document.getElementById(`sensor-${type}`);
-    const label = document.getElementById(`status-label-${type}`);
-    const btn = document.getElementById(`btn-connect-${type}`);
-
-    // Ocultar o deshabilitar el sensor TRAINER si estamos en modo TRADITIONAL
-    if (state.currentMode === "TRADITIONAL" && type === "TRAINER") {
-      if (card) card.style.display = "none"; // Ocultar toda la tarjeta del rodillo
-      // Alternativamente, podrías solo deshabilitarlo:
-      // if (btn) { btn.disabled = true; btn.textContent = 'No Aplica'; btn.style.opacity = '0.5'; }
-      // if (label) label.textContent = 'No Aplica';
-      return; // Salir del bucle para este tipo de sensor
-    }
-
-    if (!hasBluetooth && btn) {
-      btn.disabled = true;
-      btn.textContent = "No Soportado";
-    }
-
-    if (conn.status === "CONECTADO") {
-      card.className = "glass-card sensor-card connected";
-      label.textContent = `Conectado: ${conn.name}`;
-      btn.textContent = "Desconectar";
-      btn.className = "btn btn-danger btn-sm";
-    } else if (conn.status === "BUSCANDO" || conn.status === "CONECTANDO") {
-      card.className = "glass-card sensor-card disconnected";
-      label.textContent = "Conectando...";
-      btn.textContent = "Buscando";
-      btn.disabled = true;
-    } else {
-      card.className = "glass-card sensor-card disconnected";
-      label.textContent = "Desconectado";
-      btn.textContent = "Conectar";
-      btn.className = "btn btn-dark btn-sm";
-      btn.disabled = false;
-    }
-  }
-
-  // Update virtual button active style
-  if (BleManager.simulator.isActive) {
-    document.getElementById("btn-toggle-sim").textContent =
-      "Desactivar Rodillo Virtual";
-    document.getElementById("btn-toggle-sim").className = "btn btn-danger";
-  } else {
-    document.getElementById("btn-toggle-sim").textContent =
-      "Activar Rodillo Virtual";
-    document.getElementById("btn-toggle-sim").className = "btn btn-secondary";
-  }
-
-  // Show hints for last connected devices
-  const lastTrainer = localStorage.getItem("rodilloint_lastTrainerName");
-  const lastHrm = localStorage.getItem("rodilloint_lastHrmName");
-  const trainerLabel = document.getElementById("status-label-TRAINER");
-  const hrmLabel = document.getElementById("status-label-HRM");
-  if (
-    lastTrainer &&
-    BleManager.connections.TRAINER.status === "DESCONECTADO" &&
-    trainerLabel
-  ) {
-    trainerLabel.textContent = `Último: ${lastTrainer} (pulsa Conectar)`;
-  }
-  if (
-    lastHrm &&
-    BleManager.connections.HRM.status === "DESCONECTADO" &&
-    hrmLabel
-  ) {
-    hrmLabel.textContent = `Último: ${lastHrm} (pulsa Conectar)`;
-  }
-}
-
-async function triggerBleConnection(type) {
-  const conn = BleManager.connections[type];
-  if (conn.status === "CONECTADO") {
-    BleManager.disconnectDevice(type);
-    // Clear saved name if user manually disconnects
-    if (type === "TRAINER")
-      localStorage.removeItem("rodilloint_lastTrainerName");
-    if (type === "HRM") localStorage.removeItem("rodilloint_lastHrmName");
-    syncBluetoothScreenStatus();
-  } else {
-    try {
-      showRadarOverlay(type);
-      const name = await BleManager.connectDevice(type);
-      hideRadarOverlay();
-      // Save name of last successfully connected device
-      if (type === "TRAINER" && name)
-        localStorage.setItem("rodilloint_lastTrainerName", name);
-      if (type === "HRM" && name)
-        localStorage.setItem("rodilloint_lastHrmName", name);
-      syncBluetoothScreenStatus();
-    } catch (e) {
-      console.error(e);
-      hideRadarOverlay();
-      syncBluetoothScreenStatus();
-    }
-  }
-}
-
-function showRadarOverlay(type) {
-  const labelMap = {
-    TRAINER: "Rodillo Inteligente FTMS",
-    HRM: "Pulsómetro BPM",
-    POWER: "Sensor de Potencia (Watts)",
-    CSC: "Sensor de Velocidad/Cadencia",
-  };
-  document.getElementById("radar-scan-title").textContent =
-    `Buscando ${labelMap[type]}...`;
-  UI.modals.scanOverlay.className = "radar-overlay active";
-}
-function hideRadarOverlay() {
-  UI.modals.scanOverlay.className = "radar-overlay";
-}
-
-function onStatusChanged(type, status) {
-  syncBluetoothScreenStatus();
-
-  // Sincronizar workout status icons (mapeando tipos BLE a IDs de interfaz en workout)
-  let targetIds = [`indicator-${type}`];
-  if (type === "POWER") targetIds.push("indicator-PWR");
-  if (type === "HRM") targetIds.push("indicator-HR");
-  if (type === "CSC") {
-    targetIds.push("indicator-CAD");
-    targetIds.push("indicator-SPD");
-  }
-  if (type === "TRAINER") {
-    targetIds.push("indicator-SPD");
-  }
-
-  targetIds.forEach((id) => {
-    const icon = document.getElementById(id);
-    if (icon) {
-      const label =
-        id === "indicator-PWR"
-          ? "Potencia"
-          : id === "indicator-HR"
-            ? "Pulso"
-            : id === "indicator-CAD"
-              ? "Cadencia"
-              : id === "indicator-SPD"
-                ? "Velocidad"
-                : type;
-      const isConnected = BleManager.simulator.isActive || status === "CONECTADO";
-      const canReconnect = !isConnected && status === "DESCONECTADO";
-      icon.title = `${label}: ${
-        isConnected
-          ? "conectado"
-          : status === "CONECTANDO" || status === "BUSCANDO"
-            ? "conectando"
-            : "desconectado"
-      }${canReconnect ? ". Pulsa para conectar" : ""}`;
-      icon.setAttribute("aria-label", icon.title);
-      icon.setAttribute("aria-disabled", String(!canReconnect));
-      icon.tabIndex = canReconnect ? 0 : -1;
-      icon.classList.toggle("reconnect-available", canReconnect);
-
-      // Si el simulador está activo, forzamos el estado activo (verde)
-      if (BleManager.simulator.isActive) {
-        icon.className = "indicator-icon active";
-      } else if (status === "CONECTADO") {
-        icon.className = "indicator-icon active";
-      } else if (status === "CONECTANDO" || status === "BUSCANDO") {
-        icon.className = "indicator-icon connecting";
-      } else if (status === "DESCONECTADO") {
-        icon.className = "indicator-icon disconnected";
-      } else {
-        icon.className = "indicator-icon";
-      }
-    }
-  });
-}
-
-function initSensorReconnectControls() {
-  const sensorButtons = {
-    "indicator-PWR": "POWER",
-    "indicator-HR": "HRM",
-    "indicator-CAD": "CSC",
-    "indicator-SPD": "CSC",
-  };
-
-  Object.entries(sensorButtons).forEach(([id, type]) => {
-    const icon = document.getElementById(id);
-    if (!icon) return;
-    const connect = (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const trainerDisconnected =
-        (id === "indicator-PWR" || id === "indicator-SPD") &&
-        BleManager.connections.TRAINER.device &&
-        BleManager.connections.TRAINER.status === "DESCONECTADO";
-      const connectionType = trainerDisconnected ? "TRAINER" : type;
-      if (BleManager.connections[connectionType]?.status !== "DESCONECTADO") return;
-      void triggerBleConnection(connectionType);
-    };
-    icon.addEventListener("click", connect);
-    icon.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      connect(event);
-    });
-    icon.setAttribute("aria-disabled", "true");
-    icon.tabIndex = -1;
-  });
 }
 
 // --- TELEMETRY RX & CALCULATIONS ---
 function onPowerReceived(power) {
+  sensorConnections.onMetricReceived("power");
   state.currentPower = power;
+  lastPowerReceivedAt = Date.now();
 
   // Lógica de inicio por movimiento
   if (state.isWaitingForMovement && power > 10) {
@@ -1933,6 +1008,7 @@ function onPowerReceived(power) {
 }
 
 function onHeartRateReceived(hr) {
+  sensorConnections.onMetricReceived("heartRate");
   state.currentHr = hr;
   setElText("metrics-hr", hr);
 
@@ -1969,12 +1045,15 @@ function onHeartRateReceived(hr) {
 }
 
 function onCadenceReceived(cad) {
+  sensorConnections.onMetricReceived("cadence");
   state.currentCadence = cad;
+  lastCadenceReceivedAt = Date.now();
   setElText("metrics-cadence", cad);
   if (state.isSessionActive && cad > 5) resumeSessionOnMovement();
 }
 
 function onSpeedReceived(speedKph, hasWheelRevolution = speedKph > 0) {
+  sensorConnections.onMetricReceived("speed");
   state.currentSpeed = speedKph;
   setElText("metrics-speed", speedKph.toFixed(1));
 
@@ -2136,6 +1215,7 @@ function enterWorkoutScreen() {
   state.hrHistory = [];
   state.speedHistory = [];
   state.elapsedSeconds = 0;
+  workoutPowerSamples = [];
   state.totalDistance = 0.0;
   state.totalAscent = 0.0;
   state.currentRouteIndex = 0;
@@ -2175,10 +1255,11 @@ function enterWorkoutScreen() {
   if (state.clockInterval) clearInterval(state.clockInterval);
   state.clockInterval = setInterval(updateClock, 30000);
 
-  onStatusChanged("TRAINER", BleManager.connections.TRAINER.status);
-  onStatusChanged("HRM", BleManager.connections.HRM.status);
-  onStatusChanged("POWER", BleManager.connections.POWER.status);
-  onStatusChanged("CSC", BleManager.connections.CSC.status);
+  sensorConnections.onStatusChanged("TRAINER", BleManager.connections.TRAINER.status);
+  sensorConnections.onStatusChanged("HRM", BleManager.connections.HRM.status);
+  sensorConnections.onStatusChanged("POWER", BleManager.connections.POWER.status);
+  sensorConnections.onStatusChanged("CSC", BleManager.connections.CSC.status);
+  sensorConnections.resetMetricQuality();
 
   if (BleManager.simulator.isActive) {
     setElDisplay("virtual-trainer-panel", "block");
@@ -2235,7 +1316,7 @@ function enterWorkoutScreen() {
         state.routeElevations,
       );
       // Inicializar el SVG de vista general con la traza completa
-      initRouteOverviewSvg();
+      routeOverview.init();
     }
 
     setTimeout(() => {
@@ -2297,7 +1378,7 @@ async function handleGpxUpload(e) {
       state.routeElevations = routeData.elevations;
       state.routeDistances = routeData.distances;
       state.currentRouteIndex = 0;
-      state.routeTotalAscent = calculateTotalRouteAscent();
+      state.routeTotalAscent = calculateTotalRouteAscent(state.routeElevations);
 
       initConfiguredMap();
       drawRouteOnMap();
@@ -2471,17 +1552,62 @@ function drawRouteOnMap() {
   }
 }
 
-function initializeRemoteRoomPanel() {
+async function initializeRemoteRoomPanel() {
   const panel = document.getElementById("remote-room-panel");
   const qr = document.getElementById("remote-room-qr");
   const label = document.getElementById("remote-room-id");
   const status = document.getElementById("remote-room-status");
   if (!panel || !qr || !label || !status) return;
 
+  const initialization = ++remoteRoomInitialization;
   activeRemoteRoomClient?.disconnect();
-  const roomId = createRoomId();
-  const remoteUrl = buildRemoteUrl(roomId);
-  activeRemoteRoomClient = new RemoteRoomClient(roomId, "host");
+  activeRemoteRoomClient = null;
+  qr.hidden = true;
+  qr.removeAttribute("src");
+  let roomId;
+  let remoteOrigin = window.location.origin;
+  let hostSecret = null;
+  try {
+    if (isRemoteAuthConfigured()) {
+      status.textContent = "Creando sala segura...";
+      const room = await createRemoteRoom();
+      if (initialization !== remoteRoomInitialization) return;
+      roomId = room.roomId;
+      hostSecret = room.hostSecret;
+      remoteOrigin = room.remoteOrigin;
+    } else {
+      roomId = createRoomId();
+    }
+  } catch (error) {
+    console.error("[Mando móvil] No se pudo crear una sala segura:", error);
+    if (initialization === remoteRoomInitialization) {
+      label.textContent = "Sala no disponible";
+      status.textContent = error.message;
+    }
+    return;
+  }
+  const remoteUrl = buildRemoteUrl(roomId, remoteOrigin);
+
+  label.textContent = `Sala: ${roomId}`;
+  qr.title = remoteUrl;
+  panel.title = `Mando móvil: ${remoteUrl}`;
+  void buildQrUrl(remoteUrl)
+    .then((qrDataUrl) => {
+      if (!qr.isConnected || initialization !== remoteRoomInitialization) return;
+      qr.src = qrDataUrl;
+      qr.hidden = false;
+    })
+    .catch((error) => {
+      console.error("[Mando móvil] No se pudo generar el QR:", error);
+      status.textContent = "No se pudo generar el código QR local.";
+    });
+
+  if (!isRemoteAuthConfigured()) {
+    status.textContent = "QR listo; mando desactivado hasta configurar la autenticación segura de Ably.";
+    return;
+  }
+
+  activeRemoteRoomClient = new RemoteRoomClient(roomId, "host", hostSecret);
   status.textContent = "Ably: conectando...";
   activeRemoteRoomClient.onConnectionStateChange((change) => {
     const messages = {
@@ -2533,10 +1659,6 @@ function initializeRemoteRoomPanel() {
         : "Ably: credencial rechazada";
     });
 
-  label.textContent = `Sala: ${roomId}`;
-  qr.src = buildQrUrl(remoteUrl);
-  qr.title = remoteUrl;
-  panel.title = `Mando móvil: ${remoteUrl}`;
 }
 
 function toggleRemoteRoomPanel(isOpen = null) {
@@ -2599,6 +1721,7 @@ async function startSession() {
     const sessId = await DbManager.insertSession({
       userId: state.currentUser.id,
       startTime: Date.now(),
+      mode: state.currentMode,
       gpxPath: state.currentMode === "ROUTE" ? state.gpxFilename : null,
       routePoints: state.currentMode === "ROUTE"
         ? state.routePoints.map((point) => ({
@@ -2652,15 +1775,34 @@ async function startSession() {
     state.targetSlope = 0;
     applyTrainerSlope(0);
 
+    if (state.currentMode === "ERG") {
+      if (!state.currentWorkout) {
+        showToast("Primero selecciona un entrenamiento ERG.", "warning");
+        navigateTo("workouts");
+        state.isSessionActive = false;
+        return;
+      }
+      initWorkoutEngine(state.currentWorkout, state.currentUser?.ftp || 200);
+      const initialStatus = tickWorkout(0);
+      updateWorkoutErgHud(initialStatus);
+      const pills = document.getElementById("workout-erg-panel");
+      if (pills) pills.style.display = "block";
+    }
+
     if (state.currentMode === "ROUTE" && state.routePoints.length > 0) {
-      setRouteTargetSlope(0);
+      routeSimulation.setTargetSlope(0);
       refreshUpcomingPreview(0);
     }
 
     // Inicializar gráficos manuales si estamos en modo manual
     if (state.currentMode === "MANUAL") {
       window.ChartsManager.initManualTrainingCharts("manual-power-chart", "manual-hr-chart");
+      if (state.manualMode === "ERG" && typeof BleManager !== "undefined" && BleManager.connections.TRAINER.status === "CONECTADO") {
+        BleManager.setTargetPower(state.targetWatts || 150);
+      }
     }
+
+    sensorConnections.startMetricQualityMonitoring();
 
     // Iniciar cuenta atrás condicional
     const startLogic = () => {
@@ -2720,25 +1862,7 @@ function confirmSessionSafety() {
 }
 
 function startTimerInterval() {
-  if (state.timerInterval) clearInterval(state.timerInterval);
-
-  // Guardamos el tiempo de inicio real de la sesión (ajustado por pausas previas)
-  // Nota: startTime debe ser relativo a Date.now() menos el tiempo transcurrido
-  // pero el tiempo que ya ha pasado en pausas debe ser ignorado.
-  // Para simplificar, ajustamos startTime en el momento de reanudar,
-  // pero en la estructura actual `startTimerInterval` recalcula
-  // `state.elapsedSeconds` basado en `Date.now() - startTime`.
-  // Si queremos que no cuente el tiempo de pausa, necesitamos otra forma de gestionar el tiempo acumulado.
-  const startTime = Date.now() - (state.elapsedSeconds || 0) * 1000;
-
-  // Guardamos el tiempo en que la sesión fue pausada por última vez
-  state.lastPauseTime = null;
-  state.totalPausedDuration = 0;
-
-  state.timerInterval = setInterval(() => {
-    if (state.isSessionActive && !state.isPaused) {
-      const now = Date.now();
-      state.elapsedSeconds = Math.floor((now - startTime - (state.totalPausedDuration || 0)) / 1000);
+  sessionTimer.start((now) => {
 
       // Acumulación de Kilojulios (kJ) segundo a segundo
       const currentWatts = Number(state.currentPower) || 0;
@@ -2782,6 +1906,23 @@ function startTimerInterval() {
       const formatted = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
       setElText("workout-timer", formatted);
 
+      if (state.currentMode === "ERG") {
+        const workoutStatus = tickWorkout(state.elapsedSeconds);
+        if (workoutStatus) {
+          if (Date.now() - lastPowerReceivedAt < 5000) {
+            const lastSample = workoutPowerSamples[workoutPowerSamples.length - 1];
+            if (lastSample?.elapsedSeconds !== state.elapsedSeconds) {
+              workoutPowerSamples.push({
+                elapsedSeconds: state.elapsedSeconds,
+                watts: Math.max(0, Number(state.currentPower) || 0),
+                targetWatts: workoutStatus.targetWatts,
+              });
+            }
+          }
+          updateWorkoutErgHud(workoutStatus);
+        }
+      }
+
       if (state.currentMode === "MANUAL") {
         window.ChartsManager.updateManualTrainingCharts(state.currentPower, state.currentHr);
       }
@@ -2796,10 +1937,10 @@ function startTimerInterval() {
         setElText("submetrics-distance", `${state.totalDistance.toFixed(2)} km`);
         updateRouteProgressHud(state);
         updateRouteSimulation(state.totalDistance);
-        setRouteTargetSlope(state.totalDistance);
+        routeSimulation.setTargetSlope(state.totalDistance);
         syncSlopeDisplayLabels();
         // Actualizar posición en el mini-mapa de vista general
-        updateRouteOverviewPosition(state.currentRouteIndex);
+        routeOverview.updatePosition(state.currentRouteIndex);
       }
 
       updateSessionAverages();
@@ -2820,13 +1961,12 @@ function startTimerInterval() {
       if (state.elapsedSeconds % 30 === 0) {
         flushTelemetryBuffer();
       }
-    }
-  }, 1000); // 1 segundo exacto
+      sensorConnections.refreshMetricQuality();
+  });
 }
 
 function pauseTimer() {
-  state.isPaused = true;
-  state.lastPauseTime = Date.now(); // Marcamos cuándo empezamos a pausar
+  sessionTimer.pause();
   state.lastSlopeRampTime = Date.now();
   state.lastTelemetryTimestamp = Date.now();
   state.lastTelemetrySpeed = state.currentSpeed || 0;
@@ -2838,13 +1978,7 @@ function pauseTimer() {
 }
 
 function resumeTimer() {
-  state.isPaused = false;
-
-  // Sumamos el tiempo transcurrido durante la pausa al total de tiempo pausado
-  if (state.lastPauseTime) {
-    state.totalPausedDuration += (Date.now() - state.lastPauseTime);
-    state.lastPauseTime = null;
-  }
+  sessionTimer.resume();
 
   state.lastSpeedUpdateTime = Date.now();
   state.lastMovementTime = Date.now();
@@ -2856,314 +1990,14 @@ function resumeTimer() {
   setElDisplay("workout-autopause-label", "none");
 }
 
-async function saveTelemetryPoint() {
-  if (!state.currentSessionId) return;
-
-  // Extract coordinate lat/lon and elevation if active route
-  let lat = null,
-    lon = null,
-    ele = 0.0;
-  if (state.currentMode === "ROUTE" && state.routePoints.length > 0) {
-    const pt = state.routePoints[state.currentRouteIndex];
-    lat = pt.lat;
-    lon = pt.lon;
-    if (
-      state.routeElevations &&
-      state.routeElevations.length > state.currentRouteIndex
-    ) {
-      ele = state.routeElevations[state.currentRouteIndex];
-    }
-  } else {
-    ele = state.totalAscent;
-  }
-
-  // Centralized distance accumulation based on last telemetry timestamp
-  const nowTs = Date.now();
-  if (!state.lastTelemetryTimestamp) state.lastTelemetryTimestamp = nowTs;
-  const dt = (nowTs - state.lastTelemetryTimestamp) / 1000.0; // seconds
-  let increment = 0.0;
-  if (!state.isPaused && dt > 0 && dt < 10) {
-    // Use trapezoidal integration between lastTelemetrySpeed and currentSpeed for better accuracy
-    const lastSp = state.lastTelemetrySpeed !== undefined ? state.lastTelemetrySpeed : state.currentSpeed || 0;
-    const currSp = state.currentSpeed || 0;
-    increment = ((lastSp + currSp) / 2.0 / 3600.0) * dt; // km
-    if (currSp > 0 || lastSp > 0) {
-      state.totalDistance += increment;
-    }
-    state.lastTelemetrySpeed = currSp;
-  }
-  state.lastTelemetryTimestamp = nowTs;
-
-  const point = {
-    sessionId: state.currentSessionId,
-    timestamp: nowTs,
-    speed: state.currentSpeed,
-    power: state.currentPower,
-    cadence: state.currentCadence,
-    heartRate: state.currentHr,
-    slope: state.currentSlope,
-    virtualGear: state.virtualGear,
-    gearRatio: getVirtualGearRatio(state.virtualGear),
-    elevation: ele,
-    latitude: lat,
-    longitude: lon,
-    distance: state.totalDistance,
-  };
-
-  state.telemetryBuffer.push(point);
-
-  // Backup buffer to localStorage in case of page refresh/crash (asynchronously to avoid blocking UI)
-  const bufferCopy = [...state.telemetryBuffer];
-  setTimeout(() => {
-    try {
-      localStorage.setItem(
-        "rodilloint_telemetry_backup",
-        JSON.stringify(bufferCopy),
-      );
-    } catch (err) {
-      // ignore
-    }
-  }, 0);
-
-  // Flush buffer every 10 items (approx 10 seconds)
-  if (state.telemetryBuffer.length >= 10) {
-    await flushTelemetryBuffer();
-  }
-}
-
-async function flushTelemetryBuffer() {
-  if (!state.telemetryBuffer || state.telemetryBuffer.length === 0) return;
-
-  const pointsToSave = [...state.telemetryBuffer];
-  state.telemetryBuffer = [];
-
-  try {
-    await DbManager.insertSensorDataBulk(pointsToSave);
-    localStorage.removeItem("rodilloint_telemetry_backup");
-  } catch (e) {
-    console.error(
-      "Failed to flush telemetry buffer to database, retrying next time",
-      e,
-    );
-    // Put them back in the buffer to retry
-    state.telemetryBuffer = [...pointsToSave, ...state.telemetryBuffer];
-  }
-}
-
-async function recoverTelemetryBackup() {
-  try {
-    const backupStr = localStorage.getItem("rodilloint_telemetry_backup");
-    if (backupStr) {
-      const backup = JSON.parse(backupStr);
-      if (Array.isArray(backup) && backup.length > 0) {
-        console.log(
-          `[Backup Recovery] Se encontraron ${backup.length} puntos de telemetría sin guardar en IndexedDB. Recuperando...`,
-        );
-        await DbManager.insertSensorDataBulk(backup);
-        localStorage.removeItem("rodilloint_telemetry_backup");
-        console.log("[Backup Recovery] Telemetría recuperada con éxito.");
-      }
-    }
-  } catch (e) {
-    console.warn(
-      "[Backup Recovery] No se pudo recuperar el backup de telemetría:",
-      e,
-    );
-  }
-}
-
-function renderSummaryMetrics(metrics) {
-  document.getElementById("summary-duration").textContent = metrics.duration;
-  document.getElementById("summary-total-duration").textContent =
-    metrics.totalDuration;
-  document.getElementById("summary-distance").textContent =
-    `${metrics.distance.toFixed(2)} km`;
-  document.getElementById("summary-np").textContent = `${metrics.np} W`;
-  document.getElementById("summary-tss").textContent = metrics.tss;
-  document.getElementById("summary-if").textContent =
-    metrics.intensityFactor.toFixed(2);
-  document.getElementById("summary-calories").textContent =
-    `${metrics.calories} kcal`;
-  const summaryKjEl = document.getElementById("summary-kilojoules");
-  if (summaryKjEl) {
-    const kjVal = Number.isFinite(Number(metrics.kilojoules))
-      ? Math.round(Number(metrics.kilojoules))
-      : (metrics.calories ? Math.round(metrics.calories * 1.05) : 0);
-    summaryKjEl.textContent = `${kjVal} kJ`;
-  }
-  document.getElementById("summary-power-stats").textContent =
-    `${metrics.avgPower} / ${metrics.maxPower} W`;
-  document.getElementById("summary-speed-stats").textContent =
-    `${metrics.avgSpeed.toFixed(1)} / ${metrics.maxSpeed.toFixed(1)} km/h`;
-  document.getElementById("summary-hr-stats").textContent =
-    `${metrics.avgHr} / ${metrics.maxHr} bpm`;
-
-  ChartsManager.initZonesChart(
-    "summary-zones-chart",
-    metrics.timeInPowerZones,
-  );
-}
-
-function renderSummaryRoute(session, distanceKm = 0) {
-  const renderId = ++summaryRouteRenderId;
-  const grid = document.getElementById("summary-route-grid");
-  const elevationCard = document.getElementById("summary-elevation-card");
-  const mapCard = document.getElementById("summary-map-card");
-  const mapContainer = document.getElementById("summary-route-map");
-  const points = Array.isArray(session?.routePoints)
-    ? session.routePoints.map((point) => ({
-        lat: Number(point?.lat),
-        lon: Number(point?.lon),
-      }))
-    : [];
-  const routePoints = points.filter(
-    (point) =>
-      Number.isFinite(point.lat) &&
-      Number.isFinite(point.lon) &&
-      point.lat >= -90 &&
-      point.lat <= 90 &&
-      point.lon >= -180 &&
-      point.lon <= 180,
-  );
-  const hasRoute = routePoints.length >= 2;
-  const distances = Array.isArray(session?.routeDistances)
-    ? session.routeDistances.map(Number)
-    : [];
-  const elevations = Array.isArray(session?.routeElevations)
-    ? session.routeElevations.map(Number)
-    : [];
-  const hasProfile =
-    hasRoute &&
-    routePoints.length === points.length &&
-    distances.length === routePoints.length &&
-    elevations.length === routePoints.length &&
-    distances.every(Number.isFinite) &&
-    elevations.every(Number.isFinite) &&
-    distances.every((distance, index) => index === 0 || distance >= distances[index - 1]) &&
-    elevations.some((elevation) => elevation !== 0);
-
-  if (!grid || !elevationCard || !mapCard || !mapContainer) return;
-  elevationCard.hidden = !hasProfile;
-  mapCard.hidden = !hasRoute;
-  grid.hidden = !hasRoute && !hasProfile;
-
-  if (summaryRouteMap) {
-    summaryRouteMap.remove();
-    summaryRouteMap = null;
-  }
-  mapContainer.replaceChildren();
-  if (!hasRoute) return;
-
-  requestAnimationFrame(() => {
-    if (
-      renderId !== summaryRouteRenderId ||
-      !document.getElementById("screen-summary")?.classList.contains("active")
-    ) {
-      return;
-    }
-
-    if (hasProfile) {
-      ChartsManager.initElevationChart(
-        "summary-elevation-chart",
-        distances,
-        elevations,
-      );
-    }
-
-    if (typeof L === "undefined") {
-      console.error("Leaflet no está disponible para mostrar el mapa del resumen.");
-      mapContainer.textContent = "No se pudo cargar el mapa en este navegador.";
-      return;
-    }
-
-    try {
-      const latLngs = routePoints.map((point) => [point.lat, point.lon]);
-      summaryRouteMap = L.map(mapContainer, {
-        zoomControl: true,
-        scrollWheelZoom: false,
-        attributionControl: true,
-      });
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      }).addTo(summaryRouteMap);
-
-      L.polyline(latLngs, {
-        color: "#3b82f6",
-        opacity: 0.85,
-        weight: 5,
-      }).addTo(summaryRouteMap);
-
-      const startPoint = latLngs[0];
-      const endPoint = latLngs[latLngs.length - 1];
-      L.circleMarker(startPoint, {
-        radius: 7,
-        color: "#ffffff",
-        weight: 2,
-        fillColor: "#10b981",
-        fillOpacity: 1,
-      }).bindTooltip("Inicio").addTo(summaryRouteMap);
-      L.circleMarker(endPoint, {
-        radius: 7,
-        color: "#ffffff",
-        weight: 2,
-        fillColor: "#ef4444",
-        fillOpacity: 1,
-      }).bindTooltip("Fin de la ruta").addTo(summaryRouteMap);
-
-      const routeDistance = Number(distanceKm);
-      if (
-        distances.length === routePoints.length &&
-        distances.every(Number.isFinite) &&
-        Number.isFinite(routeDistance)
-      ) {
-        const nextIndex = distances.findIndex(
-          (distance) => distance >= routeDistance,
-        );
-        const currentIndex = Math.max(
-          0,
-          Math.min(
-            nextIndex < 0 ? distances.length - 1 : nextIndex,
-            routePoints.length - 1,
-          ),
-        );
-        if (currentIndex > 0) {
-          L.polyline(latLngs.slice(0, currentIndex + 1), {
-            color: "#10b981",
-            opacity: 0.95,
-            weight: 6,
-          }).addTo(summaryRouteMap);
-        }
-        L.circleMarker(latLngs[currentIndex], {
-          radius: 8,
-          color: "#ffffff",
-          weight: 3,
-          fillColor: "#f59e0b",
-          fillOpacity: 1,
-        }).bindTooltip("Progreso estimado").addTo(summaryRouteMap);
-      }
-
-      summaryRouteMap.fitBounds(L.latLngBounds(latLngs), { padding: [24, 24] });
-      requestAnimationFrame(() => summaryRouteMap?.invalidateSize());
-    } catch (error) {
-      console.error("No se pudo mostrar el mapa del resumen:", error);
-      mapContainer.textContent = "No se pudo mostrar el mapa de esta ruta.";
-    }
-  });
-}
-
-function setSessionSaveStatus(message, color = "var(--text-secondary)") {
-  const status = document.getElementById("session-save-status");
-  if (status) {
-    status.textContent = message;
-    status.style.color = color;
-  }
-}
-
 async function stopSessionFlow() {
   cancelCountdown();
   if (!state.isSessionActive) {
     disconnectRemoteRoom();
+    setElDisplay("manual-mode-panel", "none");
+    setElDisplay("workout-erg-panel", "none");
+    setElDisplay("virtual-trainer-panel", "none");
+    document.getElementById("ghost-banner")?.classList.remove("visible");
     navigateTo("dashboard");
     return;
   }
@@ -3174,12 +2008,14 @@ async function stopSessionFlow() {
   if (!confirmStop) return;
 
   BleManager.stopAutoReconnect();
-  if (state.timerInterval) {
-    clearInterval(state.timerInterval);
-    state.timerInterval = null;
-  }
+  sessionTimer.stop();
 
   state.isSessionActive = false;
+  sensorConnections.stopMetricQualityMonitoring();
+  if (state.currentMode === "ERG") {
+    resetWorkoutEngine();
+    updateWorkoutErgHud(null);
+  }
   state.lastSavedSessionId = state.currentSessionId;
   state.summaryReturnScreen = "dashboard";
 
@@ -3301,53 +2137,36 @@ async function stopSessionFlow() {
       avgHr,
       maxHr,
       timeInPowerZones: state.timeInPowerZones,
+      workoutAdherence: state.currentMode === "ERG" ? getWorkoutPowerAdherence(workoutPowerSamples) : null,
     });
 
     if (activeRemoteRoomClient) {
-      await activeRemoteRoomClient.emit("SESSION_SUMMARY", {
-        duration,
-        distance: finalDistance,
-        avgSpeed,
-        maxSpeed,
-        avgPower,
-        maxPower,
-        avgHr,
-        maxHr,
-        ascent: state.totalAscent,
-        calories: state.calories,
-        kilojoules: Math.round(kilojuliosAcumulados),
-        np,
-        tss,
-      });
+      try {
+        await activeRemoteRoomClient.emit("SESSION_SUMMARY", {
+          duration,
+          distance: finalDistance,
+          avgSpeed,
+          maxSpeed,
+          avgPower,
+          maxPower,
+          avgHr,
+          maxHr,
+          ascent: state.totalAscent,
+          calories: state.calories,
+          kilojoules: Math.round(kilojuliosAcumulados),
+          np,
+          tss,
+        });
+      } catch (remoteError) {
+        console.warn(
+          "La sesión se guardó, pero no se pudo enviar el resumen al mando remoto:",
+          remoteError,
+        );
+      }
     }
     disconnectRemoteRoom();
 
-    // Initial zones chart rendering
-    ChartsManager.initZonesChart("summary-zones-chart", state.timeInPowerZones);
-
     // Ocultar elementos de la UI del entrenamiento
-    document
-      .getElementById("hud-top-bar")
-      ?.style.setProperty("display", "none");
-    document
-      .getElementById("hud-bottom-left")
-      ?.style.setProperty("display", "none");
-    document
-      .getElementById("hud-bottom-right-group")
-      ?.style.setProperty("display", "none");
-    document
-      .getElementById("manual-mode-panel")
-      ?.style.setProperty("display", "none");
-    document
-      .getElementById("virtual-trainer-panel")
-      ?.style.setProperty("display", "none");
-    document
-      .getElementById("elevation-chart-cursor")
-      ?.style.setProperty("display", "none");
-    document
-      .getElementById("ghost-banner")
-      ?.style.setProperty("display", "none");
-    // Show summary screen
     document
       .getElementById("hud-top-bar")
       ?.style.setProperty("display", "none");
@@ -3441,7 +2260,7 @@ function updateRouteSimulation(currentDistKm) {
     if (!point) return;
     if (state.map.addSource) {
         if (!isMapReady(state.map)) return;
-        const posicionCiclistaActual = normalizeLngLat({
+        const posicionCiclistaActual = mapCamera.normalizeLngLat({
             lon: point.lon,
             lat: point.lat,
         });
@@ -3449,7 +2268,7 @@ function updateRouteSimulation(currentDistKm) {
         const puntoSiguienteData = state.routePoints[
             Math.min(state.currentRouteIndex + 5, state.routePoints.length - 1)
         ] || point;
-        const posicionCiclistaSiguiente = normalizeLngLat({
+        const posicionCiclistaSiguiente = mapCamera.normalizeLngLat({
             lon: puntoSiguienteData.lon,
             lat: puntoSiguienteData.lat,
         }) || posicionCiclistaActual;
@@ -3489,12 +2308,12 @@ function updateRouteSimulation(currentDistKm) {
                 position: posicionCiclistaActual,
                 nextPosition: posicionCiclistaSiguiente,
             });
-            updateFpvCamera(
+            mapCamera.updateFpvCamera(
                 posicionCiclistaActual,
                 posicionCiclistaSiguiente,
                 state.isMapFollowingRoute,
             );
-            if (fpvAnimationFrame === null) startFpvCameraLoop();
+            if (!mapCamera.isAnimationFrameActive()) mapCamera.startFpvCameraLoop();
         } else if (state.isMapFollowingRoute) {
             // Calcular el rumbo (bearing) del movimiento actual
             const dx = posicionCiclistaSiguiente[0] - posicionCiclistaActual[0];
@@ -3508,7 +2327,7 @@ function updateRouteSimulation(currentDistKm) {
 
         if (
             state.mapViewMode !== "3D_FPV" &&
-            isValidLngLat(options.center) &&
+            mapCamera.isValidLngLat(options.center) &&
             Number.isFinite(options.bearing)
         ) {
             try {
@@ -3536,30 +2355,6 @@ function updateRouteSimulation(currentDistKm) {
     }
   }
 
-function coerceSlope(slope) {
-  const minSlope = Number.isFinite(state.virtualSlopeMin)
-    ? state.virtualSlopeMin
-    : -15.0;
-  const maxSlope = Number.isFinite(state.virtualSlopeMax)
-    ? state.virtualSlopeMax
-    : 20.0;
-  const safeMin = Math.min(minSlope, maxSlope);
-  const safeMax = Math.max(minSlope, maxSlope);
-  return Math.max(safeMin, Math.min(safeMax, slope));
-}
-
-function setRouteTargetSlope(currentDistKm) {
-  const preview = getUpcomingSegmentData(SLOPE_AVERAGE_METERS, currentDistKm);
-  if (preview) {
-    state.targetSlope = coerceSlope(
-      calculateVirtualResistanceSlope(
-        preview.avgSlope,
-        state.virtualGearsEnabled ? state.virtualGear : DEFAULT_VIRTUAL_GEAR,
-      ),
-    );
-  }
-}
-
 function updateVirtualGearDisplay() {
   setElText("metrics-gear", formatVirtualGear(state.virtualGear));
 }
@@ -3581,7 +2376,7 @@ function changeVirtualGear(delta) {
   updateVirtualGearDisplay();
 
   if (state.currentMode === "ROUTE" && state.isSessionActive) {
-    setRouteTargetSlope(state.totalDistance);
+    routeSimulation.setTargetSlope(state.totalDistance);
   }
 }
 
@@ -3609,7 +2404,8 @@ function syncSlopeDisplayLabels() {
   if (trainerSlopeValue) trainerSlopeValue.textContent = formatted;
 
   const routeSlopeValue = document.getElementById("metrics-route-slope");
-  const routeSlope = getRouteSlopeAtDistance(state.totalDistance);
+  const routeSlope =
+    routeSimulation.getRouteSlopeAtDistance(state.totalDistance);
   if (routeSlopeValue) {
     routeSlopeValue.textContent = `${routeSlope >= 0 ? "+" : ""}${routeSlope.toFixed(1)}%`;
   }
@@ -3631,32 +2427,8 @@ function syncSlopeDisplayLabels() {
   }
 }
 
-function getRouteSlopeAtDistance(distanceKm) {
-  if (
-    state.currentMode !== "ROUTE" ||
-    state.routeDistances.length < 2 ||
-    state.routeElevations.length !== state.routeDistances.length
-  ) {
-    return 0;
-  }
-
-  const routeStartKm = state.routeDistances[0];
-  const routeEndKm = state.routeDistances[state.routeDistances.length - 1];
-  const distance = Math.max(routeStartKm, Math.min(routeEndKm, Number(distanceKm) || 0));
-  const sampleRadiusKm = 0.010; //Pendiente real 10m antes y 10m despues
-  const startKm = Math.max(routeStartKm, distance - sampleRadiusKm);
-  const endKm = Math.min(routeEndKm, distance + sampleRadiusKm);
-  const distanceMeters = (endKm - startKm) * 1000;
-  if (distanceMeters <= 0) return 0;
-
-  const startElevation = getElevationAtDistance(startKm);
-  const endElevation = getElevationAtDistance(endKm);
-  const slope = ((endElevation - startElevation) / distanceMeters) * 100;
-  return Number.isFinite(slope) ? slope : 0;
-}
-
 function updateTrainerSlope(slope, immediate = false) {
-  const coerced = coerceSlope(slope);
+  const coerced = routeSimulation.coerceSlope(slope);
 
   if (immediate || state.currentMode !== "ROUTE") {
     state.targetSlope = coerced;
@@ -3727,76 +2499,6 @@ function adjustManualSlope(delta) {
   updateTrainerSlope(newSlope, true);
 }
 
-function getElevationAtDistance(distKm) {
-  if (state.routeElevations.length === 0) return 0;
-  if (distKm <= state.routeDistances[0]) return state.routeElevations[0];
-
-  const lastIdx = state.routeDistances.length - 1;
-  if (distKm >= state.routeDistances[lastIdx])
-    return state.routeElevations[lastIdx];
-
-  const idx = state.routeDistances.findIndex((d) => d >= distKm);
-  const d0 = state.routeDistances[idx - 1];
-  const d1 = state.routeDistances[idx];
-  const span = d1 - d0;
-  if (span < 0.00001) return state.routeElevations[idx - 1];
-
-  const t = (distKm - d0) / span;
-  return (
-    state.routeElevations[idx - 1] +
-    (state.routeElevations[idx] - state.routeElevations[idx - 1]) * t
-  );
-}
-
-// --- PREDICTIVE UPCOMING SLOPE AND RELIEF ---
-function getUpcomingSegmentData(
-  previewDistanceMeters = SLOPE_PREVIEW_LONG_METERS,
-  currentDistKm = null,
-) {
-  if (state.routePoints.length === 0) return null;
-
-  const currentDistanceKm =
-    currentDistKm !== null
-      ? currentDistKm
-      : state.routeDistances[state.currentRouteIndex];
-
-  const targetDistanceKm = currentDistanceKm + previewDistanceMeters / 1000.0;
-  const routeEndKm = state.routeDistances[state.routeDistances.length - 1];
-  const actualEndKm = Math.min(targetDistanceKm, routeEndKm);
-
-  const previewDistances = [];
-  const previewElevations = [];
-
-  let endIndex = state.currentRouteIndex;
-
-  for (let i = 0; i < state.routeDistances.length; i++) {
-    if (state.routeDistances[i] < currentDistanceKm) continue;
-
-    endIndex = i;
-    const relativeDistanceM =
-      (state.routeDistances[i] - currentDistanceKm) * 1000.0;
-    previewDistances.push(relativeDistanceM);
-    previewElevations.push(state.routeElevations[i]);
-
-    if (state.routeDistances[i] >= actualEndKm) {
-      break;
-    }
-  }
-
-  const distanceRun = (actualEndKm - currentDistanceKm) * 1000.0;
-  if (distanceRun < 3.0) return null;
-
-  const startEle = getElevationAtDistance(currentDistanceKm);
-  const endEle = getElevationAtDistance(actualEndKm);
-  const avgSlope = ((endEle - startEle) / distanceRun) * 100.0;
-
-  return {
-    distances: previewDistances,
-    elevations: previewElevations,
-    avgSlope: avgSlope,
-  };
-}
-
 function applySlopeTrendStyle(slope, slopeLabel, arrowLabel) {
   if (!slopeLabel || !arrowLabel) return;
 
@@ -3826,7 +2528,7 @@ function refreshUpcomingPreview(currentDistKm = null) {
       ? currentDistKm
       : state.routeDistances[state.currentRouteIndex] || 0;
 
-  const preview = getUpcomingSegmentData(SLOPE_PREVIEW_LONG_METERS, distKm);
+  const preview = routeSimulation.getUpcoming(500, distKm);
   if (!preview) return;
 
   const slope = preview.avgSlope;
@@ -3876,7 +2578,7 @@ function updateGhostProgress() {
           return;
         }
         const ghostCoordinates = [Number(closest.longitude), Number(closest.latitude)];
-        if (!isValidLngLat(ghostCoordinates)) return;
+        if (!mapCamera.isValidLngLat(ghostCoordinates)) return;
 
         const ghostData = {
           type: "Feature",
@@ -3962,7 +2664,7 @@ function createOrientationToggleButton() {
 
 window.toggleMapEngine = function(btn) {
     console.log("¡Clic recibido en toggleMapEngine!");
-    stopFpvCameraLoop();
+    mapCamera.stopFpvCameraLoop();
     const container = document.getElementById("workout-map");
     const currentMode = state.mapViewMode || (state.mapType === "leaflet" ? "2D" : "3D_AEREO");
     const nextMode = MAP_VIEW_MODES[(MAP_VIEW_MODES.indexOf(currentMode) + 1) % MAP_VIEW_MODES.length];
@@ -3984,7 +2686,7 @@ window.toggleMapEngine = function(btn) {
         container.style.height = "100%";
         container.style.width = "100%";
 
-        btn.textContent = getMapViewLabel(nextMode);
+        btn.textContent = mapCamera.getMapViewLabel(nextMode);
         initLeafletMap();
         drawRouteOnMap();
 
@@ -4003,7 +2705,7 @@ window.toggleMapEngine = function(btn) {
             state.map = null;
         }
         mapReadyInstance = null;
-        btn.textContent = getMapViewLabel(nextMode);
+        btn.textContent = mapCamera.getMapViewLabel(nextMode);
 
         container.className = "workout-map-fullscreen";
         container.style.height = "100%";
@@ -4072,12 +2774,12 @@ window.toggleMapEngine = function(btn) {
                 if (nextMode === "3D_FPV" && state.routePoints.length > 0) {
                     const point = state.routePoints[state.currentRouteIndex];
                     const nextPoint = state.routePoints[Math.min(state.currentRouteIndex + 1, state.routePoints.length - 1)];
-                    updateFpvCamera(
+                    mapCamera.updateFpvCamera(
                         [point.lon, point.lat],
                         [nextPoint.lon, nextPoint.lat],
                         state.isMapFollowingRoute,
                     );
-                    startFpvCameraLoop();
+                    mapCamera.startFpvCameraLoop();
                 }
             });
 
@@ -4100,220 +2802,10 @@ window.toggleMapEngine = function(btn) {
             console.error("Error inicialización MapLibre:", err);
             state.mapViewMode = "3D_AEREO";
             state.mapType = "maplibre";
-            btn.textContent = getMapViewLabel(state.mapViewMode);
+            btn.textContent = mapCamera.getMapViewLabel(state.mapViewMode);
         }
     }
 };
-
-function getMapViewLabel(mode) {
-    return {
-        "2D": "🗺️ 2D",
-        "3D_AEREO": "🗺️ 3D Aéreo",
-        "3D_FPV": "🚴 3D FPV",
-    }[mode] || "🗺️ 3D Aéreo";
-}
-
-// Función matemática para encontrar el punto exacto [lng, lat] intermedio en base a metros totales.
-function obtenerPuntoPorDistancia(puntos, distanciaObjetivoKm) {
-    if (!puntos || puntos.length === 0) return null;
-    const distanciaObjetivoMetros = distanciaObjetivoKm * 1000;
-
-    // Asumimos que state.routeDistances tiene los km acumulados
-    const distancias = state.routeDistances;
-    if (distanciaObjetivoKm <= 0) return [puntos[0].lon, puntos[0].lat];
-    if (distanciaObjetivoKm >= distancias[distancias.length - 1])
-        return [puntos[puntos.length - 1].lon, puntos[puntos.length - 1].lat];
-
-    for (let i = 0; i < distancias.length - 1; i++) {
-        if (distanciaObjetivoKm >= distancias[i] && distanciaObjetivoKm <= distancias[i + 1]) {
-            const p1 = puntos[i];
-            const p2 = puntos[i + 1];
-            const distTramo = (distancias[i + 1] - distancias[i]); // en km
-            const t = distTramo > 0 ? (distanciaObjetivoKm - distancias[i]) / distTramo : 0;
-
-            const lng = p1.lon + (p2.lon - p1.lon) * t;
-            const lat = p1.lat + (p2.lat - p1.lat) * t;
-            return [lng, lat];
-        }
-    }
-    return [puntos[puntos.length - 1].lon, puntos[puntos.length - 1].lat];
-}
-
-function updateFpvCamera(point, nextPoint, followRoute = true) {
-    if (!state.map || !isMapReady(state.map)) return;
-
-    const mapSdk = getMapSdk();
-    if (!mapSdk?.MercatorCoordinate) return;
-
-    // Usar la interpolación continua si es modo RUTA
-    let currentLngLat, targetLngLat;
-
-    if (state.currentMode === "ROUTE" && state.routePoints.length > 0) {
-        const metrosRecorridosKm = state.totalDistance; // state.totalDistance está en km
-        currentLngLat = obtenerPuntoPorDistancia(state.routePoints, metrosRecorridosKm);
-        targetLngLat = obtenerPuntoPorDistancia(state.routePoints, metrosRecorridosKm + 0.015); // +15 metros
-    } else {
-        currentLngLat = normalizeLngLat(point);
-        targetLngLat = normalizeLngLat(nextPoint) || currentLngLat;
-    }
-
-    if (!currentLngLat || !targetLngLat) return;
-
-    // 2. MODO AVANZADO: FreeCameraOptions
-    if (typeof state.map.getFreeCameraOptions === "function") {
-        try {
-            const camera = state.map.getFreeCameraOptions();
-
-            // Alturas basadas en elevación del terreno (usando interpolación si es posible)
-            const elevation = Wr(currentLngLat, 0);
-            const targetElevation = Wr(targetLngLat, 0);
-
-            camera.position = mapSdk.MercatorCoordinate.fromLngLat(currentLngLat, elevation + 1.7);
-            camera.lookAtPoint(mapSdk.MercatorCoordinate.fromLngLat(targetLngLat, targetElevation + 1.2));
-
-            state.map.setFreeCameraOptions(camera);
-            return;
-        } catch (errFPV) {
-            console.error("Error en estabilización FreeCamera:", errFPV);
-        }
-    }
-
-    // 3. MODO RESPALDO: jumpTo
-    if (typeof state.map.jumpTo === "function") {
-        const deltaLat = targetLngLat[1] - currentLngLat[1];
-        const deltaLng = targetLngLat[0] - currentLngLat[0];
-        const rumboEstabilizado = (Math.atan2(deltaLng, deltaLat) * 180 / Math.PI + 360) % 360;
-
-        state.map.jumpTo({
-            center: currentLngLat,
-            pitch: 85,
-            bearing: rumboEstabilizado,
-            zoom: fpvZoomLevel,
-        });
-    }
-}
-
-function getBearingBetween([lng1, lat1], [lng2, lat2]) {
-    const deltaLng = ((lng2 - lng1) * Math.PI) / 180;
-    const lat1Radians = (lat1 * Math.PI) / 180;
-    const lat2Radians = (lat2 * Math.PI) / 180;
-    const y = Math.sin(deltaLng) * Math.cos(lat2Radians);
-    const x =
-        Math.cos(lat1Radians) * Math.sin(lat2Radians) -
-        Math.sin(lat1Radians) *
-            Math.cos(lat2Radians) *
-            Math.cos(deltaLng);
-    const bearing = (Math.atan2(y, x) * 180) / Math.PI;
-    return (bearing + 360) % 360;
-}
-
-function getCameraElevation(position, fallbackElevation = 0) {
-    const fallback = Number.isFinite(Number(fallbackElevation))
-        ? Number(fallbackElevation)
-        : 0;
-    if (!state.map || typeof state.map.queryTerrainElevation !== "function") {
-        return fallback;
-    }
-
-    const terrainElevation = Number(state.map.queryTerrainElevation(position));
-    return Number.isFinite(terrainElevation) && (terrainElevation !== 0 || fallback === 0)
-        ? terrainElevation
-        : fallback;
-}
-
-function isValidLngLat(position) {
-    return Array.isArray(position) &&
-        position.length === 2 &&
-        Number.isFinite(position[0]) &&
-        Number.isFinite(position[1]) &&
-        position[0] >= -180 &&
-        position[0] <= 180 &&
-        position[1] >= -90 &&
-        position[1] <= 90;
-}
-
-function normalizeLngLat(position) {
-    if (Array.isArray(position)) {
-        const lng = Number(position[0]);
-        const lat = Number(position[1]);
-        return Number.isFinite(lng) && Number.isFinite(lat)
-            ? [lng, lat]
-            : null;
-    }
-    if (position && typeof position === "object") {
-        const lng = Number(
-            position.lng ?? position.lon ?? position.longitude,
-        );
-        const lat = Number(position.lat ?? position.latitude);
-        return Number.isFinite(lng) && Number.isFinite(lat)
-            ? [lng, lat]
-            : null;
-    }
-    return null;
-}
-
-function startFpvCameraLoop() {
-    stopFpvCameraLoop();
-
-    if (
-        !state.map ||
-        typeof state.map.getFreeCameraOptions !== "function" ||
-        typeof state.map.setFreeCameraOptions !== "function"
-    ) {
-        return;
-    }
-
-    const render = () => {
-        fpvAnimationFrame = null;
-        if (state.mapViewMode !== "3D_FPV" || !state.map) return;
-        if (state.routePoints.length === 0) {
-            fpvAnimationFrame = requestAnimationFrame(render);
-            return;
-        }
-        if (!isMapReady(state.map)) {
-            fpvAnimationFrame = requestAnimationFrame(render);
-            return;
-        }
-
-        const point = state.routePoints[state.currentRouteIndex];
-        if (!point) {
-            fpvAnimationFrame = requestAnimationFrame(render);
-            return;
-        }
-        const nextPoint = state.routePoints[
-            Math.min(state.currentRouteIndex + 1, state.routePoints.length - 1)
-        ] || point;
-        updateFpvCamera(
-            [point.lon, point.lat],
-            [nextPoint.lon, nextPoint.lat],
-            state.isMapFollowingRoute,
-        );
-        fpvAnimationFrame = requestAnimationFrame(render);
-    };
-
-    fpvAnimationFrame = requestAnimationFrame(render);
-}
-
-function stopFpvCameraLoop() {
-    if (fpvAnimationFrame !== null) {
-        cancelAnimationFrame(fpvAnimationFrame);
-        fpvAnimationFrame = null;
-    }
-}
-
-function offsetLngLat([lng, lat], bearingRadians, distanceMeters) {
-    const earthRadiusMeters = 6371000;
-    const latitudeRadians = (lat * Math.PI) / 180;
-    const deltaLat = (distanceMeters * Math.cos(bearingRadians)) / earthRadiusMeters;
-    const deltaLng =
-        (distanceMeters * Math.sin(bearingRadians)) /
-        (earthRadiusMeters * Math.cos(latitudeRadians));
-
-    return [
-        lng + (deltaLng * 180) / Math.PI,
-        lat + (deltaLat * 180) / Math.PI,
-    ];
-}
 
 async function handleSessionExport() {
   if (!state.currentSessionId && !state.lastSavedSessionId) return;
@@ -4389,738 +2881,20 @@ async function handleSessionCsvExport() {
 }
 window.handleSessionCsvExport = handleSessionCsvExport;
 
-// --- HISTORY AND STATISTICS SCREENS ---
-async function loadHistoryList() {
-  if (!state.currentUser) return;
 
-  try {
-    const sessions = await DbManager.getAllSessions(state.currentUser.id);
-    const container = document.getElementById("history-items-container");
-    container.innerHTML = "";
+// --- HISTORY AND STATISTICS SCREENS --- (migrado a js/core/history.js)
+// loadHistoryList, deleteHistorySession, openHistoricalSessionSummary,
+// checkPendingSessions, downloadSpecificHistoryCsv, downloadSpecificHistoryFit,
+// repeatRouteFromHistory, loadProgressStats, renderTrainingCalendar,
+// changeTrainingCalendarMonth, selectTrainingCalendarDate, goToTrainingCalendarToday
 
-    if (sessions.length === 0) {
-      container.innerHTML = `
-        <div class="glass-card" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-          No se han registrado sesiones de entrenamiento en tu perfil.
-        </div>
-      `;
-      return;
-    }
 
-    sessions.forEach((s) => {
-      const date = new Date(s.startTime).toLocaleDateString("es-ES", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+window.changeFpvZoom = mapCamera.changeZoom;
 
-      const totalDuration = s.endTime
-        ? new Date(s.endTime - s.startTime).toISOString().substr(11, 8)
-        : "00:00:00";
-      const activeDuration = Number.isFinite(Number(s.activeDuration))
-        ? new Date(Number(s.activeDuration) * 1000)
-            .toISOString()
-            .substr(11, 8)
-        : totalDuration;
-
-      const modeText = s.gpxPath ? "Ruta" : "Manual";
-      const modeClass = s.gpxPath ? "route" : "manual";
-      const routeName = s.routeName || s.gpxPath || "Ruta";
-
-      const card = document.createElement("div");
-      card.className = "glass-card history-item";
-
-      card.innerHTML = `
-        <div class="history-date-box">
-          <span class="history-date">${date}</span>
-          <span class="history-type ${modeClass}">Modo: ${modeText} <span class="history-route-name" id="history-route-name-${s.id}"></span></span>
-        </div>
-
-        <div class="history-stats-row">
-          <div class="history-stat-unit">
-            <span class="history-stat-label">Distancia</span>
-            <span class="history-stat-value">${s.totalDistance.toFixed(2)} km</span>
-          </div>
-          <div class="history-stat-unit">
-            <span class="history-stat-label">Actividad</span>
-            <span class="history-stat-value">${activeDuration}</span>
-          </div>
-          <div class="history-stat-unit">
-            <span class="history-stat-label">Total sesión</span>
-            <span class="history-stat-value">${totalDuration}</span>
-          </div>
-          <div class="history-stat-unit">
-            <span class="history-stat-label">Pot. Media</span>
-            <span class="history-stat-value">${s.averagePower} W</span>
-          </div>
-          ${Array.isArray(s.routePoints) && s.routePoints.length > 0
-            ? `<button class="btn btn-primary history-repeat-route" id="btn-repeat-${s.id}">Repetir ruta</button>`
-            : ""}
-          ${s.gpxPath ? `<button class="btn btn-dark history-rename-route" id="btn-rename-${s.id}">Renombrar</button>` : ""}
-          <button class="btn btn-secondary" id="btn-export-csv-${s.id}">CSV</button>
-          <button class="btn btn-primary" style="padding: 6px 12px; font-size: 11px; border-radius: 8px; background: #6366f1;" id="btn-export-fit-${s.id}">FIT</button>
-          <button class="btn btn-danger" style="padding: 6px 12px; font-size: 11px; border-radius: 8px;" id="btn-del-${s.id}">❌</button>
-          </div>
-        `;
-
-      const routeNameElement = card.querySelector(`#history-route-name-${s.id}`);
-      if (routeNameElement) routeNameElement.textContent = `(${routeName})`;
-
-      card.querySelector(`#btn-del-${s.id}`).onclick = (e) => {
-        e.stopPropagation();
-        deleteHistorySession(s.id);
-      };
-      const repeatButton = card.querySelector(`#btn-repeat-${s.id}`);
-      if (repeatButton) {
-        repeatButton.onclick = (e) => {
-          e.stopPropagation();
-          repeatRouteFromHistory(s.id);
-        };
-      }
-      const csvButton = card.querySelector(`#btn-export-csv-${s.id}`);
-      csvButton.onclick = (e) => {
-        e.stopPropagation();
-        downloadSpecificHistoryCsv(s.id);
-      };
-      const fitButton = card.querySelector(`#btn-export-fit-${s.id}`);
-      if (fitButton) {
-        fitButton.onclick = (e) => {
-          e.stopPropagation();
-          downloadSpecificHistoryFit(s.id);
-        };
-      }
-      const renameButton = card.querySelector(`#btn-rename-${s.id}`);
-      if (renameButton) {
-        renameButton.onclick = (e) => {
-          e.stopPropagation();
-          renameHistoryRoute(s.id);
-        };
-      }
-
-      // Open the same summary screen used after finishing a live session
-      card.onclick = () => openHistoricalSessionSummary(s.id, "history");
-
-      container.appendChild(card);
-    });
-  } catch (e) {
-    console.error(e);
+window.addEventListener("keydown", (event) => {
+  if (event.key === "+") {
+    mapCamera.changeZoom(1);
+  } else if (event.key === "-") {
+    mapCamera.changeZoom(-1);
   }
-}
-
-async function repeatRouteFromHistory(id) {
-  try {
-    const session = await DbManager.getSessionById(id);
-    if (!session || !Array.isArray(session.routePoints) || session.routePoints.length === 0) {
-      showToast("Esta sesión no contiene una copia reutilizable de la ruta.", "info");
-      return;
-    }
-
-    state.currentMode = "ROUTE";
-    state.gpxFilename = session.gpxPath || `Ruta histórica ${id}.gpx`;
-    state.routeName = session.routeName || session.gpxPath || `Ruta histórica ${id}`;
-    state.routePoints = session.routePoints.map((point) => ({
-      lat: Number(point.lat),
-      lon: Number(point.lon),
-    }));
-    state.routeElevations = Array.isArray(session.routeElevations)
-      ? session.routeElevations.map(Number)
-      : state.routePoints.map(() => 0);
-    state.routeDistances = Array.isArray(session.routeDistances)
-      ? session.routeDistances.map(Number)
-      : [];
-    state.routeTotalAscent = Number(session.routeTotalAscent) || calculateTotalRouteAscent();
-    state.currentRouteIndex = 0;
-    state.routeLoadedFromHistory = true;
-    navigateTo("connections");
-  } catch (error) {
-    console.error("Error al repetir la ruta histórica:", error);
-    showToast("No se pudo cargar la ruta seleccionada.", "error");
-  }
-}
-
-async function openHistoricalSessionSummary(id, returnScreen = "history") {
-  try {
-    const session = await DbManager.getSessionById(id);
-    const telemetry = await DbManager.getSensorDataForSession(id);
-
-    if (!session) {
-      showToast("No se encontró la sesión seleccionada.", "error");
-      return;
-    }
-
-    const totalDurationSeconds = session.endTime
-      ? Math.max(0, (session.endTime - session.startTime) / 1000)
-      : 0;
-    const activeDurationSeconds =
-      Number.isFinite(Number(session.activeDuration)) &&
-      Number(session.activeDuration) >= 0
-        ? Number(session.activeDuration)
-        : totalDurationSeconds;
-    const duration = new Date(activeDurationSeconds * 1000)
-      .toISOString()
-      .substr(11, 8);
-    const totalDuration = new Date(totalDurationSeconds * 1000)
-      .toISOString()
-      .substr(11, 8);
-    const powers = telemetry.map((point) => Number(point.power) || 0);
-    const speeds = telemetry.map((point) => Number(point.speed) || 0);
-    const heartRates = telemetry
-      .map((point) => Number(point.heartRate) || 0)
-      .filter((value) => value > 0);
-    const avgPower = Number(session.averagePower) || 0;
-    const maxPower = Number.isFinite(Number(session.maxPower))
-      ? Number(session.maxPower)
-      : powers.length > 0
-        ? Math.max(...powers)
-        : 0;
-    const avgHr = Number(session.averageHeartRate) || 0;
-    const maxHr = Number.isFinite(Number(session.maxHeartRate))
-      ? Number(session.maxHeartRate)
-      : heartRates.length > 0
-        ? Math.max(...heartRates)
-        : 0;
-    const distance = Number(session.totalDistance) || 0;
-    const avgSpeed = Number.isFinite(Number(session.averageSpeed))
-      ? Number(session.averageSpeed)
-      : activeDurationSeconds > 0
-        ? distance / (activeDurationSeconds / 3600)
-        : 0;
-    const maxSpeed = Number.isFinite(Number(session.maxSpeed))
-      ? Number(session.maxSpeed)
-      : speeds.length > 0
-        ? Math.max(...speeds)
-        : 0;
-    const ftp = state.currentUser ? state.currentUser.ftp : 200;
-    const np = Number.isFinite(Number(session.normalizedPower))
-      ? Number(session.normalizedPower)
-      : Math.round(calculateNormalizedPowerFromValues(powers));
-    const intensityFactor = Number.isFinite(Number(session.intensityFactor))
-      ? Number(session.intensityFactor)
-      : ftp > 0
-        ? parseFloat((np / ftp).toFixed(2))
-        : 0;
-    const tss = Number.isFinite(Number(session.tss))
-      ? Number(session.tss)
-      : ftp > 0
-        ? Math.round((activeDurationSeconds * np * intensityFactor) / (ftp * 36))
-        : 0;
-    const timeInPowerZones = [0, 0, 0, 0, 0, 0];
-    const z = state.powerZones || [55, 75, 88, 95, 106];
-
-    powers.forEach((power) => {
-      const thresholds = z.map((value) => ftp * (value / 100));
-      let zone = thresholds.findIndex((threshold) => power < threshold);
-      if (zone === -1) zone = 5;
-      timeInPowerZones[zone]++;
-    });
-
-    state.lastSavedSessionId = id;
-    state.summaryReturnScreen = returnScreen;
-    setSessionSaveStatus("Sesión guardada correctamente", "var(--accent-green)");
-    renderSummaryMetrics({
-      duration,
-      totalDuration,
-      distance,
-      np,
-      tss,
-      intensityFactor,
-      calories: Number.isFinite(Number(session.calories))
-        ? Number(session.calories)
-        : Math.round(avgPower * (activeDurationSeconds / 3600) * 3.6),
-      kilojoules: Number.isFinite(Number(session.kilojoules))
-        ? Number(session.kilojoules)
-        : (Number.isFinite(Number(session.calories)) ? Math.round(Number(session.calories) * 1.05) : Math.round(avgPower * (activeDurationSeconds / 1000))),
-      avgPower,
-      maxPower,
-      avgSpeed,
-      maxSpeed,
-      avgHr,
-      maxHr,
-      timeInPowerZones,
-    });
-    navigateTo("summary");
-    renderSummaryRoute(session, distance);
-  } catch (e) {
-    console.error("Error loading historical session summary:", e);
-    showToast("No se pudo abrir el resumen de la sesión.", "error");
-  }
-}
-
-async function deleteHistorySession(id) {
-  const confirmDel = await showConfirm(
-    "¿Quieres eliminar permanentemente esta sesión de tu historial?",
-  );
-  if (confirmDel) {
-    try {
-      await DbManager.deleteSession(id);
-      await DbManager.deleteDataForSession(id);
-      loadHistoryList();
-    } catch (e) {
-      console.error(e);
-    }
-  }
-}
-
-async function downloadSpecificHistoryGpx(id) {
-  try {
-    const session = await DbManager.getSessionById(id);
-    const data = await DbManager.getSensorDataForSession(id);
-    if (session && data.length > 0) {
-      const uName = state.currentUser ? state.currentUser.name : "Usuario";
-      if (!session.gpxPath) {
-        showToast("Las sesiones manuales no tienen una ruta GPS para exportar.", "info");
-        return;
-      }
-      if (!GpxManager.exportSession(session, data, uName)) {
-        showToast("Esta sesión no contiene coordenadas GPS válidas para exportar.", "warning");
-      }
-    } else {
-      showToast("Esta sesión no posee datos de telemetría exportables.", "warning");
-    }
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-async function downloadSpecificHistoryCsv(id) {
-  try {
-    const session = await DbManager.getSessionById(id);
-    const data = await DbManager.getSensorDataForSession(id);
-    if (!session || data.length === 0) {
-      showToast("Esta sesión no posee datos de telemetría exportables.", "warning");
-      return;
-    }
-
-    const userName = state.currentUser ? state.currentUser.name : "Usuario";
-    if (!GpxManager.exportSessionCsv(session, data, userName)) {
-      showToast("No se pudo generar el archivo CSV de esta sesión.", "error");
-    }
-  } catch (error) {
-    console.error("Error exportando CSV histórico:", error);
-    showToast("No se pudo exportar el CSV de esta sesión.", "error");
-  }
-}
-window.downloadSpecificHistoryCsv = downloadSpecificHistoryCsv;
-
-async function downloadSpecificHistoryFit(id) {
-  try {
-    const session = await DbManager.getSessionById(id);
-    const data = await DbManager.getSensorDataForSession(id);
-    if (!session || data.length === 0) {
-      showToast("Esta sesión no posee datos de telemetría exportables.", "warning");
-      return;
-    }
-
-    const userName = state.currentUser ? state.currentUser.name : "Usuario";
-    if (!GpxManager.exportSessionFit(session, data, userName)) {
-      showToast("No se pudo generar el archivo FIT de esta sesión.", "error");
-    }
-  } catch (error) {
-    console.error("Error exportando FIT histórico:", error);
-    showToast("No se pudo exportar el FIT de esta sesión.", "error");
-  }
-}
-window.downloadSpecificHistoryFit = downloadSpecificHistoryFit;
-
-async function checkPendingSessions() {
-  if (!state.currentUser) return;
-  const sessions = await DbManager.getAllSessions(state.currentUser.id);
-  const pending = sessions.find((s) => !s.endTime);
-
-  if (pending) {
-    if (
-      await showConfirm(
-        "Parece que tienes una sesión de entrenamiento incompleta. ¿Quieres recuperarla y guardarla?",
-        "Recuperar sesión",
-        "primary"
-      )
-    ) {
-      pending.endTime = Date.now();
-      await DbManager.updateSession(pending);
-      showToast("Sesión recuperada con éxito.", "success");
-    } else {
-      await DbManager.deleteSession(pending.id);
-      await DbManager.deleteDataForSession(pending.id);
-    }
-  }
-}
-
-// --- TRAINING CALENDAR ---
-let calendarCurrentMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-let selectedCalendarDate = formatDateKey(new Date());
-let calendarSessions = [];
-
-function formatDateKey(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function getSessionDurationSeconds(session) {
-  const activeDuration = Number(session.activeDuration);
-  if (Number.isFinite(activeDuration) && activeDuration >= 0) {
-    return activeDuration;
-  }
-  return Math.max(0, (Number(session.endTime) - Number(session.startTime)) / 1000);
-}
-
-function getCompletedSessions(sessions) {
-  return (sessions || []).filter((s) => {
-    const startTime = Number(s.startTime);
-    return Boolean(s.endTime) && Number.isFinite(startTime);
-  });
-}
-
-function aggregateSessionMetrics(sessions) {
-  return sessions.reduce(
-    (acc, session) => {
-      acc.sessions += 1;
-      acc.distance += Math.max(0, Number(session.totalDistance) || 0);
-      acc.duration += getSessionDurationSeconds(session);
-      acc.ascent += Math.max(0, Number(session.totalAscent) || 0);
-      return acc;
-    },
-    { sessions: 0, distance: 0, duration: 0, ascent: 0 }
-  );
-}
-
-function formatActiveDuration(durationSeconds) {
-  const totalMinutes = Math.floor(Math.max(0, durationSeconds) / 60);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
-}
-
-function renderPeriodSummaryMetrics(container, sessions) {
-  if (!container) return;
-  const metrics = aggregateSessionMetrics(sessions);
-  container.replaceChildren();
-  [
-    ["Sesiones", String(metrics.sessions)],
-    ["Distancia", `${metrics.distance.toFixed(1)} km`],
-    ["Tiempo activo", formatActiveDuration(metrics.duration)],
-    ["Desnivel +", `${Math.round(metrics.ascent)} m`],
-  ].forEach(([label, value]) => {
-    const item = document.createElement("div");
-    item.className = "training-summary-metric";
-    const strong = document.createElement("strong");
-    strong.textContent = value;
-    const span = document.createElement("span");
-    span.textContent = label;
-    item.append(strong, span);
-    container.append(item);
-  });
-}
-
-function getWeekStartMonday(date) {
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function renderSelectedDaySessions(sessions) {
-  const heading = document.getElementById("training-selected-day-heading");
-  const container = document.getElementById("training-selected-day-sessions");
-  if (!heading || !container) return;
-
-  const [y, m, d] = selectedCalendarDate.split("-").map(Number);
-  const selectedDateObj = new Date(y, m - 1, d);
-  heading.textContent = `Sesiones del ${selectedDateObj.toLocaleDateString("es-ES", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  })}`;
-
-  const daySessions = sessions
-    .filter((s) => formatDateKey(new Date(Number(s.startTime))) === selectedCalendarDate)
-    .sort((a, b) => Number(a.startTime) - Number(b.startTime));
-
-  container.replaceChildren();
-  if (daySessions.length === 0) {
-    const p = document.createElement("p");
-    p.className = "training-calendar-empty";
-    p.textContent = "No hay sesiones finalizadas en este día.";
-    container.append(p);
-    return;
-  }
-
-  daySessions.forEach((session) => {
-    const article = document.createElement("article");
-    article.className = "training-day-session";
-    article.style.cursor = "pointer";
-    article.setAttribute("role", "button");
-    article.setAttribute("tabindex", "0");
-    article.title = "Haz clic para ver el resumen de esta sesión";
-
-    const details = document.createElement("div");
-    details.className = "training-day-session-details";
-    const strong = document.createElement("strong");
-    strong.textContent = session.routeName || (session.gpxPath ? "Ruta" : "Sesión manual");
-    const timeSpan = document.createElement("span");
-    timeSpan.textContent = new Date(Number(session.startTime)).toLocaleTimeString("es-ES", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    details.append(strong, timeSpan);
-
-    const metricsDiv = document.createElement("div");
-    metricsDiv.className = "training-day-session-metrics";
-    [
-      `${(Number(session.totalDistance) || 0).toFixed(2)} km`,
-      formatActiveDuration(getSessionDurationSeconds(session)),
-      `${Math.round(Number(session.totalAscent) || 0)} m+`,
-    ].forEach((text) => {
-      const sp = document.createElement("span");
-      sp.textContent = text;
-      metricsDiv.append(sp);
-    });
-
-    const actionSpan = document.createElement("span");
-    actionSpan.style.color = "var(--accent-green, #10b981)";
-    actionSpan.style.fontWeight = "600";
-    actionSpan.style.marginLeft = "auto";
-    actionSpan.textContent = "Ver detalle →";
-    metricsDiv.append(actionSpan);
-
-    article.append(details, metricsDiv);
-
-    const openSummary = () => {
-      openHistoricalSessionSummary(session.id, "stats");
-    };
-
-    article.addEventListener("click", openSummary);
-    article.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        openSummary();
-      }
-    });
-
-    container.append(article);
-  });
-}
-
-function renderTrainingCalendar() {
-  const grid = document.getElementById("training-calendar-grid");
-  const monthLabel = document.getElementById("training-calendar-month");
-  if (!grid || !monthLabel) return;
-
-  const year = calendarCurrentMonth.getFullYear();
-  const month = calendarCurrentMonth.getMonth();
-  const firstDayOfMonth = new Date(year, month, 1);
-  const lastDayOfMonth = new Date(year, month + 1, 0);
-
-  const firstDayWeekdayOffset = (firstDayOfMonth.getDay() + 6) % 7;
-  const startDate = new Date(year, month, 1 - firstDayWeekdayOffset);
-  const totalDaysToShow = Math.ceil((firstDayWeekdayOffset + lastDayOfMonth.getDate()) / 7) * 7;
-  const completedSessions = getCompletedSessions(calendarSessions);
-
-  const rawMonthName = firstDayOfMonth.toLocaleDateString("es-ES", {
-    month: "long",
-    year: "numeric",
-  });
-  monthLabel.textContent =
-    rawMonthName.charAt(0).toLocaleUpperCase("es-ES") + rawMonthName.slice(1);
-
-  // Resumen del mes mostrado
-  const monthSessions = completedSessions.filter((s) => {
-    const d = new Date(Number(s.startTime));
-    return d.getFullYear() === year && d.getMonth() === month;
-  });
-  renderPeriodSummaryMetrics(
-    document.getElementById("training-month-summary"),
-    monthSessions
-  );
-
-  // Resumen de la semana de la fecha seleccionada
-  const [y, m, d] = selectedCalendarDate.split("-").map(Number);
-  const selectedDateObj = new Date(y, m - 1, d);
-  const weekStart = getWeekStartMonday(selectedDateObj);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 6);
-  weekEnd.setHours(23, 59, 59, 999);
-
-  const weekSessions = completedSessions.filter((s) => {
-    const startTime = Number(s.startTime);
-    return startTime >= weekStart.getTime() && startTime <= weekEnd.getTime();
-  });
-
-  const weekHeading = document.getElementById("training-week-heading");
-  if (weekHeading) {
-    weekHeading.textContent = `Semana ${weekStart.toLocaleDateString("es-ES", {
-      day: "numeric",
-      month: "short",
-    })} – ${weekEnd.toLocaleDateString("es-ES", {
-      day: "numeric",
-      month: "short",
-    })}`;
-  }
-  renderPeriodSummaryMetrics(
-    document.getElementById("training-week-summary"),
-    weekSessions
-  );
-
-  // Cuadrícula de días
-  grid.replaceChildren();
-  ["L", "M", "X", "J", "V", "S", "D"].forEach((weekday) => {
-    const sp = document.createElement("span");
-    sp.className = "training-calendar-weekday";
-    sp.setAttribute("aria-hidden", "true");
-    sp.textContent = weekday;
-    grid.append(sp);
-  });
-
-  const todayKey = formatDateKey(new Date());
-
-  for (let i = 0; i < totalDaysToShow; i++) {
-    const date = new Date(startDate);
-    date.setDate(startDate.getDate() + i);
-    const dateKey = formatDateKey(date);
-    const daySessions = completedSessions.filter(
-      (s) => formatDateKey(new Date(Number(s.startTime))) === dateKey
-    );
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "training-calendar-day";
-    btn.dataset.calendarDate = dateKey;
-    btn.setAttribute("aria-pressed", String(dateKey === selectedCalendarDate));
-    btn.setAttribute(
-      "aria-label",
-      `${date.toLocaleDateString("es-ES", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })}${daySessions.length ? `, ${daySessions.length} sesiones` : ""}`
-    );
-
-    if (date.getMonth() !== month) btn.classList.add("outside-month");
-    if (dateKey === selectedCalendarDate) btn.classList.add("selected");
-    if (dateKey === todayKey) btn.classList.add("today");
-
-    const numSpan = document.createElement("span");
-    numSpan.className = "training-calendar-day-number";
-    numSpan.textContent = String(date.getDate());
-    btn.append(numSpan);
-
-    if (daySessions.length > 0) {
-      const actSpan = document.createElement("span");
-      actSpan.className = "training-calendar-day-activity";
-      const totalKm = daySessions.reduce(
-        (acc, s) => acc + (Number(s.totalDistance) || 0),
-        0
-      );
-      actSpan.textContent = `${daySessions.length} ses. · ${totalKm.toFixed(0)} km`;
-      btn.append(actSpan);
-    }
-
-    btn.addEventListener("click", () => selectTrainingCalendarDate(dateKey));
-    grid.append(btn);
-  }
-
-  renderSelectedDaySessions(completedSessions);
-}
-
-function changeTrainingCalendarMonth(delta) {
-  const [y, m, d] = selectedCalendarDate.split("-").map(Number);
-  const currentSelDate = new Date(y, m - 1, d);
-  calendarCurrentMonth = new Date(
-    calendarCurrentMonth.getFullYear(),
-    calendarCurrentMonth.getMonth() + delta,
-    1
-  );
-  const maxDaysInNewMonth = new Date(
-    calendarCurrentMonth.getFullYear(),
-    calendarCurrentMonth.getMonth() + 1,
-    0
-  ).getDate();
-  currentSelDate.setFullYear(
-    calendarCurrentMonth.getFullYear(),
-    calendarCurrentMonth.getMonth(),
-    Math.min(currentSelDate.getDate(), maxDaysInNewMonth)
-  );
-  selectedCalendarDate = formatDateKey(currentSelDate);
-  renderTrainingCalendar();
-}
-
-function selectTrainingCalendarDate(dateKey) {
-  const [y, m, d] = dateKey.split("-").map(Number);
-  const dateObj = new Date(y, m - 1, d);
-  selectedCalendarDate = dateKey;
-  calendarCurrentMonth = new Date(dateObj.getFullYear(), dateObj.getMonth(), 1);
-  renderTrainingCalendar();
-}
-
-function goToTrainingCalendarToday() {
-  selectTrainingCalendarDate(formatDateKey(new Date()));
-}
-
-async function loadProgressStats() {
-  if (!state.currentUser) return;
-
-  try {
-    const sessions = await DbManager.getAllSessions(state.currentUser.id);
-    calendarSessions = sessions;
-    renderTrainingCalendar();
-
-    let totalSessions = sessions.length;
-    let totalDist = 0.0;
-    let totalMillis = 0;
-    let maxPowerVal = 0;
-
-    for (const s of sessions) {
-      totalDist += s.totalDistance;
-      if (s.endTime) {
-        totalMillis += s.endTime - s.startTime;
-      }
-
-      // Query sensor max power
-      const data = await DbManager.getSensorDataForSession(s.id);
-      const powers = data.map((d) => d.power || 0);
-      if (powers.length > 0) {
-        const localMax = Math.max(...powers);
-        if (localMax > maxPowerVal) maxPowerVal = localMax;
-      }
-    }
-
-    // Format times
-    const totalHours = Math.floor(totalMillis / 3600000);
-    const totalMinutes = Math.floor((totalMillis % 3600000) / 60000);
-
-    document.getElementById("stats-total-sessions").textContent = totalSessions;
-    document.getElementById("stats-total-distance").textContent =
-      `${totalDist.toFixed(1)} km`;
-    document.getElementById("stats-total-time").textContent =
-      `${totalHours}h ${totalMinutes}m`;
-    document.getElementById("stats-max-power").textContent = `${maxPowerVal} W`;
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-window.changeFpvZoom = function(delta) {
-    // Ajustar valor entre 1 y 22
-    fpvZoomLevel = Math.max(1, Math.min(32, fpvZoomLevel + delta));
-    console.log("Nuevo nivel de zoom:", fpvZoomLevel);
-
-    // Si estamos en FPV y el mapa está activo, forzar actualización de la vista
-    if (state.map && typeof state.map.setZoom === 'function') {
-        state.map.setZoom(fpvZoomLevel);
-    }
-};
-
-window.addEventListener('keydown', (e) => {
-    if (e.key === '+') {
-        changeFpvZoom(1);
-    } else if (e.key === '-') {
-        changeFpvZoom(-1);
-    }
 });
-
-

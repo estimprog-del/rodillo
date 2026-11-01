@@ -1,5 +1,12 @@
 /* bluetooth.js - Web Bluetooth & Virtual Simulator Manager for RodilloInt */
 import { state } from "./modules/state.js";
+import {
+  createCscDecoder,
+  decodeCyclingPower,
+  decodeFtmsControlResponse,
+  decodeHeartRate,
+  decodeIndoorBikeData,
+} from "./modules/bluetoothDecoders.js";
 
 // Bluetooth UUIDs
 const SERVICES = {
@@ -116,203 +123,66 @@ function onTrainerDisconnected(event) {
   }
 }
 
-/**
- * Decodes Heart Rate Measurement (0x2a37)
- */
+const decodeCSC = createCscDecoder();
+
 function decodeHRM(dataView) {
-  if (dataView.byteLength < 2) return;
-  const flags = dataView.getUint8(0);
-  const is16Bit = (flags & 0x01) !== 0;
-
-  let hr = 0;
-  if (is16Bit) {
-    hr = dataView.getUint16(1, true);
-  } else {
-    hr = dataView.getUint8(1);
-  }
-
-  if (dataListener && dataListener.onHeartRateReceived) {
-    dataListener.onHeartRateReceived(hr);
+  const heartRate = decodeHeartRate(dataView);
+  if (heartRate !== null && dataListener?.onHeartRateReceived) {
+    dataListener.onHeartRateReceived(heartRate);
   }
 }
-
-/**
- * Decodes Cycling Power Measurement (0x2a63)
- */
 
 function decodePower(dataView) {
-  if (dataView.byteLength < 4) return;
-  const flags = dataView.getUint16(0, true);
-  let offset = 2;
+  const rawPower = decodeCyclingPower(dataView);
+  if (rawPower === null) return;
 
-  // Bit 0: Power (Instantaneous Power, sint16)
-  if ((flags & 0x01) !== 0) {
-    if (dataView.byteLength >= offset + 2) {
-      const rawPower = dataView.getInt16(offset, true);
-      offset += 2;
+  const smoothingSeconds = Number.isFinite(state.sensorSmoothing)
+    ? Math.max(1, Math.round(state.sensorSmoothing / 1000))
+    : 3;
+  powerHistory.push(rawPower);
+  if (powerHistory.length > smoothingSeconds) powerHistory.shift();
+  const smoothedPower = Math.round(
+    powerHistory.reduce((total, value) => total + value, 0) /
+      powerHistory.length,
+  );
+  dataListener?.onPowerReceived?.(smoothedPower);
+}
 
-      // 1. Guardar dato bruto original
-      if (typeof state !== 'undefined' && state.currentTraining) {
-        state.currentTraining.lastRawPower = rawPower; 
-      }
-
-      // 2. Lógica de Suavizado (Moving Average)
-      const smoothingSeconds = (typeof state !== 'undefined' && state.settings && state.settings.powerSmoothing) ? parseInt(state.settings.powerSmoothing) : 3;
-
-      powerHistory.push(rawPower);
-      if (powerHistory.length > smoothingSeconds) {
-        powerHistory.shift();
-      }
-
-      const sum = powerHistory.reduce((total, num) => total + num, 0);
-      const smoothedPower = Math.round(sum / powerHistory.length);
-
-      // 3. Enviar dato SUAVIZADO al listener
-      if (dataListener && dataListener.onPowerReceived) {
-        dataListener.onPowerReceived(smoothedPower);
-      }
-    }
+function handleCscData(dataView) {
+  const metrics = decodeCSC(dataView);
+  if (!metrics) return;
+  if (metrics.speedKph !== undefined) {
+    dataListener?.onSpeedReceived?.(
+      metrics.speedKph,
+      metrics.hasWheelRevolution,
+    );
+  }
+  if (metrics.cadenceRpm !== undefined) {
+    dataListener?.onCadenceReceived?.(metrics.cadenceRpm);
   }
 }
 
-/**
- * Decodes Cycling Speed & Cadence (0x2a5b)
- */
-let lastWheelRevs = null;
-let lastWheelTime = null;
-let lastCrankRevs = null;
-let lastCrankTime = null;
-
-function decodeCSC(dataView) {
-  if (dataView.byteLength < 1) return;
-  const flags = dataView.getUint8(0);
-  let offset = 1;
-
-  // Bit 0: Wheel Revolution Data Present
-  if ((flags & 0x01) !== 0) {
-    if (dataView.byteLength >= offset + 6) {
-      const wheelRevs = dataView.getUint32(offset, true);
-      const wheelTime = dataView.getUint16(offset + 4, true); // 1/1024s
-      offset += 6;
-
-      if (lastWheelRevs !== null && lastWheelTime !== null) {
-        let revsDiff = wheelRevs - lastWheelRevs;
-        if (revsDiff < 0) revsDiff += 4294967296; // Handle uint32 rollover
-
-        let timeDiff = wheelTime - lastWheelTime;
-        if (timeDiff < 0) timeDiff += 65536; // Handle uint16 rollover
-
-        if (timeDiff > 0 && revsDiff > 0) {
-          const rps = revsDiff / (timeDiff / 1024.0);
-          const wheelCircumference = 2.1; // meters (700x25c approx)
-          const speedMps = rps * wheelCircumference;
-          const speedKph = speedMps * 3.6;
-
-          if (dataListener && dataListener.onSpeedReceived) {
-            dataListener.onSpeedReceived(speedKph, true);
-          }
-        } else if (timeDiff > 0 && dataListener?.onSpeedReceived) {
-          // Keep the app informed that the wheel sample arrived without a
-          // new revolution, so it can apply its inactivity timeout.
-          dataListener.onSpeedReceived(0, false);
-        }
-      }
-      lastWheelRevs = wheelRevs;
-      lastWheelTime = wheelTime;
-    }
+function handleIndoorBikeData(dataView) {
+  const metrics = decodeIndoorBikeData(dataView);
+  if (!metrics) return;
+  if (metrics.speedKph !== undefined) {
+    dataListener?.onSpeedReceived?.(
+      metrics.speedKph,
+      metrics.hasWheelRevolution,
+    );
   }
-
-  // Bit 1: Crank Revolution Data Present
-  if ((flags & 0x02) !== 0) {
-    if (dataView.byteLength >= offset + 4) {
-      const crankRevs = dataView.getUint16(offset, true);
-      const crankTime = dataView.getUint16(offset + 2, true); // 1/1024s
-
-      if (lastCrankRevs !== null && lastCrankTime !== null) {
-        let revsDiff = crankRevs - lastCrankRevs;
-        if (revsDiff < 0) revsDiff += 65536;
-
-        let timeDiff = crankTime - lastCrankTime;
-        if (timeDiff < 0) timeDiff += 65536;
-
-        if (timeDiff > 0 && revsDiff > 0) {
-          const rpm = (revsDiff / (timeDiff / 1024.0)) * 60;
-          if (dataListener && dataListener.onCadenceReceived) {
-            dataListener.onCadenceReceived(Math.round(rpm));
-          }
-        }
-      }
-      lastCrankRevs = crankRevs;
-      lastCrankTime = crankTime;
-    }
+  if (metrics.cadenceRpm !== undefined) {
+    dataListener?.onCadenceReceived?.(metrics.cadenceRpm);
+  }
+  if (metrics.powerWatts !== undefined) {
+    dataListener?.onPowerReceived?.(metrics.powerWatts);
   }
 }
 
-/**
- * Decodes Indoor Bike Data from Controllable Trainers (0x2ad2)
- */
-function decodeIndoorBike(dataView) {
-  if (dataView.byteLength < 2) return;
-  const flags = dataView.getUint16(0, true);
-  let offset = 2;
-
-  // Bit 0: Speed (Present when "More Data" flag is 0, i.e. (flags & 0x01) === 0)
-  if ((flags & 0x01) === 0) {
-    if (dataView.byteLength >= offset + 2) {
-      const speed = dataView.getUint16(offset, true) / 100.0;
-      offset += 2;
-      if (dataListener && dataListener.onSpeedReceived) {
-        dataListener.onSpeedReceived(speed, speed > 0);
-      }
-    }
-  }
-
-  // Bit 1: Average Speed
-  if ((flags & 0x02) !== 0) offset += 2;
-
-  // Bit 2: Cadence (1=Present, uint16, 0.5 rpm)
-  if ((flags & 0x04) !== 0) {
-    if (dataView.byteLength >= offset + 2) {
-      const cadence = dataView.getUint16(offset, true) * 0.5;
-      offset += 2;
-      if (dataListener && dataListener.onCadenceReceived) {
-        dataListener.onCadenceReceived(Math.round(cadence));
-      }
-    }
-  }
-
-  // Bit 3: Average Cadence
-  if ((flags & 0x08) !== 0) offset += 2;
-  // Bit 4: Distance
-  if ((flags & 0x10) !== 0) offset += 3;
-  // Bit 5: Resistance Level
-  if ((flags & 0x20) !== 0) offset += 2;
-
-  // Bit 6: Power (1=Present, sint16, Watts)
-  if ((flags & 0x40) !== 0) {
-    if (dataView.byteLength >= offset + 2) {
-      const power = dataView.getInt16(offset, true);
-      if (dataListener && dataListener.onPowerReceived) {
-        dataListener.onPowerReceived(power);
-      }
-    }
-  }
-}
-
-/**
- * Decodes FTMS Control Point Response (0x2ad9)
- * OpCode 0x80 = Response Code
- * [0]: 0x80 (Response Code)
- * [1]: Request OpCode that this is responding to
- * [2]: Result Code (0x01 = Success, 0x02 = Op Code not supported, 0x03 = Invalid Parameter, 0x04 = Operation Failed, 0x05 = Control Not Permitted)
- */
-function decodeFtmsControlResponse(dataView) {
-  if (dataView.byteLength < 3) return;
-  const responseCode = dataView.getUint8(0);
-  if (responseCode !== 0x80) return; // Not a response opcode
-
-  const requestOpCode = dataView.getUint8(1);
-  const resultCode = dataView.getUint8(2);
+function handleFtmsControlResponse(dataView) {
+  const response = decodeFtmsControlResponse(dataView);
+  if (!response) return;
+  const { requestOpCode, resultCode } = response;
 
   const opCodeNames = {
     0x00: "Request Control",
@@ -435,7 +305,7 @@ async function setupFtmsControlPoint(service, type) {
     );
     await charWrite.startNotifications();
     charWrite.addEventListener("characteristicvaluechanged", (e) => {
-      decodeFtmsControlResponse(e.target.value);
+      handleFtmsControlResponse(e.target.value);
     });
     console.log(
       "[FTMS Setup] Suscripción exitosa a indicaciones del Control Point.",
@@ -589,7 +459,7 @@ async function connectDevice(type) {
       // Start notifications for FTMS Indoor Bike Data
       await charRead.startNotifications();
       charRead.addEventListener("characteristicvaluechanged", (e) => {
-        decodeIndoorBike(e.target.value);
+        handleIndoorBikeData(e.target.value);
       });
 
       try {
@@ -610,7 +480,7 @@ async function connectDevice(type) {
       charNotify.addEventListener("characteristicvaluechanged", (e) => {
         if (type === "HRM") decodeHRM(e.target.value);
         if (type === "POWER") decodePower(e.target.value);
-        if (type === "CSC") decodeCSC(e.target.value);
+        if (type === "CSC") handleCscData(e.target.value);
       });
     }
 
@@ -756,7 +626,7 @@ async function attemptAutoReconnect(type, device) {
 
       await charRead.startNotifications();
       charRead.addEventListener("characteristicvaluechanged", (e) => {
-        decodeIndoorBike(e.target.value);
+        handleIndoorBikeData(e.target.value);
       });
 
       try {
@@ -780,7 +650,7 @@ async function attemptAutoReconnect(type, device) {
       charNotify.addEventListener("characteristicvaluechanged", (e) => {
         if (type === "HRM") decodeHRM(e.target.value);
         if (type === "POWER") decodePower(e.target.value);
-        if (type === "CSC") decodeCSC(e.target.value);
+        if (type === "CSC") handleCscData(e.target.value);
       });
     }
 
@@ -1282,7 +1152,7 @@ async function silenceConnect(device, type) {
 
       await charRead.startNotifications();
       charRead.addEventListener("characteristicvaluechanged", (e) => {
-        decodeIndoorBike(e.target.value);
+        handleIndoorBikeData(e.target.value);
       });
 
       try {

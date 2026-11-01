@@ -4,6 +4,13 @@ const DB_VERSION = 3;
 
 let dbInstance = null;
 
+function validateUserName(name) {
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > 80) {
+    throw new Error('El nombre del perfil debe tener entre 1 y 80 caracteres.');
+  }
+  return name.trim();
+}
+
 function initDb() {
   return new Promise((resolve, reject) => {
     if (dbInstance) {
@@ -80,6 +87,7 @@ async function getUserById(id) {
 }
 
 async function insertUser(user) {
+  const name = validateUserName(user?.name);
   const db = await initDb();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(['users'], 'readwrite');
@@ -88,7 +96,7 @@ async function insertUser(user) {
     // Add default values
     const newUser = {
       uuid: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15),
-      name: user.name,
+      name,
       weight: Number(user.weight) || 75.0,
       ftp: Number(user.ftp) || 200,
       maxHeartRate: Number(user.maxHeartRate) || 190,
@@ -113,11 +121,12 @@ async function insertUser(user) {
 }
 
 async function updateUser(user) {
+  const validatedUser = { ...user, name: validateUserName(user?.name) };
   const db = await initDb();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(['users'], 'readwrite');
     const store = transaction.objectStore('users');
-    const request = store.put(user);
+    const request = store.put(validatedUser);
 
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -600,6 +609,14 @@ export async function importAllData(file) {
           data[storeName].some((item) => !item || typeof item !== 'object'))) {
         throw new Error(`La sección ${storeName} del backup no es válida.`);
       }
+    }
+    if (Array.isArray(data.users)) {
+      data.users = data.users.map((user) => {
+        if (Array.isArray(user)) {
+          throw new Error('El backup contiene un perfil no válido.');
+        }
+        return { ...user, name: validateUserName(user.name) };
+      });
     }
 
     const db = await initDb();

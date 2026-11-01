@@ -152,7 +152,7 @@ function exportSession(session, sensorData, userName = 'Usuario') {
     trackPoints.forEach((point) => {
       const lat = point.latitude !== null ? point.latitude.toFixed(6) : '0.000000';
       const lon = point.longitude !== null ? point.longitude.toFixed(6) : '0.000000';
-      const ele = (point.elevation !== null && point.elevation !== undefined) ? point.elevation.toFixed(1) : (point.slope !== null ? point.slope.toFixed(1) : '0.0');
+      const ele = (point.elevation !== null && point.elevation !== undefined) ? point.elevation.toFixed(1) : '0.0';
       const timeStr = formatDateUTC(point.timestamp);
       const powerVal = point.power !== null ? point.power : 0;
       const hrVal = point.heartRate !== null ? point.heartRate : 0;
@@ -383,57 +383,69 @@ function exportSessionFit(session, sensorData, userName = 'Usuario') {
     };
 
     // Local msg 3 → lap (mesg_num = 19)
+    // FIT SDK field IDs: avg_heart_rate=15(uint8), avg_cadence=16(uint8),
+    //                    avg_power=19(uint16), max_power=20(uint16)
     const defLap = () => {
       writeUint8(0x43);
       writeUint8(0x00);
       writeUint8(0x00);
       writeUint16(19); // lap
-      writeUint8(8);   // num fields
+      writeUint8(10);  // num fields
       writeUint8(253); writeUint8(4); writeUint8(134); // timestamp
       writeUint8(2);   writeUint8(4); writeUint8(134); // start_time
-      writeUint8(7);   writeUint8(4); writeUint8(134); // total_elapsed_time (ms→scale 1000→uint32)
-      writeUint8(9);   writeUint8(4); writeUint8(134); // total_distance (cm→scale 100→uint32)
-      writeUint8(15);  writeUint8(2); writeUint8(132); // avg_power
-      writeUint8(16);  writeUint8(2); writeUint8(132); // max_power
+      writeUint8(7);   writeUint8(4); writeUint8(134); // total_elapsed_time (uint32, scale 1000 ms)
+      writeUint8(9);   writeUint8(4); writeUint8(134); // total_distance (uint32, scale 100 cm)
+      writeUint8(15);  writeUint8(1); writeUint8(2);   // avg_heart_rate (uint8, bpm)
+      writeUint8(16);  writeUint8(1); writeUint8(2);   // avg_cadence (uint8, rpm)
+      writeUint8(19);  writeUint8(2); writeUint8(132); // avg_power (uint16, watts)
+      writeUint8(20);  writeUint8(2); writeUint8(132); // max_power (uint16, watts)
       writeUint8(25);  writeUint8(1); writeUint8(0);   // sport (enum: 2=cycling)
       writeUint8(26);  writeUint8(1); writeUint8(0);   // sub_sport (enum: 58=virtual_cycling)
     };
-    const dataLap = (fitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr) => {
+    const dataLap = (fitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr, avgHr, avgCad) => {
       writeUint8(0x03);
       writeUint32(fitTs);
       writeUint32(startFitTs);
       writeUint32(Math.round(elapsedSec * 1000));
       writeUint32(Math.round(distKm * 100000));
-      writeUint16(Math.min(0xFFFE, Math.round(avgPwr)));
-      writeUint16(Math.min(0xFFFE, Math.round(maxPwr)));
+      writeUint8(avgHr  > 0 ? Math.min(254, avgHr)  : 0xFF); // avg_heart_rate (0xFF=invalid)
+      writeUint8(avgCad > 0 ? Math.min(254, avgCad) : 0xFF); // avg_cadence    (0xFF=invalid)
+      writeUint16(avgPwr > 0 ? Math.min(0xFFFE, avgPwr) : 0xFFFF); // avg_power
+      writeUint16(maxPwr > 0 ? Math.min(0xFFFE, maxPwr) : 0xFFFF); // max_power
       writeUint8(2);  // sport: cycling
       writeUint8(58); // sub_sport: virtual_cycling
     };
 
     // Local msg 4 → session (mesg_num = 18)
+    // FIT SDK field IDs: avg_heart_rate=16(uint8), avg_cadence=17(uint8),
+    //                    avg_power=20(uint16), max_power=21(uint16)
     const defSession = () => {
       writeUint8(0x44);
       writeUint8(0x00);
       writeUint8(0x00);
       writeUint16(18); // session
-      writeUint8(8);   // num fields
+      writeUint8(10);  // num fields
       writeUint8(253); writeUint8(4); writeUint8(134); // timestamp
       writeUint8(2);   writeUint8(4); writeUint8(134); // start_time
       writeUint8(7);   writeUint8(4); writeUint8(134); // total_elapsed_time
       writeUint8(9);   writeUint8(4); writeUint8(134); // total_distance
-      writeUint8(15);  writeUint8(2); writeUint8(132); // avg_power
-      writeUint8(16);  writeUint8(2); writeUint8(132); // max_power
+      writeUint8(16);  writeUint8(1); writeUint8(2);   // avg_heart_rate (uint8, bpm)
+      writeUint8(17);  writeUint8(1); writeUint8(2);   // avg_cadence (uint8, rpm)
+      writeUint8(20);  writeUint8(2); writeUint8(132); // avg_power (uint16, watts)
+      writeUint8(21);  writeUint8(2); writeUint8(132); // max_power (uint16, watts)
       writeUint8(25);  writeUint8(1); writeUint8(0);   // sport (enum: 2=cycling)
       writeUint8(26);  writeUint8(1); writeUint8(0);   // sub_sport (enum: 58=virtual_cycling)
     };
-    const dataSession = (fitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr) => {
+    const dataSession = (fitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr, avgHr, avgCad) => {
       writeUint8(0x04);
       writeUint32(fitTs);
       writeUint32(startFitTs);
       writeUint32(Math.round(elapsedSec * 1000));
       writeUint32(Math.round(distKm * 100000));
-      writeUint16(Math.min(0xFFFE, Math.round(avgPwr)));
-      writeUint16(Math.min(0xFFFE, Math.round(maxPwr)));
+      writeUint8(avgHr  > 0 ? Math.min(254, avgHr)  : 0xFF); // avg_heart_rate (0xFF=invalid)
+      writeUint8(avgCad > 0 ? Math.min(254, avgCad) : 0xFF); // avg_cadence    (0xFF=invalid)
+      writeUint16(avgPwr > 0 ? Math.min(0xFFFE, avgPwr) : 0xFFFF); // avg_power
+      writeUint16(maxPwr > 0 ? Math.min(0xFFFE, maxPwr) : 0xFFFF); // max_power
       writeUint8(2);  // sport: cycling
       writeUint8(58); // sub_sport: virtual_cycling
     };
@@ -461,14 +473,26 @@ function exportSessionFit(session, sensorData, userName = 'Usuario') {
     const endMs = session.endTime || (sensorData[sensorData.length - 1].timestamp);
     const endFitTs = toFitTime(endMs);
     const elapsedSec = (endMs - session.startTime) / 1000;
+    // avgPwr: solo puntos activos (power > 0) para no penalizar pausas
     let totalPwr = 0;
+    let activePwrCount = 0;
     let maxPwr = 0;
-    for (let i = 0; i < sensorData.length; i++) {
-      const p = Number.isFinite(sensorData[i].power) ? sensorData[i].power : 0;
-      totalPwr += p;
+    let totalHr = 0;
+    let activeHrCount = 0;
+    let totalCad = 0;
+    let activeCadCount = 0;
+    for (const pt of sensorData) {
+      const p = Number.isFinite(pt.power) ? pt.power : 0;
+      if (p > 0) { totalPwr += p; activePwrCount++; }
       if (p > maxPwr) maxPwr = p;
+      const hr = Number.isFinite(pt.heartRate) ? pt.heartRate : 0;
+      if (hr > 0) { totalHr += hr; activeHrCount++; }
+      const cad = Number.isFinite(pt.cadence) ? pt.cadence : 0;
+      if (cad > 0) { totalCad += cad; activeCadCount++; }
     }
-    const avgPwr = totalPwr / (sensorData.length || 1);
+    const avgPwr = activePwrCount > 0 ? Math.round(totalPwr / activePwrCount) : 0;
+    const avgHr  = activeHrCount  > 0 ? Math.round(totalHr  / activeHrCount)  : 0;
+    const avgCad = activeCadCount > 0 ? Math.round(totalCad / activeCadCount) : 0;
     const distKm = session.totalDistance || 0;
 
     // file_id
@@ -490,11 +514,11 @@ function exportSessionFit(session, sensorData, userName = 'Usuario') {
 
     // lap
     defLap();
-    dataLap(endFitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr);
+    dataLap(endFitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr, avgHr, avgCad);
 
     // session
     defSession();
-    dataSession(endFitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr);
+    dataSession(endFitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr, avgHr, avgCad);
 
     // activity
     defActivity();

@@ -1,10 +1,14 @@
 /* ui.js - Funciones de manipulación de interfaz */
 
+let _openModalCount = 0;
+
 export function showModal(modalId) {
   const modal = document.getElementById(`modal-${modalId}`);
   if (modal) {
-    modal.style.display = "flex"; // Forzamos visibilidad
+    modal.style.display = "flex";
     modal.classList.add("active");
+    _openModalCount++;
+    document.body.style.overflow = "hidden";
   }
 }
 
@@ -13,6 +17,10 @@ export function hideModal(modalId) {
   if (modal) {
     modal.style.display = "none";
     modal.classList.remove("active");
+    _openModalCount = Math.max(0, _openModalCount - 1);
+    if (_openModalCount === 0) {
+      document.body.style.overflow = "";
+    }
   }
 }
 

@@ -10,7 +10,9 @@ export const state = {
   currentSessionId: null,
   lastSavedSessionId: null,
   summaryReturnScreen: "dashboard",
-  currentMode: "ROUTE", // 'ROUTE' | 'MANUAL' | 'TRADITIONAL'
+  connectionsReturnScreen: "dashboard",
+  currentMode: "ROUTE", // 'ROUTE' | 'MANUAL' | 'TRADITIONAL' | 'WORKOUT'
+  currentWorkout: null,
   isMapFollowingRoute: false,
   telemetryBuffer: [],
 

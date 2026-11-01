@@ -3,7 +3,7 @@
  * Soporte offline para despliegue en GitHub Pages (/rodillo/) y local.
  */
 
-const CACHE_NAME = "rodilloint-v2";
+const CACHE_NAME = "rodilloint-v3";
 
 // Resuelve una ruta relativa con el scope del service worker (ej. '/rodillo/' en GitHub Pages)
 const getScopedUrl = (relPath) => new URL(relPath, self.registration.scope).pathname;
@@ -45,24 +45,22 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Fetch: estrategia para soportar tanto assets locales empaquetados como librerías CDN
+// Fetch: estrategia para assets locales y recursos de terceros permitidos
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
 
-  // CDNs críticos para Leaflet, MapLibre, ApexCharts y tipografías
+  // Recursos de tipografía cargados desde Google Fonts
   const isCdn =
-    url.hostname.includes("unpkg.com") ||
-    url.hostname.includes("jsdelivr.net") ||
     url.hostname.includes("googleapis.com") ||
     url.hostname.includes("gstatic.com");
 
   // Si no es del mismo origen ni de un CDN permitido, no intervenir
   if (url.origin !== location.origin && !isCdn) return;
 
-  // 1. Cache-first para GPX, imágenes, fuentes y librerías CDN (recursos pesados e inmutables)
+  // 1. Cache-first para GPX, imágenes y fuentes de terceros.
   const isCacheFirst =
     url.pathname.endsWith(".gpx") ||
     url.pathname.endsWith(".tcx") ||
