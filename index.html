@@ -6,30 +6,25 @@
             name="viewport"
             content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
         />
+        <meta
+            http-equiv="Content-Security-Policy"
+            content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https: wss:; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'"
+        />
         <title>RodilloInt - Training Lab</title>
 
         <!-- PWA -->
         <link rel="manifest" href="manifest.json" />
         <meta name="theme-color" content="#1a1f35" />
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="RodilloInt" />
+        <link rel="icon" href="icons/icon-192.png" type="image/png" />
         <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
         <!-- CSS Stylesheets -->
-
-        <!-- Leaflet Maps CSS via CDN -->
-        <link
-            rel="stylesheet"
-            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-            integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-            crossorigin=""
-        />
-
-        <!-- MapLibre 3D CSS -->
-        <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-      <script type="module" crossorigin src="/rodillo/assets/index-C-aoxSgK.js"></script>
-      <link rel="stylesheet" crossorigin href="/rodillo/assets/index-jq5lHB9H.css">
+      <script type="module" crossorigin src="/rodillo/assets/index-RwLlyE4p.js"></script>
+      <link rel="stylesheet" crossorigin href="/rodillo/assets/index-yHGYitbn.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -70,7 +65,7 @@
         <div id="screen-dashboard" class="screen">
             <div class="dashboard-header glass-card">
                 <div class="dashboard-header-left-group">
-                    <div class="active-profile-info" id="active-profile-header" style="cursor: pointer;" onclick="document.getElementById('btn-open-user-profile-trigger').click()">
+                    <div class="active-profile-info" id="active-profile-header" style="cursor: pointer;">
                         <div class="avatar-small">U</div>
                         <button id="btn-open-user-profile-trigger" style="display:none"></button>
                         <div class="active-profile-details">
@@ -174,6 +169,27 @@
                         >
                     </div>
 
+                    <!-- ERG training -->
+                    <div class="glass-card mode-card erg" id="mode-erg">
+                        <div>
+                            <div class="mode-icon">⚡</div>
+                            <h3 class="mode-title">ENTRENAMIENTO ERG</h3>
+                            <p class="mode-desc">
+                                Entrenamientos estructurados por potencia objetivo (% FTP / W).
+                                Carga archivos .zwo o .erg y el rodillo ajustará la resistencia automáticamente.
+                            </p>
+                        </div>
+                        <span
+                            style="
+                                color: var(--accent-orange);
+                                font-size: 13px;
+                                font-weight: 600;
+                                margin-top: 16px;
+                            "
+                            >Elegir entrenamiento ➔</span
+                        >
+                    </div>
+
                     <!-- Traditional training -->
                     <div
                         class="glass-card mode-card traditional"
@@ -262,6 +278,74 @@
             </div>
         </div>
 
+        <!-- SCREEN: WORKOUTS -->
+        <div id="screen-workouts" class="screen">
+            <div class="page-heading-row">
+                <div>
+                    <h2>Entrenamientos Estructurados (Modo ERG)</h2>
+                    <p class="help-intro">Elige un entrenamiento de la biblioteca o importa tus propios archivos <strong>.zwo</strong> o <strong>.erg</strong>. El rodillo ajustará automáticamente la resistencia en cada bloque.</p>
+                </div>
+                <button class="btn btn-dark page-heading-back" id="btn-workouts-back">← Volver</button>
+            </div>
+            <div class="route-library-toolbar">
+                <label for="workout-library-filter">Mostrar</label>
+                <select id="workout-library-filter">
+                    <option value="all">Todos los entrenamientos</option>
+                    <option value="presets">Entrenamientos predefinidos</option>
+                    <option value="user">Mis entrenamientos importados</option>
+                </select>
+                <input type="file" id="workout-file-input" accept=".zwo,.erg,.mrc,.xml" hidden />
+                <button class="btn btn-primary" id="btn-import-workout" type="button">＋ Importar archivo (.zwo / .erg)</button>
+                <button class="btn btn-secondary" id="btn-create-workout" type="button">＋ Crear entrenamiento</button>
+                <span id="workout-library-status" role="status" aria-live="polite"></span>
+            </div>
+            <section id="workout-editor" class="workout-editor glass-card" hidden>
+                <div class="workout-editor-header">
+                    <div>
+                        <h3 id="workout-editor-title">Crear entrenamiento</h3>
+                        <p>Define bloques de potencia; el perfil se actualiza mientras editas.</p>
+                    </div>
+                    <button class="btn btn-dark btn-sm" id="btn-close-workout-editor" type="button" aria-label="Cerrar editor">✕</button>
+                </div>
+                <div class="workout-editor-details">
+                    <label>Nombre
+                        <input id="workout-editor-name" type="text" maxlength="80" placeholder="Ej. Series de umbral" required />
+                    </label>
+                    <label>Descripción
+                        <input id="workout-editor-description" type="text" maxlength="180" placeholder="Descripción opcional" />
+                    </label>
+                    <label>Unidad de potencia
+                        <select id="workout-editor-unit">
+                            <option value="ftp">% FTP</option>
+                            <option value="watts">Vatios (W)</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="workout-editor-blocks-heading">
+                    <h4>Bloques</h4>
+                    <div class="workout-editor-block-actions">
+                        <button class="btn btn-secondary btn-sm" id="btn-add-workout-step" type="button">＋ Añadir bloque</button>
+                        <button class="btn btn-dark btn-sm" id="btn-add-workout-repeat" type="button">＋ Grupo repetido</button>
+                    </div>
+                </div>
+                <div id="workout-editor-steps" class="workout-editor-steps"></div>
+                <div class="workout-editor-preview">
+                    <div class="workout-editor-preview-heading">
+                        <strong>Perfil</strong>
+                        <span id="workout-editor-summary">0 bloques · 00:00</span>
+                    </div>
+                    <div id="workout-editor-chart"></div>
+                </div>
+                <div class="workout-editor-actions">
+                    <button class="btn btn-dark" id="btn-cancel-workout-editor" type="button">Cancelar</button>
+                    <button class="btn btn-primary" id="btn-save-created-workout" type="button">Guardar entrenamiento</button>
+                </div>
+            </section>
+            <div id="workout-library-list" class="workout-library-list" aria-live="polite">
+                Cargando entrenamientos...
+            </div>
+        </div>
+
         <!-- 3. SCREEN: HELP -->
         <div id="screen-help" class="screen">
             <div class="page-heading-row">
@@ -282,6 +366,7 @@
                     <h3>Tipos de uso</h3>
                     <p><strong>Nueva sesión:</strong> carga un GPX/TCX y sigue la ruta con el cambio automático de pendiente.</p>
                     <p><strong>Sesión manual:</strong> entrena sin ruta y ajusta pendiente o potencia.</p>
+                    <p><strong>Entrenamiento ERG:</strong> sigue bloques estructurados de potencia; con un rodillo compatible conectado, la app ajusta la resistencia al objetivo.</p>
                     <p><strong>Rodillo tradicional:</strong> registra los sensores sin controlar la resistencia.</p>
                     <p><strong>Rodillo Virtual:</strong> prueba la aplicación sin sensores físicos.</p>
                 </article>
@@ -296,14 +381,32 @@
                     </ol>
                 </article>
                 <article class="glass-card help-card">
+                    <h3>Comprobación rápida después de actualizar</h3>
+                    <ul>
+                        <li>Sin sensores: activa el Rodillo Virtual, inicia una sesión y confirma que cambian las métricas.</li>
+                        <li>Con sensores: conecta el rodillo o los sensores, inicia una sesión y comprueba que los indicadores muestran conexión y señal reciente.</li>
+                        <li>Prueba pausa y reanudación; en una ruta, comprueba también la pausa automática al dejar de pedalear y la reanudación al volver a moverte.</li>
+                        <li>En ERG: inicia un entrenamiento, comprueba el bloque y la potencia objetivo, y finaliza para revisar el resumen.</li>
+                        <li>Abre el historial, compara dos sesiones y verifica que sus métricas se muestran correctamente.</li>
+                    </ul>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Entrenamientos ERG</h3>
+                    <p>En <strong>Entrenamientos ERG</strong> puedes elegir un entrenamiento predefinido, importar archivos <strong>.zwo</strong> (Zwift) o <strong>.erg/.mrc</strong> (Computrainer), o crear uno propio.</p>
+                    <p>El editor permite añadir bloques y grupos repetidos, definir duración, potencia en <strong>% FTP o vatios</strong> y consultar el perfil antes de guardarlo.</p>
+                    <p>Puedes editar tus entrenamientos personalizados o copiar uno para modificar la copia; los predefinidos permanecen intactos. También puedes exportar tus entrenamientos personalizados a ZWO.</p>
+                    <p>Selecciona el entrenamiento y prepara la sesión. Durante el entrenamiento verás el bloque actual, el siguiente, el tiempo restante y tu potencia frente al objetivo. Al finalizar, el resumen muestra la adherencia al objetivo cuando hay lecturas de potencia.</p>
+                </article>
+                <article class="glass-card help-card">
                     <h3>Ajustes importantes</h3>
-                    <p>En <strong>⚙️ Ajustes</strong> puedes elegir el mapa 2D/3D/FPV, la orientación Norte/Ruta, el diseño de pantalla y el tamaño del texto.</p>
-                    <p>También puedes configurar marchas virtuales, límites de pendiente, realismo, zonas de potencia, el inicio al detectar movimiento y mostrar el fantasma de tu mejor sesión anterior en rutas.</p>
+                    <p>En <strong>⚙️ Ajustes</strong> puedes elegir el mapa 2D/3D aéreo/FPV, la orientación Norte/Ruta, el diseño de pantalla y el tamaño del texto. En FPV, la cámara sigue el recorrido; puedes ajustar el zoom con los controles o las teclas + y −.</p>
+                    <p>También puedes configurar marchas virtuales, límites de pendiente, realismo, suavizado de sensores, zonas de potencia, el inicio al detectar movimiento y mostrar el fantasma de tu mejor sesión anterior en rutas.</p>
                 </article>
                 <article class="glass-card help-card">
                     <h3>Durante la sesión</h3>
                     <p>La ficha <strong>Progreso Ruta</strong> muestra lo recorrido, lo restante y el desnivel. <strong>Prox 500m</strong> sirve de referencia para la pendiente próxima.</p>
-                    <p>Puedes pausar, reanudar, finalizar y cambiar de marcha desde la pantalla. La distancia y la velocidad media se calculan con el tiempo activo.</p>
+                    <p>Puedes pausar, reanudar, finalizar y cambiar de marcha desde la pantalla. En rutas, la sesión puede pausarse automáticamente si deja de detectar movimiento y reanudarse al volver a pedalear. La distancia y la velocidad media se calculan con el tiempo activo.</p>
+                    <p>Los indicadores superiores muestran conexión y recepción reciente: el contorno naranja avisa si un sensor conectado lleva más de cinco segundos sin enviar datos.</p>
                 </article>
                 <article class="glass-card help-card">
                     <h3>Historial y progreso</h3>
@@ -316,8 +419,8 @@
                 </article>
                 <article class="glass-card help-card">
                     <h3>Mando remoto</h3>
-                    <p>Abre el mando desde el botón 📱 de la sesión y escanea el código QR con otro dispositivo. Permite subir o bajar marcha, pausar, reanudar y finalizar.</p>
-                    <p>El mando necesita conexión a Internet y debe mantenerse abierta la pantalla de la sala.</p>
+                    <p>Abre el mando desde el botón 📱 de la sesión y escanea el código QR con otro dispositivo conectado a la misma red local. Permite subir o bajar marcha, pausar, reanudar y finalizar.</p>
+                    <p>En desarrollo, el servidor local emite tokens Ably de corta duración y limita cada token a su sala. En GitHub Pages hace falta configurar un servidor de autenticación seguro; sin él, los controles quedan desactivados. El mando también necesita Internet para comunicarse mediante Ably y debe mantenerse abierta la pantalla de la sesión.</p>
                 </article>
                 <article class="glass-card help-card">
                     <h3>Si algo no funciona</h3>
@@ -829,6 +932,9 @@
                                     SPD
                                 </div>
                             </div>
+                            <div id="sensor-quality-status" class="sensor-quality-status" role="status" aria-live="polite">
+                                Esperando datos de sensores…
+                            </div>
                         </div>
 
                         <div class="hud-right-group">
@@ -1037,6 +1143,89 @@
                 <div class="glass-card" style="width: 560px; height: 330px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between;">
                     <div id="manual-power-chart" style="flex: 1;"></div>
                     <div id="manual-hr-chart" style="flex: 1;"></div>
+                </div>
+            </div>
+
+            <!-- Panel Modo ERG / Entrenamiento Estructurado -->
+            <div
+                class="workout-erg-overlay"
+                id="workout-erg-panel"
+                style="display: none;"
+            >
+                <div class="workout-erg-hero">
+                    <!-- Tarjeta del paso activo -->
+                    <div class="workout-active-step-card glass-card" id="workout-active-step-card">
+                        <div class="workout-step-header">
+                            <span class="workout-step-tag" id="workout-step-tag">Calentamiento</span>
+                            <span class="workout-step-counter" id="workout-step-counter">Bloque 1 de 5</span>
+                        </div>
+
+                        <div class="workout-step-countdown-row">
+                            <span class="workout-step-countdown-val" id="workout-step-countdown">05:00</span>
+                            <span class="workout-step-countdown-lbl">Restante bloque</span>
+                        </div>
+
+                        <div class="workout-step-progress-track">
+                            <div class="workout-step-progress-bar" id="workout-step-progress-bar"></div>
+                        </div>
+
+                        <div class="workout-step-targets-grid">
+                            <div class="workout-target-pill">
+                                <span class="workout-target-pill-lbl">Potencia Objetivo</span>
+                                <span class="workout-target-pill-val" id="workout-target-power-val">150 W</span>
+                            </div>
+                            <div class="workout-target-pill workout-live-power-pill" id="workout-current-power-pill">
+                                <span class="workout-target-pill-lbl">Tu potencia</span>
+                                <span class="workout-target-pill-val" id="workout-current-power-val">-- W</span>
+                                <span class="workout-power-delta" id="workout-power-delta">Esperando potenciómetro</span>
+                            </div>
+                            <div class="workout-target-pill">
+                                <span class="workout-target-pill-lbl">Cadencia</span>
+                                <span class="workout-target-pill-val workout-cadence-values">
+                                    <span id="workout-current-cadence-val">-- rpm</span>
+                                    <span class="workout-cadence-target">Obj. <span id="workout-target-cadence-val">-- rpm</span></span>
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="workout-message-banner" id="workout-message-banner">
+                            <!-- Mensajes de texto del entrenamiento -->
+                        </div>
+                    </div>
+
+                    <!-- Panel lateral: próximo paso y bias -->
+                    <div class="workout-sidebar-card glass-card">
+                        <div class="workout-next-step-box">
+                            <div class="workout-next-title">Siguiente Bloque</div>
+                            <div class="workout-next-name" id="workout-next-step-name">--</div>
+                            <div class="workout-next-meta" id="workout-next-step-meta">--</div>
+                        </div>
+
+                        <div class="workout-bias-control">
+                            <div class="workout-bias-title">Ajuste de Intensidad</div>
+                            <div class="workout-bias-buttons">
+                                <button class="workout-bias-btn" id="btn-workout-bias-minus" type="button">− 5W</button>
+                                <button class="workout-bias-btn" id="btn-workout-bias-reset" type="button" title="Restablecer">0 W</button>
+                                <button class="workout-bias-btn" id="btn-workout-bias-plus" type="button">+ 5W</button>
+                            </div>
+                            <div class="workout-bias-label" id="workout-bias-label">Bias: 0 W</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gráfico del perfil completo del workout con aguja en tiempo real -->
+                <div class="workout-timeline-footer glass-card">
+                    <div class="workout-timeline-title">
+                        <span id="workout-timeline-name">PERFIL DEL ENTRENAMIENTO</span>
+                        <span class="workout-timeline-legend" aria-label="Leyenda del gráfico">
+                            <span><i class="workout-legend-target"></i>Objetivo</span>
+                            <span><i class="workout-legend-actual"></i>Potencia real</span>
+                        </span>
+                        <span id="workout-timeline-progress">00:00 / 00:00</span>
+                    </div>
+                    <div class="workout-timeline-container" id="workout-timeline-container">
+                        <!-- SVG del perfil activo renderizado dinámicamente -->
+                    </div>
                 </div>
             </div>
 
@@ -1285,6 +1474,11 @@
                             0 / 0 W
                         </div>
                     </div>
+                    <div class="summary-num-card" id="summary-erg-adherence-card" hidden>
+                        <div class="summary-num-title">Potencia dentro del objetivo</div>
+                        <div class="summary-num-value green" id="summary-erg-adherence">--%</div>
+                        <div class="summary-num-detail" id="summary-erg-adherence-detail">Sin lecturas válidas</div>
+                    </div>
                     <div class="summary-num-card">
                         <div class="summary-num-title">
                             Velocidad Media / Máx
@@ -1397,9 +1591,10 @@
                 </button>
             </div>
             <p style="color: var(--text-secondary); margin-bottom: 20px">
-                Revisa las sesiones de rodillo registradas con tu perfil.
+                Revisa y compara sesiones de rodillo registradas con tu perfil. Selecciona hasta dos sesiones finalizadas.
             </p>
 
+            <section id="history-comparison" class="glass-card history-comparison" aria-live="polite" hidden></section>
             <div class="history-list" id="history-items-container">
                 <!-- Populated dynamically -->
                 <div
@@ -1882,34 +2077,7 @@
 
         <!-- --- JAVASCRIPT SCRIPTS MODULES --- -->
 
-        <!-- Leaflet Map JS via CDN -->
-        <script
-            src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-            crossorigin=""
-        ></script>
-
-        <!-- ApexCharts JS via CDN -->
-        <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-
-        <!-- Motor 3D MapLibre (cargado de forma diferida) -->
-        <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-        <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-
         <!-- Custom modules -->
-        <!-- PWA: Service Worker -->
-        <script>
-          if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-              const basePath = window.location.pathname.endsWith('/')
-                ? window.location.pathname
-                : window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
-              navigator.serviceWorker.register(`${basePath}sw.js`)
-                .then(reg => console.log('[PWA] SW registrado:', reg.scope))
-                .catch(err => console.warn('[PWA] SW error:', err));
-            });
-          }
-        </script>
       <!-- Modal Ajustes Generales -->
       <div id="modal-settings" class="modal-overlay" style="display: none;">
         <div class="modal-content glass-card" style="width: 400px; padding: 24px; color: white;">
@@ -2084,8 +2252,8 @@
             <ul>
               <li>Google Analytics: medición opcional de uso; solo se activa si la aceptas.</li>
               <li>Mapas: MapTiler/OpenStreetMap y recursos de mapa asociados reciben solicitudes cuando se muestra un mapa.</li>
-              <li>Mando remoto: Ably transmite órdenes entre tus dispositivos; api.qrserver.com genera el QR y recibe el enlace de la sala.</li>
-              <li>Recursos de terceros: algunos componentes se cargan desde CDNs.</li>
+              <li>Mando remoto: Ably transmite órdenes entre tus dispositivos y el QR se genera localmente. El mando permanece desactivado hasta configurar un endpoint seguro de autenticación Ably.</li>
+              <li>Los componentes JavaScript y CSS se incluyen en la aplicación; los mapas siguen solicitando recursos a sus proveedores.</li>
             </ul>
             <h3>Uso y seguridad</h3>
             <p>
