@@ -617,18 +617,6 @@ function updateManualTrainingCharts(power, hr) {
   manualHrChart.updateSeries([{ data: manualData.hr }]);
 }
 
-// Export charts functions globally
-window.ChartsManager = {
-  initRealtimeChart,
-  updateRealtimeChart,
-  initElevationChart,
-  setElevationCursor,
-  initZonesChart,
-  initUpcomingChart,
-  updateUpcomingChart,
-  initManualTrainingCharts, // <-- NUEVA
-  updateManualTrainingCharts // <-- NUEVA
-};
 
 /**
  * Inicializa el minigráfico predictivo (sparkline) de los próximos 500m
@@ -713,3 +701,17 @@ function updateUpcomingChart(distances, elevations, avgSlope) {
     },
   ]);
 }
+
+// Export charts functions globally & as ES module
+export const ChartsManager = {
+  initRealtimeChart,
+  updateRealtimeChart,
+  initElevationChart,
+  setElevationCursor,
+  initZonesChart,
+  initUpcomingChart,
+  updateUpcomingChart,
+  initManualTrainingCharts,
+  updateManualTrainingCharts
+};
+window.ChartsManager = ChartsManager;

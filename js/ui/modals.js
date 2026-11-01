@@ -1,5 +1,6 @@
 import { showModal, hideModal } from "../modules/ui.js";
 import { state, saveStateToLocalStorage } from "../modules/state.js";
+import { resetAddUserAvatar, prepareEditUserAvatar } from "./userView.js";
 
 /**
  * UI Modal Manager
@@ -7,6 +8,7 @@ import { state, saveStateToLocalStorage } from "../modules/state.js";
  */
 
 export function openAddUserModal() {
+  resetAddUserAvatar();
   showModal("add-user");
 }
 
@@ -23,6 +25,7 @@ export function closeImportUserModal() {
 }
 
 export function openEditUserModal() {
+  prepareEditUserAvatar();
   showModal("edit-user");
 }
 

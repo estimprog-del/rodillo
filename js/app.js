@@ -40,6 +40,12 @@ import {
 } from "./modules/virtualGears.js";
 import { exportAllData, getBackupStatus } from "./db.js";
 import {
+  calculateNormalizedPowerFromValues,
+  calculateIntensityFactor,
+  calculateTSS,
+  calculateKilojoulesStep,
+} from "./core/physics.js";
+import {
   loadProfilesGrid,
   selectUser,
   handleLogout,
@@ -100,6 +106,7 @@ import {
   getWorkoutBias,
   renderActiveWorkoutHudSvg,
 } from "./core/workoutEngine.js";
+import { initUserView } from "./ui/userView.js";
 
 window.adjustWorkoutBias = adjustWorkoutBias;
 window.resetWorkoutBias = resetWorkoutBias;
@@ -291,66 +298,6 @@ window.addEventListener("resize", () => {
   else positionMapNavigationControls();
 });
 
-function positionMapNavigationControls() {
-  const mapContainer = document.getElementById("workout-map");
-  const hudGroup = document.querySelector(".hud-bottom-right-group");
-  const controls = mapContainer?.querySelector(
-    ".maplibregl-ctrl-top-right, .leaflet-top.leaflet-right",
-  );
-  if (!mapContainer || !hudGroup || !controls) return;
-
-  const mapRect = mapContainer.getBoundingClientRect();
-  const hudRect = hudGroup.getBoundingClientRect();
-  const controlsRect = controls.getBoundingClientRect();
-  if (!controlsRect.height || !mapRect.height) return;
-
-  const top = Math.max(
-    80,
-    hudRect.top - mapRect.top - controlsRect.height - 10,
-  );
-  const right = Math.max(8, mapRect.right - hudRect.right);
-  controls.style.setProperty("top", `${top}px`, "important");
-  controls.style.setProperty("right", `${right}px`, "important");
-
-  if (typeof ResizeObserver !== "undefined") {
-    if (!mapControlsResizeObserver) {
-      mapControlsResizeObserver = new ResizeObserver(() => {
-        requestAnimationFrame(positionMapNavigationControls);
-      });
-    }
-    if (controls !== observedMapControls || hudGroup !== observedMapHudGroup) {
-      mapControlsResizeObserver.disconnect();
-      mapControlsResizeObserver.observe(hudGroup);
-      mapControlsResizeObserver.observe(controls);
-      observedMapControls = controls;
-      observedMapHudGroup = hudGroup;
-    }
-  }
-}
-
-function applyWorkoutPanels() {
-  const panels = {
-    virtual: document.getElementById("virtual-trainer-panel"),
-    progress: document.getElementById("hud-progress"),
-    elevation: document.getElementById("hud-elevation-footer"),
-    upcoming: document.getElementById("upcoming-profile-chart"),
-  };
-  Object.entries(panels).forEach(([name, panel]) => {
-    if (!panel) return;
-    panel.classList.toggle("workout-panel-collapsed", state.workoutPanels[name] === false);
-    const toggle = panel.querySelector(".panel-toggle");
-    if (toggle) toggle.textContent = state.workoutPanels[name] === false ? "+" : "−";
-  });
-}
-
-function toggleWorkoutPanel(name) {
-  if (!(name in state.workoutPanels)) return;
-  state.workoutPanels[name] = !state.workoutPanels[name];
-  saveStateToLocalStorage();
-  applyWorkoutPanels();
-}
-
-window.toggleWorkoutPanel = toggleWorkoutPanel;
 
 function formatWorkoutTimer(totalSeconds) {
   const safeSeconds = Math.max(0, Math.round(Number(totalSeconds) || 0));
@@ -514,6 +461,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
 
   navigateTo = initNavigation(UI, state, navigationCallbacks);
+  initUserView({ navigateTo });
 
   // Exponer bridges para que los módulos core/ puedan acceder a funciones de app.js
   window._navigateTo = navigateTo;
@@ -575,6 +523,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }, 15000);
 
     window.addEventListener("beforeunload", async (e) => {
+      void releaseWorkoutWakeLock();
       if (state.isSessionActive && typeof flushTelemetryBuffer === 'function') {
         await flushTelemetryBuffer();
       }
@@ -1091,29 +1040,6 @@ function calculateNormalizedPower() {
   return calculateNormalizedPowerFromValues(state.powerHistory);
 }
 
-function calculateNormalizedPowerFromValues(values) {
-  if (values.length < 30) {
-    return (
-      values.reduce((a, b) => a + b, 0) / values.length || 0.0
-    );
-  }
-
-  // 1. Calculate 30-second rolling averages
-  const rollingAverages = [];
-  for (let i = 29; i < values.length; i++) {
-    const sum = values
-      .slice(i - 29, i + 1)
-      .reduce((a, b) => a + b, 0);
-    const avg = sum / 30.0;
-    rollingAverages.push(Math.pow(avg, 4.0));
-  }
-
-  // 2. Average the 4th powers, and take the 4th root
-  const avgPowers4 =
-    rollingAverages.reduce((a, b) => a + b, 0) / rollingAverages.length;
-  return Math.pow(avgPowers4, 0.25);
-}
-
 // --- Countdown Timer ---
 function startCountdown(onComplete, duration) {
   cancelCountdown();
@@ -1462,95 +1388,7 @@ async function loadGhostRiderSession() {
   }
 }
 
-// --- LEAFLET MAPS ENGINE ---
-function initLeafletMap() {
-  if (state.map) return;
-
-  // standard Madrid coordinates initial view
-  state.map = L.map("workout-map", {
-    zoomControl: false,
-    attributionControl: false,
-  }).setView([40.4168, -3.7038], 14);
-
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-  }).addTo(state.map);
-
-  // Custom zoom buttons
-  const zoomControl = L.control.zoom({ position: "topright" });
-  zoomControl.addTo(state.map);
-  requestAnimationFrame(positionMapNavigationControls);
-}
-
-function drawRouteOnMap() {
-  if (!state.map || state.routePoints.length === 0) return;
-
-  // Verificación de seguridad de coordenadas
-  const firstPoint = state.routePoints[0];
-  if (!firstPoint || isNaN(firstPoint.lat) || isNaN(firstPoint.lon)) return;
-
-  // Detectar motor: si existe addSource es MapLibre (3D)
-  if (state.map.addSource) {
-      if (!isMapReady(state.map)) {
-          return;
-      }
-
-      const geojson = {
-          type: 'Feature',
-          geometry: {
-              type: 'LineString',
-              coordinates: state.routePoints.map(p => [p.lon, p.lat])
-          }
-      };
-
-      // Añadir o actualizar la ruta en MapLibre
-      if (state.map.getSource('route')) {
-          state.map.getSource('route').setData(geojson);
-      } else {
-          state.map.addSource('route', { type: 'geojson', data: geojson });
-          state.map.addLayer({
-              id: 'route',
-              type: 'line',
-              source: 'route',
-              layout: { 'line-join': 'round', 'line-cap': 'round' },
-              paint: { 'line-color': '#ff5722', 'line-width': 6 }
-          });
-      }
-
-      // Posicionar cámara en el primer punto
-      state.map.jumpTo({
-          center: [firstPoint.lon, firstPoint.lat],
-          zoom: state.mapViewMode === "3D_FPV" ? 20 : 14,
-          pitch: state.mapViewMode === "3D_FPV" ? 82 : 60,
-      });
-  } else {
-      // Lógica original para Leaflet (2D)
-      if (state.routePolyline) state.map.removeLayer(state.routePolyline);
-      if (state.userMarker) state.map.removeLayer(state.userMarker);
-      if (state.ghostMarker) state.map.removeLayer(state.ghostMarker);
-
-      const latLngs = state.routePoints.map((p) => [p.lat, p.lon]);
-
-      state.routePolyline = L.polyline(latLngs, {
-          color: "#ff5722",
-          weight: 6,
-          opacity: 0.85,
-      }).addTo(state.map);
-
-      const userIcon = L.divIcon({
-          className: "custom-user-marker",
-          html: '<div class="user-marker-core"><div class="user-marker-pulse"></div></div>',
-          iconSize: [14, 14],
-      });
-
-      state.userMarker = L.marker(latLngs[0], {
-          icon: userIcon,
-          title: "Tú",
-      }).addTo(state.map);
-
-      state.map.fitBounds(state.routePolyline.getBounds(), { padding: [20, 20] });
-  }
-}
+// --- LEAFLET MAPS ENGINE (movido a ui/mapEngine.js) ---
 
 async function initializeRemoteRoomPanel() {
   const panel = document.getElementById("remote-room-panel");
@@ -1678,6 +1516,42 @@ function disconnectRemoteRoom() {
   activeRemoteRoomClient = null;
   toggleRemoteRoomPanel(false);
 }
+
+// --- SCREEN WAKE LOCK (evita que la pantalla se apague en sesiones activas) ---
+let workoutWakeLock = null;
+
+async function requestWorkoutWakeLock() {
+  if (!("wakeLock" in navigator) || document.visibilityState !== "visible") return;
+  try {
+    if (!workoutWakeLock) {
+      workoutWakeLock = await navigator.wakeLock.request("screen");
+      workoutWakeLock.addEventListener("release", () => {
+        workoutWakeLock = null;
+      });
+      console.log("[WakeLock] Pantalla activa fijada para el entrenamiento");
+    }
+  } catch (err) {
+    console.warn("[WakeLock] No se pudo activar WakeLock:", err);
+  }
+}
+
+async function releaseWorkoutWakeLock() {
+  if (workoutWakeLock) {
+    try {
+      await workoutWakeLock.release();
+    } catch (error) {
+      console.warn("[WakeLock] No se pudo liberar WakeLock:", error);
+    }
+    workoutWakeLock = null;
+    console.log("[WakeLock] Pantalla liberada");
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && state.isSessionActive && !state.isPaused) {
+    void requestWorkoutWakeLock();
+  }
+});
 
 // --- SESSION WORKFLOW CONTROL ---
 function togglePause() {
@@ -1862,11 +1736,12 @@ function confirmSessionSafety() {
 }
 
 function startTimerInterval() {
+  void requestWorkoutWakeLock();
   sessionTimer.start((now) => {
 
       // Acumulación de Kilojulios (kJ) segundo a segundo
       const currentWatts = Number(state.currentPower) || 0;
-      kilojuliosAcumulados += (currentWatts / 1000);
+      kilojuliosAcumulados += calculateKilojoulesStep(currentWatts, 1);
       state.kilojoules = kilojuliosAcumulados;
       setElText("metrics-kj", String(Math.round(kilojuliosAcumulados)));
 
@@ -1967,6 +1842,7 @@ function startTimerInterval() {
 
 function pauseTimer() {
   sessionTimer.pause();
+  void releaseWorkoutWakeLock();
   state.lastSlopeRampTime = Date.now();
   state.lastTelemetryTimestamp = Date.now();
   state.lastTelemetrySpeed = state.currentSpeed || 0;
@@ -1979,6 +1855,7 @@ function pauseTimer() {
 
 function resumeTimer() {
   sessionTimer.resume();
+  void requestWorkoutWakeLock();
 
   state.lastSpeedUpdateTime = Date.now();
   state.lastMovementTime = Date.now();
@@ -2008,6 +1885,7 @@ async function stopSessionFlow() {
   if (!confirmStop) return;
 
   BleManager.stopAutoReconnect();
+  void releaseWorkoutWakeLock();
   sessionTimer.stop();
 
   state.isSessionActive = false;
@@ -2045,11 +1923,8 @@ async function stopSessionFlow() {
   // Normalized Power, TSS, IF calculations
   const ftp = state.currentUser ? state.currentUser.ftp : 200;
   const np = Math.round(calculateNormalizedPower());
-  const intensityFactor = ftp > 0 ? parseFloat((np / ftp).toFixed(2)) : 0.0;
-  const tss =
-    ftp > 0
-      ? Math.round((state.elapsedSeconds * np * intensityFactor) / (ftp * 36))
-      : 0;
+  const intensityFactor = calculateIntensityFactor(np, ftp);
+  const tss = calculateTSS(state.elapsedSeconds, np, intensityFactor, ftp);
 
   // Distance / Speed averages
   const duration = document.getElementById("workout-timer").textContent;

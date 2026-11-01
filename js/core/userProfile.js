@@ -5,6 +5,8 @@
 
 import { state, loadWorkoutLayoutForUser } from '../modules/state.js';
 import { showToast, showConfirm } from '../modules/toast.js';
+import { getEditUserAvatar, getNewUserAvatar, resetAddUserAvatar } from '../ui/userView.js';
+import { isAvatarDataUrl } from '../utils/imageUtils.js';
 
 /** Carga y renderiza la cuadrícula de perfiles en la pantalla de selección */
 export async function loadProfilesGrid() {
@@ -42,7 +44,16 @@ export async function loadProfilesGrid() {
 
     const avatar = document.createElement('div');
     avatar.className = 'user-avatar';
-    avatar.textContent = initials;
+    const avatarUrl = u.avatarUrl || u.imageUri;
+    if (isAvatarDataUrl(avatarUrl)) {
+      const image = document.createElement('img');
+      image.src = avatarUrl;
+      image.alt = `Avatar de ${name}`;
+      image.className = 'avatar-img';
+      avatar.appendChild(image);
+    } else {
+      avatar.textContent = initials;
+    }
 
     const userName = document.createElement('div');
     userName.className = 'user-name';
@@ -96,11 +107,22 @@ export async function handleAddUserSubmit(e) {
 
   if (name.length > 0 && name.length <= 80) {
     try {
-      const newId = await DbManager.insertUser({ name, weight, ftp, maxHeartRate, age, height });
+      const avatarUrl = getNewUserAvatar();
+      const newId = await DbManager.insertUser({
+        name,
+        weight,
+        ftp,
+        maxHeartRate,
+        age,
+        height,
+        avatarUrl,
+        imageUri: avatarUrl,
+      });
       const user = await DbManager.getUserById(newId);
       // Cerrar modal (usa la función global importada en app.js)
       document.getElementById('modal-add-user')?.classList.remove('active');
       document.getElementById('form-add-user')?.reset();
+      resetAddUserAvatar();
       selectUser(user);
       if (window._navigateTo) window._navigateTo('dashboard');
     } catch (e) {
@@ -128,7 +150,18 @@ export async function handleEditUserSubmit(e) {
     return;
   }
 
-  const updatedUser = { ...state.currentUser, name, weight, ftp, maxHeartRate, age, height };
+  const avatarUrl = getEditUserAvatar();
+  const updatedUser = {
+    ...state.currentUser,
+    name,
+    weight,
+    ftp,
+    maxHeartRate,
+    age,
+    height,
+    avatarUrl,
+    imageUri: avatarUrl,
+  };
 
   try {
     await DbManager.updateUser(updatedUser);
@@ -161,6 +194,16 @@ export async function handleImportUserSubmit() {
       maxHeartRate: profile.maxHeartRate || 190,
       age: profile.age || 30,
       height: profile.height || 175,
+      avatarUrl: isAvatarDataUrl(profile.avatarUrl)
+        ? profile.avatarUrl
+        : isAvatarDataUrl(profile.imageUri)
+        ? profile.imageUri
+        : null,
+      imageUri: isAvatarDataUrl(profile.avatarUrl)
+        ? profile.avatarUrl
+        : isAvatarDataUrl(profile.imageUri)
+        ? profile.imageUri
+        : null,
     });
 
     const user = await DbManager.getUserById(newId);
@@ -200,6 +243,9 @@ export function handleExportProfile() {
     maxHeartRate: state.currentUser.maxHeartRate,
     age: state.currentUser.age,
     height: state.currentUser.height,
+    avatarUrl: isAvatarDataUrl(state.currentUser.avatarUrl || state.currentUser.imageUri)
+      ? state.currentUser.avatarUrl || state.currentUser.imageUri
+      : null,
   };
   const jsonStr = JSON.stringify(profile, null, 2);
 
