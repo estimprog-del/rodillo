@@ -7,6 +7,7 @@ import { state, loadWorkoutLayoutForUser } from '../modules/state.js';
 import { showToast, showConfirm } from '../modules/toast.js';
 import { getEditUserAvatar, getNewUserAvatar, resetAddUserAvatar } from '../ui/userView.js';
 import { isAvatarDataUrl } from '../utils/imageUtils.js';
+import { hideModal } from '../modules/ui.js';
 
 /** Carga y renderiza la cuadrícula de perfiles en la pantalla de selección */
 export async function loadProfilesGrid() {
@@ -119,11 +120,12 @@ export async function handleAddUserSubmit(e) {
         imageUri: avatarUrl,
       });
       const user = await DbManager.getUserById(newId);
-      // Cerrar modal (usa la función global importada en app.js)
-      document.getElementById('modal-add-user')?.classList.remove('active');
+      // Cerrar modal y limpiar formulario
+      hideModal('add-user');
       document.getElementById('form-add-user')?.reset();
       resetAddUserAvatar();
       selectUser(user);
+      showToast(`¡Perfil "${user.name}" creado con éxito!`, 'success');
       if (window._navigateTo) window._navigateTo('dashboard');
     } catch (e) {
       console.error(e);
@@ -166,7 +168,8 @@ export async function handleEditUserSubmit(e) {
   try {
     await DbManager.updateUser(updatedUser);
     state.currentUser = updatedUser;
-    document.getElementById('modal-edit-user')?.classList.remove('active');
+    hideModal('edit-user');
+    showToast('Ajustes guardados correctamente.', 'success');
     // Recargar header del dashboard
     if (window._loadDashboardHeader) window._loadDashboardHeader(state);
   } catch (e) {
@@ -207,9 +210,10 @@ export async function handleImportUserSubmit() {
     });
 
     const user = await DbManager.getUserById(newId);
-    document.getElementById('modal-import-user')?.classList.remove('active');
+    hideModal('import-user');
     document.getElementById('import-json-data').value = '';
     selectUser(user);
+    showToast(`¡Perfil "${user.name}" importado con éxito!`, 'success');
     if (window._navigateTo) window._navigateTo('dashboard');
   } catch (e) {
     console.error(e);
@@ -225,7 +229,8 @@ export async function handleDeleteProfile() {
   if (confirmDel) {
     try {
       await DbManager.deleteUser(state.currentUser.id);
-      document.getElementById('modal-edit-user')?.classList.remove('active');
+      hideModal('edit-user');
+      showToast('Perfil eliminado.', 'info');
       handleLogout();
     } catch (e) {
       console.error(e);

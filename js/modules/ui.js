@@ -3,7 +3,8 @@
 let _openModalCount = 0;
 
 export function showModal(modalId) {
-  const modal = document.getElementById(`modal-${modalId}`);
+  const id = modalId.startsWith("modal-") ? modalId : `modal-${modalId}`;
+  const modal = document.getElementById(id);
   if (modal) {
     modal.style.display = "flex";
     modal.classList.add("active");
@@ -13,7 +14,8 @@ export function showModal(modalId) {
 }
 
 export function hideModal(modalId) {
-  const modal = document.getElementById(`modal-${modalId}`);
+  const id = modalId.startsWith("modal-") ? modalId : `modal-${modalId}`;
+  const modal = document.getElementById(id);
   if (modal) {
     modal.style.display = "none";
     modal.classList.remove("active");
