@@ -23,8 +23,8 @@
         <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
         <!-- CSS Stylesheets -->
-      <script type="module" crossorigin src="/rodillo/assets/index-DLQVqYxz.js"></script>
-      <link rel="stylesheet" crossorigin href="/rodillo/assets/index-yHGYitbn.css">
+      <script type="module" crossorigin src="/rodillo/assets/index-BkPwznJ4.js"></script>
+      <link rel="stylesheet" crossorigin href="/rodillo/assets/index-v-Tw8SXO.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -79,6 +79,7 @@
                     </div>
                 </div>
                 <div class="dashboard-header-buttons">
+                    <button id="btn-dashboard-sensors" class="dashboard-sensor-btn" type="button" title="Sensores" aria-label="Sensores">Sensores</button>
                     <button
                         class="btn btn-dark"
                         id="btn-dashboard-settings"
@@ -688,6 +689,10 @@
                                 >
                                 <span id="submetrics-remaining">--</span>
                               </div>
+                              <div class="progress-item" id="hud-progress-real-km-row" style="display: none; border-top: 1px dashed rgba(255, 255, 255, 0.15); padding-top: 4px; margin-top: 2px;">
+                                <span class="progress-label" style="color: #38bdf8;">Km Real</span>
+                                <span id="submetrics-real-km" style="color: #38bdf8; font-weight: 600;">--</span>
+                              </div>
                               <div class="progress-item progress-item-spaced">
                                 <span class="progress-label">Desnivel +</span>
                                 <span id="submetrics-ascent">0 m</span>
@@ -859,6 +864,18 @@
 
                     <!-- HUD superior (Global) -->
                     <div id="route-alert-banner" class="hud-alert-banner" style="display: none;"></div>
+                    <div id="workout-warmup-banner" class="hud-warmup-banner" style="display: none;">
+                        <div class="warmup-banner-content">
+                            <span class="warmup-icon">⏱️</span>
+                            <div class="warmup-info">
+                                <span class="warmup-title">CALENTAMIENTO LLANO (0%)</span>
+                                <span class="warmup-timer" id="warmup-timer-text">05:00 restantes</span>
+                            </div>
+                            <button type="button" id="btn-skip-warmup" class="btn-skip-warmup" onclick="window.finishWarmup && window.finishWarmup()" title="Terminar calentamiento e iniciar el tramo ahora">
+                                Empezar puerto ⏩
+                            </button>
+                        </div>
+                    </div>
                     <div
                         id="workout-fullscreen-notice"
                         class="workout-fullscreen-notice"
@@ -1041,6 +1058,14 @@
                                 </div>
                                 <div class="metric-avg" id="metrics-speed-avg">
                                     0.0 Ø
+                                </div>
+                                <div
+                                    class="metric-real-km"
+                                    id="metrics-route-real-point"
+                                    style="display: none; font-size: 11px; color: #38bdf8; font-weight: 600; white-space: nowrap; margin-top: 3px; text-shadow: 0 1px 3px rgba(0,0,0,0.6);"
+                                    title="Punto kilométrico real en la ruta completa"
+                                >
+                                    📍 Km 0.0 / 0.0
                                 </div>
                             </div>
                             <div class="metric-group metric-heart-rate">
@@ -1345,6 +1370,72 @@
                                 Cargar ruta guardada
                             </button>
                             <span id="session-saved-route-status" role="status" aria-live="polite"></span>
+                        </div>
+                    </div>
+
+                    <div class="route-modal-section" id="route-segment-section" style="display: none;">
+                        <div class="route-modal-section-title">
+                            Seleccionar Tramo de la Ruta (Opcional)
+                        </div>
+                        <div class="route-segment-badge" id="route-segment-badge" style="background: rgba(255, 255, 255, 0.05); padding: 8px 12px; border-radius: 8px; font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">
+                            Ruta completa: <strong id="route-segment-orig-dist" style="color: white;">-- km</strong> • Desnivel: <strong id="route-segment-orig-elev" style="color: white;">+-- m</strong>
+                        </div>
+                        <!-- Interactive Elevation Profile Selector -->
+                        <div class="route-segment-chart-wrapper" style="margin-bottom: 12px; position: relative;">
+                            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">
+                                <span>🖱️ Arrastra sobre el gráfico para recortar tramo</span>
+                                <span id="route-segment-chart-hover" style="color: var(--accent-blue); font-weight: 500;">0.0 km</span>
+                            </div>
+                            <div id="route-segment-svg-container" style="width: 100%; height: 95px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--glass-border); border-radius: 8px; overflow: hidden; position: relative; touch-action: none; cursor: crosshair;">
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px;">
+                            <div class="input-group" style="margin-bottom: 0;">
+                                <label for="route-segment-start" style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Km Inicio</label>
+                                <input
+                                    type="number"
+                                    id="route-segment-start"
+                                    class="input-field"
+                                    min="0"
+                                    step="0.1"
+                                    value="0"
+                                    style="width: 100%; box-sizing: border-box;"
+                                />
+                            </div>
+                            <div class="input-group" style="margin-bottom: 0;">
+                                <label for="route-segment-end" style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Km Fin</label>
+                                <input
+                                    type="number"
+                                    id="route-segment-end"
+                                    class="input-field"
+                                    min="0.1"
+                                    step="0.1"
+                                    value="0"
+                                    style="width: 100%; box-sizing: border-box;"
+                                />
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0, 210, 106, 0.08); border: 1px solid rgba(0, 210, 106, 0.2); border-radius: 8px; padding: 8px 12px;">
+                            <span id="route-segment-summary" style="font-size: 13px; font-weight: 600; color: var(--accent-green);">
+                                Tramo seleccionado: -- km • +-- m
+                            </span>
+                            <button
+                                type="button"
+                                id="btn-route-segment-reset"
+                                class="btn btn-secondary"
+                                style="padding: 4px 10px; font-size: 11px; height: auto;"
+                            >
+                                Ruta completa
+                            </button>
+                        </div>
+                        <div class="route-warmup-option" style="margin-top: 10px; padding: 10px 14px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;">
+                            <label for="route-warmup-toggle" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: var(--text-primary); margin: 0;">
+                                <input type="checkbox" id="route-warmup-toggle" style="width: 17px; height: 17px; accent-color: #10b981; cursor: pointer;" />
+                                <div>
+                                    <div style="font-weight: 600;">⏱️ Añadir 5 min de calentamiento llano (0%)</div>
+                                    <div style="color: var(--text-secondary); font-size: 11px;">Rueda suave a 0% de pendiente antes de comenzar las subidas del tramo</div>
+                                </div>
+                            </label>
                         </div>
                     </div>
 
@@ -1776,6 +1867,39 @@
         </div>
 
         <!-- --- OVERLAYS & MODALS SYSTEM --- -->
+
+        <!-- Resume Incomplete Route Modal -->
+        <div class="modal-overlay" id="modal-resume-route" style="display: none;">
+            <div class="glass-card modal-content" style="max-width: 460px; text-align: center; padding: 28px 24px;">
+                <div style="font-size: 40px; margin-bottom: 12px;">⏸️</div>
+                <h3 style="font-size: 20px; color: white; margin-bottom: 10px;" id="resume-route-title">
+                    Ruta Inconclusa
+                </h3>
+                <p id="resume-route-desc" style="color: var(--text-secondary); font-size: 14px; margin-bottom: 18px; line-height: 1.5;">
+                    En tu sesión anterior no terminaste la ruta.
+                </p>
+                <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; text-align: left;">
+                    <label for="resume-route-warmup" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: var(--text-primary); margin: 0;">
+                        <input type="checkbox" id="resume-route-warmup" style="width: 17px; height: 17px; accent-color: #10b981; cursor: pointer;" />
+                        <div>
+                            <div style="font-weight: 600;">⏱️ Añadir 5 min de calentamiento llano (0%)</div>
+                            <div style="color: var(--text-secondary); font-size: 11px;">Rueda suave antes de aplicar la pendiente del punto donde lo dejaste</div>
+                        </div>
+                    </label>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <button class="btn btn-primary" id="btn-resume-route-continue" style="width: 100%; justify-content: center; font-weight: 600; padding: 12px;">
+                        ⏩ Continuar donde lo dejé
+                    </button>
+                    <button class="btn btn-secondary" id="btn-resume-route-restart" style="width: 100%; justify-content: center; padding: 12px;">
+                        🔄 Empezar desde el inicio (Km 0)
+                    </button>
+                    <button class="btn" id="btn-resume-route-cancel" style="width: 100%; justify-content: center; background: transparent; color: var(--text-muted); border: none; padding: 10px;">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
 
         <!-- Add User Modal -->
         <div class="modal-overlay" id="modal-add-user">
@@ -2320,3 +2444,5 @@
 
     </body>
 </html>
+
+
