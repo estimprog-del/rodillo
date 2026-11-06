@@ -1,4 +1,57 @@
 /* ============================================================
+   DASHBOARD SENSOR STATUS
+   ============================================================ */
+.dashboard-sensor-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary, #fff);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dashboard-sensor-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.dashboard-sensor-btn:focus-visible {
+  outline: 2px solid var(--accent-blue, #6366f1);
+  outline-offset: 2px;
+}
+
+.dashboard-sensor-btn::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6b7280;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
+.dashboard-sensor-btn.connected::before {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+}
+
+.dashboard-sensor-btn.connecting::before {
+  background: #f59e0b;
+  animation: pulse 1s infinite;
+}
+
+.dashboard-sensor-btn.connected,
+.dashboard-sensor-btn.connecting {
+  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+/* ============================================================
    TOAST NOTIFICATIONS SYSTEM
    ============================================================ */
 

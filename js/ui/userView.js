@@ -149,6 +149,15 @@ function initAvatarUploadControls() {
   }
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 /**
  * Carga y renderiza el grid de tarjetas de perfil de usuario
  */
@@ -178,15 +187,17 @@ export async function loadProfilesGrid() {
       .toUpperCase();
 
     const avatarSrc = u.avatarUrl || u.imageUri;
+    const safeName = escapeHtml(u.name);
+    const safeAvatarSrc = escapeHtml(avatarSrc || "");
     const avatarContent = avatarSrc
-      ? `<img src="${avatarSrc}" alt="${u.name}" class="avatar-img" />`
+      ? `<img src="${safeAvatarSrc}" alt="${safeName}" class="avatar-img" />`
       : initials;
 
     card.innerHTML = `
       <button class="user-card-delete" title="Eliminar Perfil">&times;</button>
       <div class="user-avatar">${avatarContent}</div>
-      <div class="user-name">${u.name}</div>
-      <div class="user-meta">${u.weight} kg • FTP ${u.ftp}W</div>
+      <div class="user-name">${safeName}</div>
+      <div class="user-meta">${Number(u.weight) || 0} kg • FTP ${Number(u.ftp) || 0}W</div>
     `;
 
     const deleteBtn = card.querySelector(".user-card-delete");

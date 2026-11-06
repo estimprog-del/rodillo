@@ -28,6 +28,56 @@ function _computeAscent(elevations) {
   return total;
 }
 
+/**
+ * Extrae y normaliza un sub-tramo de la ruta entre startKm y endKm.
+ * Las distancias resultantes empiezan en 0.
+ */
+export function sliceRouteSegment({ points, elevations, distances, startKm = 0, endKm = null }) {
+  if (!points || points.length < 2) return null;
+
+  const totalKm = distances && distances.length > 0 ? distances[distances.length - 1] : 0;
+  const clampedStart = Math.max(0, Math.min(Number(startKm) || 0, totalKm));
+  const rawEnd = endKm !== null && endKm !== undefined ? Number(endKm) : totalKm;
+  const clampedEnd = Math.max(clampedStart + 0.1, Math.min(rawEnd, totalKm));
+
+  // Buscar índice de inicio
+  let startIndex = distances.findIndex((d) => d >= clampedStart);
+  if (startIndex === -1) startIndex = 0;
+  if (startIndex > 0 && distances[startIndex] > clampedStart) {
+    startIndex = startIndex - 1;
+  }
+
+  // Buscar índice de fin
+  let endIndex = distances.findIndex((d) => d >= clampedEnd);
+  if (endIndex === -1) endIndex = distances.length - 1;
+
+  if (endIndex <= startIndex) {
+    endIndex = Math.min(startIndex + 1, distances.length - 1);
+  }
+
+  const offsetDistance = distances[startIndex];
+  const slicedPoints = points.slice(startIndex, endIndex + 1);
+  const slicedElevations = (elevations && elevations.length >= points.length)
+    ? elevations.slice(startIndex, endIndex + 1)
+    : slicedPoints.map(() => 0);
+  const slicedDistances = distances.slice(startIndex, endIndex + 1).map((d) => Math.max(0, d - offsetDistance));
+
+  const totalAscent = _computeAscent(slicedElevations);
+
+  return {
+    startIndex,
+    endIndex,
+    points: slicedPoints,
+    elevations: slicedElevations,
+    distances: slicedDistances,
+    totalAscent,
+    startKm: offsetDistance,
+    endKm: distances[endIndex],
+    segmentDistance: slicedDistances[slicedDistances.length - 1],
+    originalTotalKm: totalKm,
+  };
+}
+
 /** SVG de la traza 2D de la ruta */
 function _buildTrackSvg(points) {
   const W = 100, H = 56, pad = 5;
@@ -163,8 +213,9 @@ export function buildRouteCardEl(route) {
         '<dt>Alt. max</dt><dd>--</dd>' +
       '</dl>' +
       '<span class="route-library-source">' + escapeHtml(sourceLabel) + '</span>' +
-      '<div style="display:flex;gap:8px;margin-top:auto;padding-top:6px;">' +
-        '<button class="route-library-select" type="button">▶ Usar ruta</button>' +
+      '<div style="display:flex;gap:6px;margin-top:auto;padding-top:6px;flex-wrap:wrap;">' +
+        '<button class="route-library-select" type="button">▶ Usar</button>' +
+        '<button class="route-library-trim" type="button" title="Seleccionar tramo o configurar">✂️ Tramo</button>' +
         (isApp ? '' : '<button class="route-library-delete" type="button" title="Eliminar">🗑️</button>') +
       '</div>' +
     '</div>';
@@ -238,19 +289,65 @@ export async function loadRouteCardData(card, route) {
           route._parsed = parsed;
         }
         const { points, elevations, distances } = route._parsed;
+        const rName = route.name || route.file || route.fileName;
+        state.originalRoute = { points, elevations, distances, name: rName };
         state.routePoints = points;
         state.routeElevations = elevations;
         state.routeDistances = distances;
         state.gpxFilename = route.file || route.fileName || route.name;
-        state.routeName = route.name || route.file || route.fileName;
+        state.routeName = rName;
         state.routeSelectedFromLibrary = true;
+        state.routeSegmentOffsetKm = 0;
+        state.routeOriginalTotalKm = null;
         state.currentMode = 'ROUTE';
         if (window._navigateTo) window._navigateTo('connections');
       } catch (err) {
         console.error('Error cargando ruta:', err);
         showToast('No se pudo cargar la ruta. Comprueba el archivo.', 'error');
         selectBtn.disabled = false;
-        selectBtn.textContent = 'Usar ruta';
+        selectBtn.textContent = 'Usar';
+      }
+    });
+  }
+
+  // Botón recortar tramo
+  const trimBtn = card.querySelector('.route-library-trim');
+  if (trimBtn) {
+    trimBtn.addEventListener('click', async () => {
+      trimBtn.disabled = true;
+      trimBtn.textContent = 'Cargando...';
+      try {
+        if (!route._parsed) {
+          let gpxText = route._gpxText || route.gpxText;
+          if (!gpxText && route.source === 'app') {
+            const res = await fetch(route.gpxUrl);
+            gpxText = await res.text();
+            route._gpxText = gpxText;
+          }
+          const parsed = GpxManager.parseRoute(gpxText);
+          if (!parsed || !parsed.points || !parsed.points.length) throw new Error('Sin puntos validos');
+          route._parsed = parsed;
+        }
+        const { points, elevations, distances } = route._parsed;
+        const rName = route.name || route.file || route.fileName;
+        state.originalRoute = { points, elevations, distances, name: rName };
+        state.routePoints = points;
+        state.routeElevations = elevations;
+        state.routeDistances = distances;
+        state.gpxFilename = route.file || route.fileName || route.name;
+        state.routeName = rName;
+        state.currentMode = 'ROUTE';
+        const label = document.getElementById('gpx-filename-label');
+        if (label) label.textContent = 'Ruta: ' + rName;
+        if (typeof window.openRouteModal === 'function') {
+          window.openRouteModal();
+        }
+      } catch (err) {
+        console.error('Error preparando tramo de ruta:', err);
+        showToast('No se pudo cargar la ruta.', 'error');
+      } finally {
+        trimBtn.disabled = false;
+        trimBtn.textContent = '✂️ Tramo';
       }
     });
   }
@@ -383,15 +480,26 @@ export async function loadSavedRouteInSessionModal(button) {
       setStatus('El archivo de ruta es invalido o esta corrupto.');
       return;
     }
+    state.originalRoute = {
+      points: parsed.points,
+      elevations: parsed.elevations,
+      distances: parsed.distances,
+      name: routeName,
+    };
     state.routePoints = parsed.points;
     state.routeElevations = parsed.elevations;
     state.routeDistances = parsed.distances;
     state.gpxFilename = routeName;
     state.routeName = routeName;
     state.routeSelectedFromLibrary = true;
+    state.routeSegmentOffsetKm = 0;
+    state.routeOriginalTotalKm = null;
     const label = document.getElementById('gpx-filename-label');
     if (label) label.textContent = 'Ruta cargada: ' + routeName;
     setStatus('Ruta "' + routeName + '" cargada correctamente.');
+    if (typeof window.updateRouteSegmentControls === 'function') {
+      window.updateRouteSegmentControls();
+    }
   } catch (err) {
     console.error('Error cargando ruta desde el modal:', err);
     setStatus('Error al cargar la ruta.');

@@ -10,6 +10,7 @@ import {
   closeSettingsModal,
   openRouteModal,
   closeRouteModal,
+  applyRouteSegmentSelection,
 } from "../ui/modals.js";
 import { state, saveStateToLocalStorage } from "./state.js";
 import {
@@ -442,6 +443,9 @@ export function bindEvents(handlers) {
       // Controles entrenamiento
       if (id === "btn-workout-pause") togglePause();
       if (id === "btn-workout-stop") stopSessionFlow();
+      if (id === "btn-skip-warmup" && typeof window.finishWarmup === "function") {
+        window.finishWarmup();
+      }
       if (id === "btn-session-safety-confirm") confirmSessionSafety();
       if (id === "btn-session-safety-cancel") hideModal("session-safety");
       if (id === "btn-cycle-layout" && typeof window.cycleWorkoutLayout === "function") {
@@ -686,6 +690,7 @@ export function bindEvents(handlers) {
       alert("Primero carga una ruta guardada o un archivo GPX/TCX válido.");
       return;
     }
+    applyRouteSegmentSelection();
     closeRouteModal();
     navigateTo("workout");
     if (!state.isSessionActive) startSession();

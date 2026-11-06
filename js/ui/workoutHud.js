@@ -188,7 +188,10 @@ export function updateRouteProgressHud() {
   if (!state.routeDistances || state.routeDistances.length === 0) return;
 
   const totalKm = state.routeDistances[state.routeDistances.length - 1];
-  const remainingKm = Math.max(0, totalKm - state.totalDistance);
+  const routeDist = state.routeWarmupActive
+    ? 0
+    : Math.max(0, state.totalDistance - (state.routeWarmupDistanceKm || 0));
+  const remainingKm = Math.max(0, totalKm - routeDist);
   setElText("submetrics-remaining", `${remainingKm.toFixed(2)} km`);
 
   const remainingAscent = Math.max(
@@ -196,6 +199,31 @@ export function updateRouteProgressHud() {
     (state.routeTotalAscent || 0) - state.totalAscent,
   );
   setElText("submetrics-remaining-ascent", `${Math.round(remainingAscent)} m+`);
+
+  // Punto real en ruta (si es un tramo recortado o reanudado)
+  const isSegment = Boolean(
+    (state.routeSegmentOffsetKm && state.routeSegmentOffsetKm > 0.05) ||
+    (state.routeOriginalTotalKm && state.routeOriginalTotalKm > totalKm + 0.1)
+  );
+
+  const realKmRow = document.getElementById("hud-progress-real-km-row");
+  const realKmPoint = document.getElementById("metrics-route-real-point");
+
+  if (isSegment && state.routeOriginalTotalKm) {
+    const currentRealKm = (state.routeSegmentOffsetKm || 0) + routeDist;
+    const realText = `Km ${currentRealKm.toFixed(1)} / ${state.routeOriginalTotalKm.toFixed(1)}`;
+
+    if (realKmRow) realKmRow.style.display = "flex";
+    setElText("submetrics-real-km", realText);
+
+    if (realKmPoint) {
+      realKmPoint.style.display = "block";
+      realKmPoint.textContent = `📍 ${realText}`;
+    }
+  } else {
+    if (realKmRow) realKmRow.style.display = "none";
+    if (realKmPoint) realKmPoint.style.display = "none";
+  }
 }
 
 export function updateSessionAverages() {
@@ -257,6 +285,19 @@ export function configureWorkoutHudForMode() {
       "visible",
       isRoute && state.ghostEnabled && (state.ghostPoints?.length || 0) > 0,
     );
+  }
+
+  if (!isRoute) {
+    setElDisplay("metrics-route-real-point", "none");
+    setElDisplay("hud-progress-real-km-row", "none");
+    setElDisplay("workout-warmup-banner", "none");
+  } else {
+    updateRouteProgressHud();
+    if (state.routeWarmupActive) {
+      setElDisplay("workout-warmup-banner", "flex");
+    } else {
+      setElDisplay("workout-warmup-banner", "none");
+    }
   }
 }
 

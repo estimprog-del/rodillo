@@ -55,6 +55,13 @@ export const state = {
   currentRouteIndex: 0,
   routeLoadedFromHistory: false,
   routeSelectedFromLibrary: false,
+  routeSegmentOffsetKm: 0,
+  routeOriginalTotalKm: null,
+  routeWarmupEnabled: false,
+  routeWarmupDurationSeconds: 300,
+  routeWarmupActive: false,
+  routeWarmupRemainingSeconds: 0,
+  routeWarmupDistanceKm: 0,
   routeName: "",
   ghostPoints: [],
   map: null,
@@ -138,7 +145,18 @@ export function saveStateToLocalStorage() {
 export function loadStateFromLocalStorage() {
   const saved = localStorage.getItem("rodilloint_state");
   if (saved) {
-    const parsed = JSON.parse(saved);
+    let parsed;
+    try {
+      parsed = JSON.parse(saved);
+    } catch (error) {
+      console.error("Estado local corrupto, se ignora:", error);
+      localStorage.removeItem("rodilloint_state");
+      return;
+    }
+    if (!parsed || typeof parsed !== "object") {
+      localStorage.removeItem("rodilloint_state");
+      return;
+    }
     state.currentUser = parsed.currentUser;
     state.currentMode = parsed.currentMode;
     state.realismFactor = parsed.realismFactor || 1.0;

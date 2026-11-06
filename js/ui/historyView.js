@@ -5,6 +5,8 @@
 import { state } from "../modules/state.js";
 import { showToast, showConfirm } from "../modules/toast.js";
 import { calculateNormalizedPowerFromValues } from "../core/physics.js";
+import { promptResumeRoute } from "./modals.js";
+import { sliceRouteSegment } from "../core/routeLibrary.js";
 
 let _navigateTo = null;
 let _renderSummaryMetrics = null;
@@ -16,6 +18,15 @@ export function initHistoryView(deps = {}) {
   if (deps.renderSummaryMetrics) _renderSummaryMetrics = deps.renderSummaryMetrics;
   if (deps.renderSummaryRoute) _renderSummaryRoute = deps.renderSummaryRoute;
   if (deps.setSessionSaveStatus) _setSessionSaveStatus = deps.setSessionSaveStatus;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 export function computeTotalAscent(elevations) {
@@ -94,7 +105,7 @@ export async function loadHistoryList() {
       card.innerHTML = `
         <div class="history-date-box">
           <span class="history-date">${date}</span>
-          <span class="history-type ${modeClass}">Modo: ${modeText} <span class="history-route-name" id="history-route-name-${s.id}"></span></span>
+          <span class="history-type ${modeClass}">Modo: ${modeText} <span class="history-route-name" id="history-route-name-${escapeHtml(s.id)}"></span></span>
         </div>
 
         <div class="history-stats-row">
@@ -115,12 +126,12 @@ export async function loadHistoryList() {
             <span class="history-stat-value">${s.averagePower || 0} W</span>
           </div>
           ${Array.isArray(s.routePoints) && s.routePoints.length > 0
-            ? `<button class="btn btn-primary history-repeat-route" id="btn-repeat-${s.id}">Repetir ruta</button>`
+            ? `<button class="btn btn-primary history-repeat-route" id="btn-repeat-${escapeHtml(s.id)}">Repetir ruta</button>`
             : ""}
-          ${s.gpxPath ? `<button class="btn btn-dark history-rename-route" id="btn-rename-${s.id}">Renombrar</button>` : ""}
-          <button class="btn btn-secondary" id="btn-export-csv-${s.id}">CSV</button>
-          <button class="btn btn-primary" style="padding: 6px 12px; font-size: 11px; border-radius: 8px; background: #6366f1;" id="btn-export-fit-${s.id}">FIT</button>
-          <button class="btn btn-danger" style="padding: 6px 12px; font-size: 11px; border-radius: 8px;" id="btn-del-${s.id}">❌</button>
+          ${s.gpxPath ? `<button class="btn btn-dark history-rename-route" id="btn-rename-${escapeHtml(s.id)}">Renombrar</button>` : ""}
+          <button class="btn btn-secondary" id="btn-export-csv-${escapeHtml(s.id)}">CSV</button>
+          <button class="btn btn-primary" style="padding: 6px 12px; font-size: 11px; border-radius: 8px; background: #6366f1;" id="btn-export-fit-${escapeHtml(s.id)}">FIT</button>
+          <button class="btn btn-danger" style="padding: 6px 12px; font-size: 11px; border-radius: 8px;" id="btn-del-${escapeHtml(s.id)}">❌</button>
         </div>
       `;
 
@@ -183,22 +194,87 @@ export async function repeatRouteFromHistory(id) {
       return;
     }
 
-    state.currentMode = "ROUTE";
-    state.gpxFilename = session.gpxPath || `Ruta histórica ${id}.gpx`;
-    state.routeName = session.routeName || session.gpxPath || `Ruta histórica ${id}`;
-    state.routePoints = session.routePoints.map((point) => ({
+    const points = session.routePoints.map((point) => ({
       lat: Number(point.lat),
       lon: Number(point.lon),
     }));
-    state.routeElevations = Array.isArray(session.routeElevations)
+    const elevations = Array.isArray(session.routeElevations)
       ? session.routeElevations.map(Number)
-      : state.routePoints.map(() => 0);
-    state.routeDistances = Array.isArray(session.routeDistances)
+      : points.map(() => 0);
+    const distances = Array.isArray(session.routeDistances)
       ? session.routeDistances.map(Number)
       : [];
-    state.routeTotalAscent = Number(session.routeTotalAscent) || computeTotalAscent(state.routeElevations);
-    state.currentRouteIndex = 0;
+
+    const totalRouteKm = distances.length > 0 ? distances[distances.length - 1] : 0;
+    const completedKm = Number(session.totalDistance) || 0;
+    const isCompleted = totalRouteKm <= 0 || completedKm >= (totalRouteKm - 0.4);
+
+    let startKm = 0;
+    const baseName = session.routeName || session.gpxPath || `Ruta histórica ${id}`;
+
+    if (!isCompleted && completedKm >= 0.2) {
+      const choice = await promptResumeRoute({
+        routeName: baseName,
+        completedKm,
+        totalRouteKm,
+      });
+
+      if (choice === "cancel") return;
+      if (choice === "continue") {
+        startKm = completedKm;
+      }
+    }
+
+    state.currentMode = "ROUTE";
+    state.gpxFilename = session.gpxPath || `Ruta histórica ${id}.gpx`;
     state.routeLoadedFromHistory = true;
+
+    // Cache original route
+    state.originalRoute = {
+      points,
+      elevations,
+      distances,
+      name: baseName,
+    };
+
+    if (startKm > 0) {
+      const segment = sliceRouteSegment({
+        points,
+        elevations,
+        distances,
+        startKm,
+      });
+
+      if (segment && segment.points.length >= 2) {
+        state.routePoints = segment.points;
+        state.routeElevations = segment.elevations;
+        state.routeDistances = segment.distances;
+        state.routeTotalAscent = segment.totalAscent;
+        state.routeName = `${baseName} (Continuación Km ${segment.startKm.toFixed(1)} → ${segment.endKm.toFixed(1)})`;
+        state.currentRouteIndex = 0;
+        state.routeSegmentOffsetKm = segment.startKm;
+        state.routeOriginalTotalKm = segment.originalTotalKm;
+        showToast(`Continuando ruta desde el Km ${segment.startKm.toFixed(1)} (${segment.segmentDistance.toFixed(1)} km restantes)`, "success");
+      } else {
+        state.routePoints = points;
+        state.routeElevations = elevations;
+        state.routeDistances = distances;
+        state.routeTotalAscent = Number(session.routeTotalAscent) || computeTotalAscent(elevations);
+        state.routeName = baseName;
+        state.currentRouteIndex = 0;
+        state.routeSegmentOffsetKm = 0;
+        state.routeOriginalTotalKm = null;
+      }
+    } else {
+      state.routePoints = points;
+      state.routeElevations = elevations;
+      state.routeDistances = distances;
+      state.routeTotalAscent = Number(session.routeTotalAscent) || computeTotalAscent(elevations);
+      state.routeName = baseName;
+      state.currentRouteIndex = 0;
+      state.routeSegmentOffsetKm = 0;
+      state.routeOriginalTotalKm = null;
+    }
 
     if (typeof _navigateTo === "function") {
       _navigateTo("connections");

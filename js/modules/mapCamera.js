@@ -4,7 +4,10 @@ export function createMapCameraController({
   isMapReady,
   logFpvDebug,
 }) {
-  let zoomLevel = 25;
+  let zoomLevel = null;
+  let fpvCameraHeight = 1.7;
+  let baseFpvZoom = null;
+  let zoomPending = false;
   let animationFrame = null;
 
   function getMapViewLabel(mode) {
@@ -114,14 +117,25 @@ export function createMapCameraController({
     }
     if (!currentLngLat || !targetLngLat) return;
 
-    if (typeof state.map.getFreeCameraOptions === "function") {
+    if (false && typeof state.map.getFreeCameraOptions === "function") {
       try {
         const camera = state.map.getFreeCameraOptions();
         const elevation = getCameraElevation(currentLngLat);
         const targetElevation = getCameraElevation(targetLngLat);
+
+        if (baseFpvZoom === null && typeof state.map.getZoom === "function") {
+          baseFpvZoom = state.map.getZoom();
+          fpvCameraHeight = 1.7;
+        }
+        if (baseFpvZoom !== null && typeof state.map.getZoom === "function") {
+          const currentZoom = state.map.getZoom();
+          const zoomDelta = currentZoom - baseFpvZoom;
+          fpvCameraHeight = 1.7 * Math.pow(2, -zoomDelta);
+        }
+
         camera.position = mapSdk.MercatorCoordinate.fromLngLat(
           currentLngLat,
-          elevation + 1.7,
+          elevation + fpvCameraHeight,
         );
         camera.lookAtPoint(mapSdk.MercatorCoordinate.fromLngLat(
           targetLngLat,
@@ -144,7 +158,7 @@ export function createMapCameraController({
         center: currentLngLat,
         pitch: 85,
         bearing,
-        zoom: zoomLevel,
+        zoom: typeof state.map.getZoom === "function" ? state.map.getZoom() : zoomLevel,
       });
     }
   }
@@ -194,10 +208,42 @@ export function createMapCameraController({
   }
 
   function changeZoom(delta) {
+    if (zoomLevel === null && state.map && typeof state.map.getZoom === "function") {
+      zoomLevel = state.map.getZoom();
+    }
+    if (zoomLevel === null) zoomLevel = 20;
     zoomLevel = Math.max(1, Math.min(32, zoomLevel + delta));
     console.log("Nuevo nivel de zoom:", zoomLevel);
     if (state.map && typeof state.map.setZoom === "function") {
+      zoomPending = true;
       state.map.setZoom(zoomLevel);
+      if (typeof state.map.getFreeCameraOptions === "function") {
+        const captureHeight = () => {
+          try {
+            const camera = state.map.getFreeCameraOptions();
+            const altitude = camera.position.toAltitude();
+            const lngLat = camera.position.toLngLat();
+            const terrainElevation = getCameraElevation([lngLat.lng, lngLat.lat]);
+            const height = altitude - terrainElevation;
+            if (Number.isFinite(height) && height > 0) {
+              fpvCameraHeight = height;
+            }
+          } catch (error) {
+            console.warn("No se pudo capturar la altura de cámara para el zoom:", error);
+          } finally {
+            zoomPending = false;
+          }
+        };
+        requestAnimationFrame(captureHeight);
+        setTimeout(() => {
+          captureHeight();
+          zoomPending = false;
+        }, 100);
+      } else {
+        zoomPending = false;
+      }
+    } else {
+      zoomPending = false;
     }
   }
 

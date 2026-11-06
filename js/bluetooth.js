@@ -772,11 +772,26 @@ function updateStatus(type, status) {
   }
 }
 
-function disconnectDevice(type) {
+async function disconnectDevice(type) {
   intentionalDisconnects[type] = true;
   clearGraceTimer(type);
   clearReconnectTimer(type);
   const conn = connections[type];
+
+  // Enviar pendiente 0 al rodillo antes de desconectar, si es posible
+  if (type === "TRAINER" && conn.status === "CONECTADO" && conn.charWrite) {
+    try {
+      const buffer = new ArrayBuffer(3);
+      const view = new DataView(buffer);
+      view.setUint8(0, 0x03);
+      view.setInt16(1, 0, true);
+      await conn.charWrite.writeValue(buffer);
+      conn.lastSentInclination = 0;
+    } catch (e) {
+      console.warn("[FTMS] No se pudo enviar pendiente 0 antes de desconectar:", e);
+    }
+  }
+
   if (conn.device && conn.device.gatt.connected) {
     conn.device.gatt.disconnect();
   }
@@ -786,13 +801,7 @@ function disconnectDevice(type) {
 async function disconnectAll() {
   stopSimulator();
   for (const type in connections) {
-    intentionalDisconnects[type] = true;
-    clearGraceTimer(type);
-    clearReconnectTimer(type);
-    if (connections[type].device && connections[type].device.gatt.connected) {
-      connections[type].device.gatt.disconnect();
-    }
-    handleDisconnect(type);
+    await disconnectDevice(type);
   }
 }
 

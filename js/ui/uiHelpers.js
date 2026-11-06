@@ -22,8 +22,11 @@ export function updatePauseButton(label, variant = "default") {
 export function updateRouteProgressHud(state) {
   // state.totalDistance is stored in km across the app
   const totalKm = state.totalDistance.toFixed(2);
+  const routeDist = state.routeWarmupActive
+    ? 0
+    : Math.max(0, state.totalDistance - (state.routeWarmupDistanceKm || 0));
   const remainingKm = state.routeTotalDistance
-    ? (state.routeTotalDistance - state.totalDistance).toFixed(2)
+    ? Math.max(0, state.routeTotalDistance - routeDist).toFixed(2)
     : "--";
 
   setElText("submetrics-distance", `${totalKm} km`);
@@ -40,4 +43,29 @@ export function updateRouteProgressHud(state) {
     "submetrics-remaining-ascent",
     remainingAscent !== "--" ? `${remainingAscent} m` : "--",
   );
+
+  // Punto real en ruta (si es un tramo recortado o reanudado)
+  const isSegment = Boolean(
+    (state.routeSegmentOffsetKm && state.routeSegmentOffsetKm > 0.05) ||
+    (state.routeOriginalTotalKm && state.routeDistances && state.routeOriginalTotalKm > (state.routeDistances[state.routeDistances.length - 1] || 0) + 0.1)
+  );
+
+  const realKmRow = document.getElementById("hud-progress-real-km-row");
+  const realKmPoint = document.getElementById("metrics-route-real-point");
+
+  if (isSegment && state.routeOriginalTotalKm) {
+    const currentRealKm = (state.routeSegmentOffsetKm || 0) + routeDist;
+    const realText = `Km ${currentRealKm.toFixed(1)} / ${state.routeOriginalTotalKm.toFixed(1)}`;
+
+    if (realKmRow) realKmRow.style.display = "flex";
+    setElText("submetrics-real-km", realText);
+
+    if (realKmPoint) {
+      realKmPoint.style.display = "block";
+      realKmPoint.textContent = `📍 ${realText}`;
+    }
+  } else {
+    if (realKmRow) realKmRow.style.display = "none";
+    if (realKmPoint) realKmPoint.style.display = "none";
+  }
 }

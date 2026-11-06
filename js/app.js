@@ -19,6 +19,12 @@ import {
 import { initNavigation } from "./ui/navigation.js";
 import { loadDashboardHeader } from "./ui/dashboard.js";
 import { updateClock, updatePauseButton } from "./ui/uiHelpers.js";
+import { applyWorkoutPanels } from "./ui/workoutHud.js";
+import {
+  positionMapNavigationControls,
+  initLeafletMap,
+  drawRouteOnMap,
+} from "./ui/mapEngine.js";
 import { bindEvents } from "./modules/events.js";
 import { initPrivacyConsent } from "./modules/privacyConsent.js";
 import { showToast, showConfirm } from "./modules/toast.js";
@@ -446,6 +452,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const navigationCallbacks = {
     dashboard: () => {
       loadDashboardHeader(state);
+      sensorConnections.syncDashboardSensorStatus();
       setTimeout(() => {
         if (typeof BleManager.autoReconnectSavedDevices === "function") {
           BleManager.autoReconnectSavedDevices();
@@ -652,7 +659,10 @@ function updateRouteProgressHud() {
   if (state.routeDistances.length === 0) return;
 
   const totalKm = state.routeDistances[state.routeDistances.length - 1];
-  const remainingKm = Math.max(0, totalKm - state.totalDistance);
+  const routeDist = state.routeWarmupActive
+    ? 0
+    : Math.max(0, state.totalDistance - (state.routeWarmupDistanceKm || 0));
+  const remainingKm = Math.max(0, totalKm - routeDist);
   setElText("submetrics-remaining", `${remainingKm.toFixed(2)} km`);
 
   if (!state.routeTotalAscent) {
@@ -663,6 +673,31 @@ function updateRouteProgressHud() {
     state.routeTotalAscent - state.totalAscent,
   );
   setElText("submetrics-remaining-ascent", `${Math.round(remainingAscent)} m+`);
+
+  // Punto real en ruta (si es un tramo recortado o reanudado)
+  const isSegment = Boolean(
+    (state.routeSegmentOffsetKm && state.routeSegmentOffsetKm > 0.05) ||
+    (state.routeOriginalTotalKm && state.routeOriginalTotalKm > totalKm + 0.1)
+  );
+
+  const realKmRow = document.getElementById("hud-progress-real-km-row");
+  const realKmPoint = document.getElementById("metrics-route-real-point");
+
+  if (isSegment && state.routeOriginalTotalKm) {
+    const currentRealKm = (state.routeSegmentOffsetKm || 0) + routeDist;
+    const realText = `Km ${currentRealKm.toFixed(1)} / ${state.routeOriginalTotalKm.toFixed(1)}`;
+
+    if (realKmRow) realKmRow.style.display = "flex";
+    setElText("submetrics-real-km", realText);
+
+    if (realKmPoint) {
+      realKmPoint.style.display = "block";
+      realKmPoint.textContent = `📍 ${realText}`;
+    }
+  } else {
+    if (realKmRow) realKmRow.style.display = "none";
+    if (realKmPoint) realKmPoint.style.display = "none";
+  }
 }
 
 function updateSessionAverages() {
@@ -1226,23 +1261,41 @@ function enterWorkoutScreen() {
   const ghostBanner = document.getElementById("ghost-banner");
   if (ghostBanner) ghostBanner.classList.remove("visible");
 
+  if (isRouteMode && state.routeWarmupEnabled) {
+    state.routeWarmupActive = true;
+    state.routeWarmupRemainingSeconds = state.routeWarmupDurationSeconds || 300;
+    state.routeWarmupDistanceKm = 0;
+    setElDisplay("workout-warmup-banner", "flex");
+    setElText("warmup-timer-text", "05:00 restantes");
+    showToast("⏱️ Calentamiento llano de 5 min activado (0% pendiente)", "info");
+  } else {
+    state.routeWarmupActive = false;
+    state.routeWarmupRemainingSeconds = 0;
+    state.routeWarmupDistanceKm = 0;
+    setElDisplay("workout-warmup-banner", "none");
+  }
+
   if (isRouteMode) {
     if (state.ghostEnabled && state.gpxFilename) {
       void loadGhostRiderSession();
     }
     initConfiguredMap();
-    ChartsManager.initUpcomingChart("upcoming-chart-inner");
+    window.ChartsManager.initUpcomingChart("upcoming-chart-inner");
 
     // Mostrar footer de elevación y cargar gráfico si hay puntos
     if (state.routePoints.length > 0) {
+      if (!state.routeTotalAscent) {
+        state.routeTotalAscent = calculateTotalRouteAscent(state.routeElevations);
+      }
       setElDisplay("hud-elevation-footer", "block");
-      ChartsManager.initElevationChart(
+      window.ChartsManager.initElevationChart(
         "elevation-chart",
         state.routeDistances,
         state.routeElevations,
       );
       // Inicializar el SVG de vista general con la traza completa
       routeOverview.init();
+      updateRouteProgressHud();
     }
 
     setTimeout(() => {
@@ -1300,11 +1353,19 @@ async function handleGpxUpload(e) {
     const routeData = await GpxManager.parseRouteAsync(text);
 
     if (routeData) {
+      state.originalRoute = {
+        points: routeData.points,
+        elevations: routeData.elevations,
+        distances: routeData.distances,
+        name: state.routeName,
+      };
       state.routePoints = routeData.points;
       state.routeElevations = routeData.elevations;
       state.routeDistances = routeData.distances;
       state.currentRouteIndex = 0;
       state.routeTotalAscent = calculateTotalRouteAscent(state.routeElevations);
+      state.routeSegmentOffsetKm = 0;
+      state.routeOriginalTotalKm = null;
 
       initConfiguredMap();
       drawRouteOnMap();
@@ -1312,13 +1373,16 @@ async function handleGpxUpload(e) {
       updateRouteProgressHud(state);
 
       setElDisplay("hud-elevation-footer", "block");
-      ChartsManager.initElevationChart(
+      window.ChartsManager.initElevationChart(
         "elevation-chart",
         state.routeDistances,
         state.routeElevations,
       );
 
       if (label) label.textContent = file.name;
+      if (typeof window.updateRouteSegmentControls === "function") {
+        window.updateRouteSegmentControls();
+      }
       if (shouldRecoverFullscreen) showFullscreenRecovery();
     } else {
       throw new Error("No se encontraron puntos de ruta válidos.");
@@ -1670,7 +1734,7 @@ async function startSession() {
 
     // Inicializar gráficos manuales si estamos en modo manual
     if (state.currentMode === "MANUAL") {
-      window.ChartsManager.initManualTrainingCharts("manual-power-chart", "manual-hr-chart");
+      window.window.ChartsManager.initManualTrainingCharts("manual-power-chart", "manual-hr-chart");
       if (state.manualMode === "ERG" && typeof BleManager !== "undefined" && BleManager.connections.TRAINER.status === "CONECTADO") {
         BleManager.setTargetPower(state.targetWatts || 150);
       }
@@ -1768,10 +1832,35 @@ function startTimerInterval() {
         }
       }
 
-      // 2. Rampa de pendiente y Simulador
-      stepSlopeRamp();
-      if (BleManager.simulator.isActive && state.currentMode === "ROUTE") {
-        BleManager.simulator.slope = state.currentSlope;
+      // 2. Rampa de pendiente y Simulador (respetando calentamiento plano)
+      if (state.routeWarmupActive) {
+        state.targetSlope = 0.0;
+        state.currentSlope = 0.0;
+        applyTrainerSlope(0.0);
+        if (BleManager.simulator.isActive) {
+          BleManager.simulator.slope = 0.0;
+        }
+      } else {
+        stepSlopeRamp();
+        if (BleManager.simulator.isActive && state.currentMode === "ROUTE") {
+          BleManager.simulator.slope = state.currentSlope;
+        }
+      }
+
+      // Calentamiento plano: actualizar temporizador restante
+      if (state.routeWarmupActive) {
+        if (state.routeWarmupRemainingSeconds > 0) {
+          state.routeWarmupRemainingSeconds -= 1;
+          const wm = Math.floor(state.routeWarmupRemainingSeconds / 60);
+          const ws = state.routeWarmupRemainingSeconds % 60;
+          setElText(
+            "warmup-timer-text",
+            `${String(wm).padStart(2, "0")}:${String(ws).padStart(2, "0")} restantes`
+          );
+        }
+        if (state.routeWarmupRemainingSeconds <= 0) {
+          finishWarmup();
+        }
       }
 
       // 3. Actualizar UI de tiempo y métricas
@@ -1799,20 +1888,28 @@ function startTimerInterval() {
       }
 
       if (state.currentMode === "MANUAL") {
-        window.ChartsManager.updateManualTrainingCharts(state.currentPower, state.currentHr);
+        window.window.ChartsManager.updateManualTrainingCharts(state.currentPower, state.currentHr);
       }
 
       // Update distance before refreshing averages, HUD, and map position.
       saveTelemetryPoint();
 
       if (state.currentMode === "ROUTE") {
+        const routeDist = state.routeWarmupActive
+          ? 0
+          : Math.max(0, state.totalDistance - (state.routeWarmupDistanceKm || 0));
+
         if (window.ChartsManager) {
-          window.ChartsManager.setElevationCursor(state.totalDistance, state.routeTotalDistance);
+          window.window.ChartsManager.setElevationCursor(routeDist, state.routeTotalDistance);
         }
         setElText("submetrics-distance", `${state.totalDistance.toFixed(2)} km`);
         updateRouteProgressHud(state);
-        updateRouteSimulation(state.totalDistance);
-        routeSimulation.setTargetSlope(state.totalDistance);
+        updateRouteSimulation(routeDist);
+        if (!state.routeWarmupActive) {
+          routeSimulation.setTargetSlope(routeDist);
+        } else {
+          state.targetSlope = 0.0;
+        }
         syncSlopeDisplayLabels();
         // Actualizar posición en el mini-mapa de vista general
         routeOverview.updatePosition(state.currentRouteIndex);
@@ -1843,6 +1940,9 @@ function startTimerInterval() {
 function pauseTimer() {
   sessionTimer.pause();
   void releaseWorkoutWakeLock();
+  // Reducir resistencia a 0 mientras está pausado para evitar bloqueo
+  state.currentSlope = 0;
+  applyTrainerSlope(0);
   state.lastSlopeRampTime = Date.now();
   state.lastTelemetryTimestamp = Date.now();
   state.lastTelemetrySpeed = state.currentSpeed || 0;
@@ -1869,6 +1969,8 @@ function resumeTimer() {
 
 async function stopSessionFlow() {
   cancelCountdown();
+  setElDisplay("workout-warmup-banner", "none");
+  state.routeWarmupActive = false;
   if (!state.isSessionActive) {
     disconnectRemoteRoom();
     setElDisplay("manual-mode-panel", "none");
@@ -1889,6 +1991,11 @@ async function stopSessionFlow() {
   sessionTimer.stop();
 
   state.isSessionActive = false;
+  // Resetear resistencia del rodillo al finalizar para evitar que quede bloqueado
+  state.currentSlope = 0;
+  state.targetSlope = 0;
+  state.lastSlopeRampTime = Date.now();
+  applyTrainerSlope(0);
   sensorConnections.stopMetricQualityMonitoring();
   if (state.currentMode === "ERG") {
     resetWorkoutEngine();
@@ -2113,7 +2220,7 @@ function updateRouteSimulation(currentDistKm) {
   // 2. Sync elevation chart cursor (always for smooth movement)
   const totalDistKm =
     state.routeDistances[state.routeDistances.length - 1] || 0.1;
-  ChartsManager.setElevationCursor(currentDistKm, totalDistKm);
+  window.ChartsManager.setElevationCursor(currentDistKm, totalDistKm);
 
     // Lógica para banner de alerta de distancia restante
     const remaining = (state.routeDistances[state.routeDistances.length - 1] - currentDistKm);
@@ -2133,7 +2240,7 @@ function updateRouteSimulation(currentDistKm) {
     // Actualizar posición del usuario en el mapa según el motor
     const point = state.routePoints[state.currentRouteIndex];
     if (!point) return;
-    if (state.map.addSource) {
+    if (state.map && typeof state.map.addSource === "function") {
         if (!isMapReady(state.map)) return;
         const posicionCiclistaActual = mapCamera.normalizeLngLat({
             lon: point.lon,
@@ -2149,7 +2256,7 @@ function updateRouteSimulation(currentDistKm) {
         }) || posicionCiclistaActual;
 
         // Motor 3D (MapLibre)
-        if (!state.map.getSource('user-location')) {
+        if (state.map && !state.map.getSource('user-location')) {
             state.map.addSource('user-location', {
                 type: 'geojson',
                 data: { type: 'Point', coordinates: posicionCiclistaActual },
@@ -2170,12 +2277,17 @@ function updateRouteSimulation(currentDistKm) {
             state.map.setLayoutProperty(
                 "user-location",
                 "visibility",
-                state.mapViewMode === "3D_FPV" ? "none" : "visible",
+                "visible",
             );
         }
         // Seguimiento suave de cámara y rotación según rumbo
         const center = posicionCiclistaActual;
-        const options = { center, pitch: 60, essential: true };
+        const options = {
+          center,
+          pitch: 60,
+          essential: true,
+          zoom: state.map && typeof state.map.getZoom === "function" ? state.map.getZoom() : undefined,
+        };
 
         if (state.mapViewMode === "3D_FPV") {
             logFpvDebug("Actualizando desde telemetría", {
@@ -2251,9 +2363,28 @@ function changeVirtualGear(delta) {
   updateVirtualGearDisplay();
 
   if (state.currentMode === "ROUTE" && state.isSessionActive) {
-    routeSimulation.setTargetSlope(state.totalDistance);
+    if (!state.routeWarmupActive) {
+      const routeDist = Math.max(0, state.totalDistance - (state.routeWarmupDistanceKm || 0));
+      routeSimulation.setTargetSlope(routeDist);
+    }
   }
 }
+
+function finishWarmup() {
+  if (!state.routeWarmupActive) return;
+  state.routeWarmupActive = false;
+  state.routeWarmupDistanceKm = state.totalDistance;
+  setElDisplay("workout-warmup-banner", "none");
+
+  if (state.currentMode === "ROUTE") {
+    routeSimulation.setTargetSlope(0);
+    state.currentSlope = 0;
+    state.lastSlopeRampTime = Date.now();
+    syncSlopeDisplayLabels();
+  }
+  showToast("🚀 ¡Calentamiento finalizado! Iniciando el tramo...", "success");
+}
+window.finishWarmup = finishWarmup;
 
 function applyTrainerSlope(slope) {
   BleManager.setTrainerSlope(slope);
@@ -2279,10 +2410,16 @@ function syncSlopeDisplayLabels() {
   if (trainerSlopeValue) trainerSlopeValue.textContent = formatted;
 
   const routeSlopeValue = document.getElementById("metrics-route-slope");
-  const routeSlope =
-    routeSimulation.getRouteSlopeAtDistance(state.totalDistance);
+  const routeDist = state.routeWarmupActive
+    ? 0
+    : Math.max(0, state.totalDistance - (state.routeWarmupDistanceKm || 0));
+  const routeSlope = state.routeWarmupActive
+    ? 0
+    : routeSimulation.getRouteSlopeAtDistance(routeDist);
   if (routeSlopeValue) {
-    routeSlopeValue.textContent = `${routeSlope >= 0 ? "+" : ""}${routeSlope.toFixed(1)}%`;
+    routeSlopeValue.textContent = state.routeWarmupActive
+      ? "0.0% (Calent.)"
+      : `${routeSlope >= 0 ? "+" : ""}${routeSlope.toFixed(1)}%`;
   }
 
   const slopeColor = (slope) => {
@@ -2413,7 +2550,7 @@ function refreshUpcomingPreview(currentDistKm = null) {
       `⛰️ ${slope >= 0 ? "+" : ""}${slope.toFixed(1)}%`;
   }
 
-  ChartsManager.updateUpcomingChart(
+  window.ChartsManager.updateUpcomingChart(
     preview.distances,
     preview.elevations,
     slope,

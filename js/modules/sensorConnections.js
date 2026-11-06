@@ -177,6 +177,8 @@ export function createSensorConnectionsController() {
     ) {
       hrmLabel.textContent = `Último: ${lastHrm} (pulsa Conectar)`;
     }
+
+    syncDashboardSensorStatus();
   }
 
   async function triggerBleConnection(type) {
@@ -281,6 +283,56 @@ export function createSensorConnectionsController() {
     refreshMetricQuality();
   }
 
+  function syncDashboardSensorStatus() {
+    const btn = document.getElementById("btn-dashboard-sensors");
+    if (!btn) return;
+
+    const connections = bleManager().connections;
+    const hasAnyConnected =
+      connections.TRAINER.status === "CONECTADO" ||
+      connections.HRM.status === "CONECTADO" ||
+      connections.POWER.status === "CONECTADO" ||
+      connections.CSC.status === "CONECTADO";
+
+    const hasAnyConnecting =
+      connections.TRAINER.status === "CONECTANDO" ||
+      connections.TRAINER.status === "BUSCANDO" ||
+      connections.HRM.status === "CONECTANDO" ||
+      connections.HRM.status === "BUSCANDO" ||
+      connections.POWER.status === "CONECTANDO" ||
+      connections.POWER.status === "BUSCANDO" ||
+      connections.CSC.status === "CONECTANDO" ||
+      connections.CSC.status === "BUSCANDO";
+
+    btn.classList.remove("connected", "connecting");
+    if (hasAnyConnected) {
+      btn.classList.add("connected");
+      btn.title = "Sensores: alguno conectado";
+      btn.setAttribute("aria-label", "Sensores: alguno conectado");
+    } else if (hasAnyConnecting) {
+      btn.classList.add("connecting");
+      btn.title = "Sensores: conectando...";
+      btn.setAttribute("aria-label", "Sensores: conectando...");
+    } else {
+      btn.title = "Sensores: sin conectar";
+      btn.setAttribute("aria-label", "Sensores: sin conectar");
+    }
+
+    const openConnections = () => {
+      if (typeof window._navigateTo === "function") {
+        window._navigateTo("connections");
+      }
+    };
+
+    btn.onclick = openConnections;
+    btn.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openConnections();
+      }
+    };
+  }
+
   function initSensorReconnectControls() {
     const sensorButtons = {
       "indicator-PWR": "POWER",
@@ -315,6 +367,7 @@ export function createSensorConnectionsController() {
 
   return {
     syncBluetoothScreenStatus,
+    syncDashboardSensorStatus,
     triggerBleConnection,
     onStatusChanged,
     onMetricReceived,

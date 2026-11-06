@@ -5,6 +5,8 @@
 
 import { state } from '../modules/state.js';
 import { showToast, showConfirm } from '../modules/toast.js';
+import { promptResumeRoute } from '../ui/modals.js';
+import { sliceRouteSegment } from './routeLibrary.js';
 
 // ──────────────────────────────────────────────
 // Helpers internos
@@ -377,19 +379,86 @@ export async function repeatRouteFromHistory(id) {
       showToast('Esta sesión no contiene una copia reutilizable de la ruta.', 'info');
       return;
     }
-    state.currentMode = 'ROUTE';
-    state.gpxFilename = session.gpxPath || `Ruta histórica ${id}.gpx`;
-    state.routeName = session.routeName || session.gpxPath || `Ruta histórica ${id}`;
-    state.routePoints = session.routePoints.map((p) => ({ lat: Number(p.lat), lon: Number(p.lon) }));
-    state.routeElevations = Array.isArray(session.routeElevations)
+
+    const points = session.routePoints.map((p) => ({ lat: Number(p.lat), lon: Number(p.lon) }));
+    const elevations = Array.isArray(session.routeElevations)
       ? session.routeElevations.map(Number)
-      : state.routePoints.map(() => 0);
-    state.routeDistances = Array.isArray(session.routeDistances)
+      : points.map(() => 0);
+    const distances = Array.isArray(session.routeDistances)
       ? session.routeDistances.map(Number)
       : [];
-    state.routeTotalAscent = Number(session.routeTotalAscent) || 0;
-    state.currentRouteIndex = 0;
+
+    const totalRouteKm = distances.length > 0 ? distances[distances.length - 1] : 0;
+    const completedKm = Number(session.totalDistance) || 0;
+    const isCompleted = totalRouteKm <= 0 || completedKm >= (totalRouteKm - 0.4);
+
+    let startKm = 0;
+    const baseName = session.routeName || session.gpxPath || `Ruta histórica ${id}`;
+
+    if (!isCompleted && completedKm >= 0.2) {
+      const choice = await promptResumeRoute({
+        routeName: baseName,
+        completedKm,
+        totalRouteKm,
+      });
+
+      if (choice === 'cancel') return;
+      if (choice === 'continue') {
+        startKm = completedKm;
+      }
+    }
+
+    state.currentMode = 'ROUTE';
+    state.gpxFilename = session.gpxPath || `Ruta histórica ${id}.gpx`;
     state.routeLoadedFromHistory = true;
+
+    // Cache original route
+    state.originalRoute = {
+      points,
+      elevations,
+      distances,
+      name: baseName,
+    };
+
+    if (startKm > 0) {
+      const segment = sliceRouteSegment({
+        points,
+        elevations,
+        distances,
+        startKm,
+      });
+
+      if (segment && segment.points.length >= 2) {
+        state.routePoints = segment.points;
+        state.routeElevations = segment.elevations;
+        state.routeDistances = segment.distances;
+        state.routeTotalAscent = segment.totalAscent;
+        state.routeName = `${baseName} (Continuación Km ${segment.startKm.toFixed(1)} → ${segment.endKm.toFixed(1)})`;
+        state.currentRouteIndex = 0;
+        state.routeSegmentOffsetKm = segment.startKm;
+        state.routeOriginalTotalKm = segment.originalTotalKm;
+        showToast(`Continuando ruta desde el Km ${segment.startKm.toFixed(1)} (${segment.segmentDistance.toFixed(1)} km restantes)`, 'success');
+      } else {
+        state.routePoints = points;
+        state.routeElevations = elevations;
+        state.routeDistances = distances;
+        state.routeTotalAscent = Number(session.routeTotalAscent) || 0;
+        state.routeName = baseName;
+        state.currentRouteIndex = 0;
+        state.routeSegmentOffsetKm = 0;
+        state.routeOriginalTotalKm = null;
+      }
+    } else {
+      state.routePoints = points;
+      state.routeElevations = elevations;
+      state.routeDistances = distances;
+      state.routeTotalAscent = Number(session.routeTotalAscent) || 0;
+      state.routeName = baseName;
+      state.currentRouteIndex = 0;
+      state.routeSegmentOffsetKm = 0;
+      state.routeOriginalTotalKm = null;
+    }
+
     if (window._navigateTo) window._navigateTo('connections');
   } catch (error) {
     console.error('Error al repetir la ruta histórica:', error);
