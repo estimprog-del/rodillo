@@ -480,12 +480,15 @@ export function getCogganPowerZones(ftp = 200) {
 }
 
 export function renderPowerZonesHtml(ftp = 200) {
-  const zones = getCogganPowerZones(ftp);
-  const maxW = Math.max(1, zones[5].maxWatts || Math.round(ftp * 1.5));
+  const safeFtp = Math.round(Number(ftp) > 30 ? Number(ftp) : 200);
+  const zones = getCogganPowerZones(safeFtp);
+  const maxW = Math.max(1, zones[5].maxWatts || Math.round(safeFtp * 1.5));
   const rows = zones.map((z) => {
-    const range = z.maxWatts === null ? (z.minWatts + '+ W') : (z.minWatts + ' - ' + z.maxWatts + ' W');
+    const minW = Math.round(z.minWatts);
+    const maxWz = z.maxWatts === null ? null : Math.round(z.maxWatts);
+    const range = maxWz === null ? (minW + '+ W') : (minW + ' - ' + maxWz + ' W');
     const pctLabel = z.maxPct === null ? (z.minPct + '%+') : (z.minPct + '-' + z.maxPct + '%');
-    const barW = z.maxWatts === null ? 100 : Math.max(4, Math.round((z.maxWatts / maxW) * 100));
+    const barW = maxWz === null ? 100 : Math.max(4, Math.round((maxWz / maxW) * 100));
     return '<div style="display:flex;align-items:center;gap:8px;margin:4px 0;">' +
       '<span style="width:34px;font-weight:700;color:' + z.color + ';">' + z.short + '</span>' +
       '<div style="flex:1;height:14px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;">' +
@@ -496,7 +499,7 @@ export function renderPowerZonesHtml(ftp = 200) {
     '</div>';
   }).join('');
   return '<div style="margin-top:12px;">' +
-    '<div style="font-size:13px;font-weight:700;margin-bottom:6px;color:white;">Zonas de potencia (Coggan) - FTP ' + Math.round(ftp) + ' W</div>' +
+    '<div style="font-size:13px;font-weight:700;margin-bottom:6px;color:white;">Zonas de potencia (Coggan) - FTP ' + safeFtp + ' W</div>' +
     rows +
   '</div>';
 }
