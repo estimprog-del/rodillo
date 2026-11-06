@@ -111,6 +111,7 @@ import {
   resetWorkoutBias,
   getWorkoutBias,
   renderActiveWorkoutHudSvg,
+  calculateRampTestFtpEstimate,
 } from "./core/workoutEngine.js";
 import { initUserView } from "./ui/userView.js";
 
@@ -1997,7 +1998,15 @@ async function stopSessionFlow() {
   state.lastSlopeRampTime = Date.now();
   applyTrainerSlope(0);
   sensorConnections.stopMetricQualityMonitoring();
+  // Detectar si la sesión actual es un test de rampa FTP (para estimar FTP al finalizar)
+  const isRampFtpTest = state.currentMode === "ERG" && !!state.currentWorkout?.id?.startsWith("preset-ftp-ramp-test");
+  let rampFtpEstimate = null;
+  if (isRampFtpTest) {
+    rampFtpEstimate = calculateRampTestFtpEstimate(state.currentWorkout, state.elapsedSeconds, state.currentUser?.ftp || 200);
+  }
   if (state.currentMode === "ERG") {
+    // Liberar el modo ERG del rodillo inmediatamente (evita la "espiral de la muerte")
+    window.BleManager?.releaseErg?.();
     resetWorkoutEngine();
     updateWorkoutErgHud(null);
   }
@@ -2170,6 +2179,32 @@ async function stopSessionFlow() {
     document
       .getElementById("ghost-banner")
       ?.style.setProperty("display", "none");
+
+    // Si la sesión fue un test de rampa FTP, proponer actualizar el FTP del perfil
+    if (rampFtpEstimate) {
+      try {
+        const currentFtp = state.currentUser?.ftp || 200;
+        const msg =
+          `¡Test de Rampa completado!\n\n` +
+          `Potencia máxima alcanzada (MAP): ${rampFtpEstimate.mapWatts} W\n` +
+          `Tu FTP actual: ${currentFtp} W\n` +
+          `🚀 Nuevo FTP estimado: ${rampFtpEstimate.estimatedFtp} W\n\n` +
+          `¿Actualizar tu perfil con el nuevo FTP?`;
+        const updateFtp = await showConfirm(msg, "Actualizar FTP", "primary");
+        if (updateFtp && state.currentUser) {
+          const updatedUser = { ...state.currentUser, ftp: rampFtpEstimate.estimatedFtp };
+          await DbManager.updateUser(updatedUser);
+          state.currentUser = updatedUser;
+          saveStateToLocalStorage();
+          if (window._loadDashboardHeader) window._loadDashboardHeader(state);
+          showToast(`FTP actualizado a ${rampFtpEstimate.estimatedFtp} W`, "success");
+        } else {
+          showToast("Se mantiene el FTP anterior.", "info");
+        }
+      } catch (ftpError) {
+        console.warn("No se pudo actualizar el FTP tras el ramp test:", ftpError);
+      }
+    }
 
     navigateTo("summary");
     renderSummaryRoute(

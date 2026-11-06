@@ -12,12 +12,13 @@ const STORAGE_KEY_WORKOUTS = 'rodilloint_saved_workouts';
 
 /** Paleta de colores por zonas de potencia estándar (Z1 - Z6+) */
 export const ZONE_COLORS = {
-  Z1: '#6b7280', // Recuperación (< 55% FTP)
+  Z1: '#9ca3af', // Recuperación (< 55% FTP)
   Z2: '#3b82f6', // Resistencia (55% - 75% FTP)
   Z3: '#10b981', // Tempo (76% - 90% FTP)
   Z4: '#f59e0b', // Umbral (91% - 105% FTP)
   Z5: '#f97316', // VO2 Max (106% - 120% FTP)
-  Z6: '#ef4444', // Anaeróbico (> 120% FTP)
+  Z6: '#ef4444', // Anaeróbico (121% - 150% FTP)
+  Z7: '#a855f7', // Neuromuscular (> 150% FTP)
 };
 
 /** Devuelve la zona y el color correspondiente a un % de FTP (0.0 a 2.0+) */
@@ -27,7 +28,8 @@ export function getZoneFromPowerRatio(ratio) {
   if (ratio < 0.91) return { name: 'Z3 - Tempo', short: 'Z3', color: ZONE_COLORS.Z3 };
   if (ratio < 1.06) return { name: 'Z4 - Umbral', short: 'Z4', color: ZONE_COLORS.Z4 };
   if (ratio < 1.21) return { name: 'Z5 - VO2 Max', short: 'Z5', color: ZONE_COLORS.Z5 };
-  return { name: 'Z6 - Anaeróbico', short: 'Z6', color: ZONE_COLORS.Z6 };
+  if (ratio < 1.51) return { name: 'Z6 - Anaeróbico', short: 'Z6', color: ZONE_COLORS.Z6 };
+  return { name: 'Z7 - Neuromuscular', short: 'Z7', color: ZONE_COLORS.Z7 };
 }
 
 /** Formatea segundos a mm:ss o hh:mm:ss */
@@ -91,14 +93,14 @@ export const PRESET_WORKOUTS = [
   {
     id: 'preset-ftp-ramp-test',
     isPreset: true,
-    name: 'Test de Rampa FTP (Ramp Test)',
-    description: 'Protocolo de evaluación FTP: calentamiento a 100W y aumento de 20W cada minuto hasta el fallo.',
+    name: 'Test de Rampa FTP por %FTP (Ramp Test)',
+    description: 'Protocolo de evaluación FTP: calentamiento 5 min al 50% FTP y aumento de 5% FTP cada minuto hasta el fallo (máx. 200% FTP).',
     author: 'RodilloInt Lab',
-    totalDurationSeconds: 1500, // 25 min max
+    totalDurationSeconds: 2100, // 35 min max (5 min calentamiento + 30 escalones de 1 min)
     steps: [
       { id: 'r0', type: 'warmup', durationSeconds: 300, powerStart: 0.50, powerEnd: 0.50, cadence: 90, text: 'Calentamiento a ritmo constante. Mantén 85-95 rpm.' },
-      ...Array.from({ length: 20 }).map((_, i) => {
-        // Incrementos progresivos del 55% al 150% del FTP inicial (o vatios absolutos proporcionales)
+      ...Array.from({ length: 30 }).map((_, i) => {
+        // Incrementos progresivos del 55% al 200% del FTP (5% FTP por minuto)
         const ratio = 0.55 + i * 0.05;
         return {
           id: `ramp-${i}`,
@@ -108,6 +110,30 @@ export const PRESET_WORKOUTS = [
           powerEnd: Number(ratio.toFixed(2)),
           cadence: 90,
           text: `Escalón ${i + 1}: ${Math.round(ratio * 100)}% FTP. Pedalea fluido.`,
+        };
+      }),
+    ],
+  },
+  {
+    id: 'preset-ftp-ramp-test-watts',
+    isPreset: true,
+    name: 'Test de Rampa FTP por Vatios (Ramp Test)',
+    description: 'Protocolo de evaluación FTP con vatios absolutos: calentamiento 5 min a 100 W y aumento de 20 W cada minuto hasta el fallo.',
+    author: 'RodilloInt Lab',
+    totalDurationSeconds: 2100, // 35 min max (5 min calentamiento + 30 escalones de 1 min)
+    steps: [
+      { id: 'w0', type: 'warmup', durationSeconds: 300, powerStart: 100, powerEnd: 100, cadence: 90, text: 'Calentamiento a 100 W. Mantén 85-95 rpm.' },
+      ...Array.from({ length: 30 }).map((_, i) => {
+        // Vatios absolutos: 100 W iniciales + 20 W por escalón
+        const watts = 100 + (i + 1) * 20;
+        return {
+          id: `watt-ramp-${i}`,
+          type: 'ramp',
+          durationSeconds: 60,
+          powerStart: watts,
+          powerEnd: watts,
+          cadence: 90,
+          text: `Escalón ${i + 1}: ${watts} W. Pedalea fluido.`,
         };
       }),
     ],
@@ -427,4 +453,50 @@ export function renderWorkoutLibrary(filter = 'all', onSelectWorkout, onDeleteWo
       }
     });
   });
+}
+
+export const COGGAN_ZONE_COLORS = {
+  Z1: '#9ca3af',
+  Z2: '#3b82f6',
+  Z3: '#10b981',
+  Z4: '#f59e0b',
+  Z5: '#f97316',
+  Z6: '#ef4444',
+  Z7: '#a855f7',
+};
+
+export function getCogganPowerZones(ftp = 200) {
+  const safeFtp = Number(ftp) > 30 ? Number(ftp) : 200;
+  const pct = (p) => Math.round((p / 100) * safeFtp);
+  return [
+    { zone: 1, short: 'Z1', name: 'Z1 - Recuperacion Activa', color: COGGAN_ZONE_COLORS.Z1, minPct: 0, maxPct: 55, minWatts: 0, maxWatts: pct(55) },
+    { zone: 2, short: 'Z2', name: 'Z2 - Resistencia (Endurance)', color: COGGAN_ZONE_COLORS.Z2, minPct: 56, maxPct: 75, minWatts: pct(56), maxWatts: pct(75) },
+    { zone: 3, short: 'Z3', name: 'Z3 - Tempo', color: COGGAN_ZONE_COLORS.Z3, minPct: 76, maxPct: 90, minWatts: pct(76), maxWatts: pct(90) },
+    { zone: 4, short: 'Z4', name: 'Z4 - Umbral (FTP)', color: COGGAN_ZONE_COLORS.Z4, minPct: 91, maxPct: 105, minWatts: pct(91), maxWatts: pct(105) },
+    { zone: 5, short: 'Z5', name: 'Z5 - Capacidad VO2max', color: COGGAN_ZONE_COLORS.Z5, minPct: 106, maxPct: 120, minWatts: pct(106), maxWatts: pct(120) },
+    { zone: 6, short: 'Z6', name: 'Z6 - Capacidad Anaerobica', color: COGGAN_ZONE_COLORS.Z6, minPct: 121, maxPct: 150, minWatts: pct(121), maxWatts: pct(150) },
+    { zone: 7, short: 'Z7', name: 'Z7 - Potencia Neuromuscular', color: COGGAN_ZONE_COLORS.Z7, minPct: 151, maxPct: null, minWatts: pct(151), maxWatts: null },
+  ];
+}
+
+export function renderPowerZonesHtml(ftp = 200) {
+  const zones = getCogganPowerZones(ftp);
+  const maxW = Math.max(1, zones[5].maxWatts || Math.round(ftp * 1.5));
+  const rows = zones.map((z) => {
+    const range = z.maxWatts === null ? (z.minWatts + '+ W') : (z.minWatts + ' - ' + z.maxWatts + ' W');
+    const pctLabel = z.maxPct === null ? (z.minPct + '%+') : (z.minPct + '-' + z.maxPct + '%');
+    const barW = z.maxWatts === null ? 100 : Math.max(4, Math.round((z.maxWatts / maxW) * 100));
+    return '<div style="display:flex;align-items:center;gap:8px;margin:4px 0;">' +
+      '<span style="width:34px;font-weight:700;color:' + z.color + ';">' + z.short + '</span>' +
+      '<div style="flex:1;height:14px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;">' +
+        '<div style="width:' + barW + '%;height:100%;background:' + z.color + ';opacity:0.85;"></div>' +
+      '</div>' +
+      '<span style="width:110px;font-size:12px;color:var(--text-secondary);">' + range + '</span>' +
+      '<span style="width:70px;font-size:11px;color:var(--text-secondary);text-align:right;">' + pctLabel + '</span>' +
+    '</div>';
+  }).join('');
+  return '<div style="margin-top:12px;">' +
+    '<div style="font-size:13px;font-weight:700;margin-bottom:6px;color:white;">Zonas de potencia (Coggan) - FTP ' + Math.round(ftp) + ' W</div>' +
+    rows +
+  '</div>';
 }

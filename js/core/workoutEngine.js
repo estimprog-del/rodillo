@@ -360,3 +360,43 @@ export function renderActiveWorkoutHudSvg(workout, currentElapsedSeconds, userFt
     </svg>
   `;
 }
+
+/**
+ * Estima el FTP a partir de un test de rampa estructuralmente
+ * (ultimo escalon completo + fraccion del escalon en el que se fallo).
+ */
+export function calculateRampTestFtpEstimate(workout, elapsedSeconds, ftp = 200) {
+  if (!workout || !Array.isArray(workout.steps) || workout.steps.length === 0) return null;
+  const safeFtp = Number(ftp) > 30 ? Number(ftp) : 200;
+  const toWatts = (val) => {
+    const n = Number(val);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return n <= 3 ? Math.round(n * safeFtp) : Math.round(n);
+  };
+  const totalDuration = Number(workout.totalDurationSeconds) || workout.steps.reduce((a, s) => a + (Number(s.durationSeconds) || 0), 0);
+  const clampedElapsed = Math.max(0, Math.min(totalDuration, Number(elapsedSeconds) || 0));
+  let accumulated = 0;
+  let targetIndex = workout.steps.length - 1;
+  let timeInStep = 0;
+  for (let i = 0; i < workout.steps.length; i++) {
+    const s = workout.steps[i];
+    const dur = Number(s.durationSeconds) || 0;
+    if (clampedElapsed < accumulated + dur) {
+      targetIndex = i;
+      timeInStep = clampedElapsed - accumulated;
+      break;
+    }
+    accumulated += dur;
+  }
+  const currentStep = workout.steps[targetIndex];
+  if (!currentStep || currentStep.type !== 'ramp') return null;
+  const prevStep = workout.steps[targetIndex - 1] || currentStep;
+  const baseWatts = toWatts(prevStep.powerStart);
+  const currentWatts = toWatts(currentStep.powerStart);
+  const increment = currentWatts - baseWatts;
+  const stepDuration = Number(currentStep.durationSeconds) || 60;
+  const survived = Math.max(0, Math.min(stepDuration, timeInStep));
+  const mapWatts = Math.round(baseWatts + increment * (survived / stepDuration));
+  const estimatedFtp = Math.round(mapWatts * 0.75);
+  return { mapWatts, estimatedFtp, survivedSeconds: survived, lastCompletedStepWatts: baseWatts };
+}

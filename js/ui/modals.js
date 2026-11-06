@@ -3,6 +3,7 @@ import { state, saveStateToLocalStorage } from "../modules/state.js";
 import { showToast } from "../modules/toast.js";
 import { resetAddUserAvatar, prepareEditUserAvatar } from "./userView.js";
 import { sliceRouteSegment } from "../core/routeLibrary.js";
+import { renderPowerZonesHtml } from "../core/workoutLibrary.js";
 
 /**
  * UI Modal Manager
@@ -26,9 +27,23 @@ export function closeImportUserModal() {
   hideModal("import-user");
 }
 
+export function renderEditUserPowerZones() {
+  const ftpInput = document.getElementById("edit-user-ftp");
+  const container = document.getElementById("user-power-zones");
+  if (!container) return;
+  const ftp = parseFloat(ftpInput?.value) || (state.currentUser?.ftp || 200);
+  container.innerHTML = renderPowerZonesHtml(ftp);
+}
+
 export function openEditUserModal() {
   prepareEditUserAvatar();
   showModal("edit-user");
+  renderEditUserPowerZones();
+  const ftpInput = document.getElementById("edit-user-ftp");
+  if (ftpInput && !ftpInput.dataset.zonesBound) {
+    ftpInput.dataset.zonesBound = "1";
+    ftpInput.addEventListener("input", renderEditUserPowerZones);
+  }
 }
 
 export function closeEditUserModal() {

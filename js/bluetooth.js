@@ -1206,6 +1206,18 @@ function setTargetPower(targetWatts, currentWatts = 150, durationSeconds = 3) {
   }, 1000 / stepsPerSecond);
 }
 
+/**
+ * Libera el modo ERG del rodillo enviando 0 W de forma inmediata.
+ * Útil al finalizar un test de rampa para evitar la "espiral de la muerte".
+ */
+function releaseErg() {
+  if (ergRampInterval) {
+    clearInterval(ergRampInterval);
+    ergRampInterval = null;
+  }
+  setTargetPowerImmediate(0);
+}
+
 // Export Bluetooth Manager globally & as ES module
 export const BleManager = {
   connections,
@@ -1214,6 +1226,7 @@ export const BleManager = {
   disconnectAll,
   setTrainerSlope,
   setTargetPower,
+  releaseErg,
   calculateVirtualSpeed,
   autoReconnectSavedDevices,
   stopAutoReconnect,

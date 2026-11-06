@@ -154,10 +154,11 @@ export function getPowerZone(watts, ftp) {
   const safeFtp = Number(ftp) || 200;
   const pct = (Number(watts) || 0) / safeFtp;
 
-  if (pct < 0.55) return { zone: 1, name: "Z1 Recuperación Activa", color: "#38bdf8" };
-  if (pct < 0.75) return { zone: 2, name: "Z2 Resistencia", color: "#4ade80" };
-  if (pct < 0.90) return { zone: 3, name: "Z3 Tempo", color: "#facc15" };
-  if (pct < 1.05) return { zone: 4, name: "Z4 Umbral", color: "#fb923c" };
-  if (pct < 1.20) return { zone: 5, name: "Z5 VO2 Máx", color: "#f87171" };
-  return { zone: 6, name: "Z6 Capacidad Anaeróbica", color: "#c084fc" };
+  if (pct < 0.55) return { zone: 1, name: "Z1 Recuperación Activa", color: "#9ca3af" };
+  if (pct < 0.76) return { zone: 2, name: "Z2 Resistencia", color: "#3b82f6" };
+  if (pct < 0.91) return { zone: 3, name: "Z3 Tempo", color: "#10b981" };
+  if (pct < 1.06) return { zone: 4, name: "Z4 Umbral", color: "#f59e0b" };
+  if (pct < 1.21) return { zone: 5, name: "Z5 VO2 Máx", color: "#f97316" };
+  if (pct < 1.51) return { zone: 6, name: "Z6 Capacidad Anaeróbica", color: "#ef4444" };
+  return { zone: 7, name: "Z7 Potencia Neuromuscular", color: "#a855f7" };
 }
