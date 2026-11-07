@@ -1,0 +1,731 @@
+/* gpx.js - GPX/TCX Parser and Exporter for RodilloInt Web */
+
+/**
+ * Calculates Haversine distance in km between two coordinate points
+ */
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371.0; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
+ * Parses a GPX or TCX file text and returns points, elevations, and cumulative distances
+ */
+function parseRoute(fileText) {
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(fileText, 'application/xml');
+    
+    // Check if parser returned an error
+    const parserError = doc.querySelector('parsererror');
+    if (parserError) {
+      console.error('XML parsing error:', parserError.textContent);
+      return null;
+    }
+
+    const points = [];
+    const elevations = [];
+
+    // 1. Try parsing GPX format
+    const trkpts = doc.getElementsByTagName('trkpt');
+    if (trkpts.length > 0) {
+      for (let i = 0; i < trkpts.length; i++) {
+        const item = trkpts[i];
+        const lat = parseFloat(item.getAttribute('lat'));
+        const lon = parseFloat(item.getAttribute('lon'));
+        
+        if (!isNaN(lat) && !isNaN(lon)) {
+          points.push({ lat, lon });
+          
+          const eleNode = item.getElementsByTagName('ele')[0];
+          const ele = eleNode ? parseFloat(eleNode.textContent) : 0.0;
+          elevations.push(isNaN(ele) ? 0.0 : ele);
+        }
+      }
+    } else {
+      // 2. Try parsing TCX format (Trackpoint)
+      const allElements = doc.getElementsByTagName('*');
+      for (let i = 0; i < allElements.length; i++) {
+        const element = allElements[i];
+        if (element.nodeName.endsWith('Trackpoint')) {
+          let lat = null;
+          let lon = null;
+          let alt = 0.0;
+
+          const children = element.getElementsByTagName('*');
+          for (let j = 0; j < children.length; j++) {
+            const child = children[j];
+            const nodeName = child.nodeName;
+            
+            if (nodeName.endsWith('LatitudeDegrees')) {
+              lat = parseFloat(child.textContent);
+            } else if (nodeName.endsWith('LongitudeDegrees')) {
+              lon = parseFloat(child.textContent);
+            } else if (nodeName.endsWith('AltitudeMeters')) {
+              const parsedAlt = parseFloat(child.textContent);
+              alt = isNaN(parsedAlt) ? 0.0 : parsedAlt;
+            }
+          }
+
+          if (lat !== null && lon !== null && !isNaN(lat) && !isNaN(lon)) {
+            points.push({ lat, lon });
+            elevations.push(alt);
+          }
+        }
+      }
+    }
+
+    if (points.length === 0) {
+      console.warn('No GPS points found in the file.');
+      return null;
+    }
+
+    // Calculate cumulative distances in km
+    const distances = [0.0];
+    let totalDist = 0.0;
+    for (let i = 1; i < points.length; i++) {
+      totalDist += calculateDistance(
+        points[i - 1].lat, points[i - 1].lon,
+        points[i].lat, points[i].lon
+      );
+      distances.push(totalDist);
+    }
+
+    return {
+      points,
+      elevations,
+      distances
+    };
+  } catch (e) {
+    console.error('Error parsing route file:', e);
+    return null;
+  }
+}
+
+/**
+ * Exports a session and its second-by-second telemetries into a GPX file and triggers download
+ */
+function exportSession(session, sensorData, userName = 'Usuario') {
+  try {
+    const trackPoints = sensorData.filter((point) =>
+      Number.isFinite(Number(point.latitude)) &&
+      Number.isFinite(Number(point.longitude)),
+    );
+    if (trackPoints.length === 0) {
+      return false;
+    }
+
+    const formatDateUTC = (timestamp) => {
+      const date = new Date(timestamp);
+      return date.toISOString().replace(/\.\d+Z$/, 'Z');
+    };
+
+    const formatDateLocal = (timestamp) => {
+      const date = new Date(timestamp);
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
+
+    const startTimeUTC = formatDateUTC(session.startTime);
+    const dateString = formatDateLocal(session.startTime);
+
+    let gpx = '<?xml version="1.0" encoding="UTF-8"?>\n';
+    gpx += '<gpx version="1.1" creator="RodilloInt Web" xmlns="http://www.topografix.com/GPX/1/1" ';
+    gpx += 'xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1" ';
+    gpx += 'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ';
+    gpx += 'xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd ';
+    gpx += 'http://www.garmin.com/xmlschemas/TrackPointExtension/v1 http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd">\n';
+    gpx += `  <metadata>\n    <time>${startTimeUTC}</time>\n  </metadata>\n`;
+    gpx += '  <trk>\n';
+    gpx += `    <name>Entrenamiento RodilloInt - ${userName} - ${dateString}</name>\n`;
+    gpx += '    <trkseg>\n';
+
+    trackPoints.forEach((point) => {
+      const lat = point.latitude !== null ? point.latitude.toFixed(6) : '0.000000';
+      const lon = point.longitude !== null ? point.longitude.toFixed(6) : '0.000000';
+      const ele = (point.elevation !== null && point.elevation !== undefined) ? point.elevation.toFixed(1) : '0.0';
+      const timeStr = formatDateUTC(point.timestamp);
+      const powerVal = point.power !== null ? point.power : 0;
+      const hrVal = point.heartRate !== null ? point.heartRate : 0;
+      const cadVal = point.cadence !== null ? point.cadence : 0;
+
+      gpx += `      <trkpt lat="${lat}" lon="${lon}">\n`;
+      gpx += `        <ele>${ele}</ele>\n`;
+      gpx += `        <time>${timeStr}</time>\n`;
+      gpx += '        <extensions>\n';
+      gpx += `          <power>${powerVal}</power>\n`;
+      gpx += '          <gpxtpx:TrackPointExtension>\n';
+      gpx += `            <gpxtpx:hr>${hrVal}</gpxtpx:hr>\n`;
+      gpx += `            <gpxtpx:cad>${cadVal}</gpxtpx:cad>\n`;
+      gpx += '          </gpxtpx:TrackPointExtension>\n';
+      gpx += '        </extensions>\n';
+      gpx += '      </trkpt>\n';
+    });
+
+    gpx += '    </trkseg>\n';
+    gpx += '  </trk>\n';
+    gpx += '</gpx>';
+
+    // Trigger Browser Download
+    const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Entrenamiento_RodilloInt_${session.id}_${dateString.replace(/\//g, '-')}.gpx`;
+    document.body.appendChild(link);
+    link.click();
+    
+    // Clean up
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    console.log(`GPX Exported successfully for session: ${session.id}`);
+    return true;
+  } catch (e) {
+    console.error('Error exporting session to GPX:', e);
+    return false;
+  }
+}
+
+/**
+ * Exports session telemetry as a semicolon-separated CSV compatible with Excel.
+ */
+function exportSessionCsv(session, sensorData, userName = 'Usuario') {
+  try {
+    if (!Array.isArray(sensorData) || sensorData.length === 0) {
+      return false;
+    }
+
+    const escapeCsvValue = (value) => {
+      if (value === null || value === undefined) return '';
+      const text = String(value);
+      return /[;"\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const formatNumber = (value, decimals = 2) => {
+      const number = Number(value);
+      return Number.isFinite(number) ? number.toFixed(decimals) : '';
+    };
+    const formatTimestamp = (value) => {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+    };
+
+    const headers = [
+      'Sesión',
+      'Usuario',
+      'Fecha y hora',
+      'Tiempo desde inicio (s)',
+      'Velocidad (km/h)',
+      'Potencia (W)',
+      'Cadencia (rpm)',
+      'Pulso (bpm)',
+      'Pendiente (%)',
+      'Marcha virtual',
+      'Relación',
+      'Elevación (m)',
+      'Latitud',
+      'Longitud',
+      'Distancia (km)',
+    ];
+
+    const startTime = Number(session.startTime);
+    const rows = sensorData.map((point) => {
+      const timestamp = Number(point.timestamp);
+      const elapsedSeconds =
+        Number.isFinite(startTime) && Number.isFinite(timestamp)
+          ? Math.max(0, (timestamp - startTime) / 1000)
+          : '';
+
+      return [
+        session.id,
+        userName,
+        formatTimestamp(point.timestamp),
+        formatNumber(elapsedSeconds, 1),
+        formatNumber(point.speed, 2),
+        formatNumber(point.power, 0),
+        formatNumber(point.cadence, 0),
+        formatNumber(point.heartRate, 0),
+        formatNumber(point.slope, 2),
+        formatNumber(point.virtualGear, 0),
+        formatNumber(point.gearRatio, 2),
+        formatNumber(point.elevation, 1),
+        formatNumber(point.latitude, 6),
+        formatNumber(point.longitude, 6),
+        formatNumber(point.distance, 3),
+      ].map(escapeCsvValue).join(';');
+    });
+
+    const csv = `\uFEFF${headers.map(escapeCsvValue).join(';')}\r\n${rows.join('\r\n')}\r\n`;
+    const dateString = new Date(session.startTime).toISOString().slice(0, 10);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Entrenamiento_RodilloInt_${session.id}_${dateString}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    console.log(`CSV exported successfully for session: ${session.id}`);
+    return true;
+  } catch (error) {
+    console.error('Error exporting session to CSV:', error);
+    return false;
+  }
+}
+
+/**
+ * Generates a binary FIT file from session data and triggers download.
+ * Produces a valid Activity FIT file compatible with Garmin Connect, Strava and TrainingPeaks.
+ */
+function exportSessionFit(session, sensorData, userName = 'Usuario') {
+  try {
+    if (!Array.isArray(sensorData) || sensorData.length === 0) return false;
+
+    // ---- FIT binary helpers ----
+    const buf = [];
+    const writeUint8  = (v) => buf.push(v & 0xFF);
+    const writeUint16 = (v) => { buf.push(v & 0xFF); buf.push((v >> 8) & 0xFF); };
+    const writeUint32 = (v) => { for (let i = 0; i < 4; i++) { buf.push((v >>> (i * 8)) & 0xFF); } };
+    const writeInt32  = (v) => writeUint32(v >>> 0);
+    const writeUint32BE = (v) => { for (let i = 3; i >= 0; i--) buf.push((v >>> (i * 8)) & 0xFF); };
+
+    // FIT timestamps use seconds since 1989-12-31T00:00:00Z (unix = 631065600)
+    const FIT_EPOCH = 631065600;
+    const toFitTime = (ms) => Math.max(0, Math.round(ms / 1000) - FIT_EPOCH);
+
+    // ---- Local Message Definitions ----
+    // Local msg 0 → file_id (mesg_num = 0)
+    const defFileId = () => {
+      writeUint8(0x40);        // Definition header: local msg 0
+      writeUint8(0x00);        // reserved
+      writeUint8(0x00);        // arch: little endian
+      writeUint16(0);          // mesg_num: file_id
+      writeUint8(5);           // num fields
+      // field_def: field_num, size, base_type
+      writeUint8(0); writeUint8(1); writeUint8(0); // type (enum)
+      writeUint8(1); writeUint8(2); writeUint8(132); // manufacturer (uint16)
+      writeUint8(2); writeUint8(2); writeUint8(132); // product (uint16)
+      writeUint8(3); writeUint8(4); writeUint8(134); // serial_number (uint32)
+      writeUint8(4); writeUint8(4); writeUint8(134); // time_created (uint32)
+    };
+    const dataFileId = (timeCreated) => {
+      writeUint8(0x00);        // Data header local msg 0
+      writeUint8(4);           // type: activity
+      writeUint16(255);        // manufacturer: development
+      writeUint16(0);          // product
+      writeUint32(0xFFFFFFFF); // serial_number: invalid
+      writeUint32(timeCreated);
+    };
+
+    // Local msg 1 → event (mesg_num = 21)
+    const defEvent = () => {
+      writeUint8(0x41);
+      writeUint8(0x00);
+      writeUint8(0x00);
+      writeUint16(21); // event
+      writeUint8(3);
+      writeUint8(253); writeUint8(4); writeUint8(134); // timestamp
+      writeUint8(0);   writeUint8(1); writeUint8(0);   // event (enum)
+      writeUint8(1);   writeUint8(1); writeUint8(0);   // event_type (enum)
+    };
+    const dataEvent = (fitTs, event, eventType) => {
+      writeUint8(0x01);
+      writeUint32(fitTs);
+      writeUint8(event);
+      writeUint8(eventType);
+    };
+
+    // Local msg 2 → record (mesg_num = 20)
+    const defRecord = () => {
+      writeUint8(0x42);
+      writeUint8(0x00);
+      writeUint8(0x00);
+      writeUint16(20); // record
+      writeUint8(9);   // num fields
+      writeUint8(253); writeUint8(4); writeUint8(134); // timestamp (uint32)
+      writeUint8(0);   writeUint8(4); writeUint8(133); // position_lat (sint32 semicircles)
+      writeUint8(1);   writeUint8(4); writeUint8(133); // position_long (sint32 semicircles)
+      writeUint8(2);   writeUint8(2); writeUint8(132); // altitude (uint16, scale 5, offset 500)
+      writeUint8(3);   writeUint8(1); writeUint8(2);   // heart_rate (uint8)
+      writeUint8(4);   writeUint8(1); writeUint8(2);   // cadence (uint8)
+      writeUint8(5);   writeUint8(4); writeUint8(134); // distance (uint32, scale 100, cm)
+      writeUint8(6);   writeUint8(2); writeUint8(132); // speed (uint16, scale 1000, mm/s)
+      writeUint8(7);   writeUint8(2); writeUint8(132); // power (uint16, watts)
+    };
+    const degToSemi = (deg) => Math.round(deg * (2 ** 31) / 180);
+    const dataRecord = (fitTs, pt) => {
+      writeUint8(0x02);
+      writeUint32(fitTs);
+      const hasGps = Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude);
+      writeInt32(hasGps ? degToSemi(pt.latitude)  : 0x7FFFFFFF);
+      writeInt32(hasGps ? degToSemi(pt.longitude) : 0x7FFFFFFF);
+      const altRaw = Number.isFinite(pt.elevation) ? Math.round((pt.elevation + 500) * 5) : 0xFFFF;
+      writeUint16(Math.min(0xFFFE, Math.max(0, altRaw)));
+      writeUint8(Number.isFinite(pt.heartRate) && pt.heartRate > 0 ? Math.min(255, Math.round(pt.heartRate)) : 0xFF);
+      writeUint8(Number.isFinite(pt.cadence)   && pt.cadence   > 0 ? Math.min(254, Math.round(pt.cadence))   : 0xFF);
+      const distCm = Number.isFinite(pt.distance) ? Math.round(pt.distance * 100000) : 0xFFFFFFFF;
+      writeUint32(distCm);
+      const speedMms = Number.isFinite(pt.speed) ? Math.round((pt.speed / 3.6) * 1000) : 0xFFFF;
+      writeUint16(Math.min(0xFFFE, speedMms));
+      const pwr = Number.isFinite(pt.power) && pt.power >= 0 ? Math.min(0xFFFE, Math.round(pt.power)) : 0xFFFF;
+      writeUint16(pwr);
+    };
+
+    // Local msg 3 → lap (mesg_num = 19)
+    // FIT SDK field IDs: avg_heart_rate=15(uint8), avg_cadence=16(uint8),
+    //                    avg_power=19(uint16), max_power=20(uint16)
+    const defLap = () => {
+      writeUint8(0x43);
+      writeUint8(0x00);
+      writeUint8(0x00);
+      writeUint16(19); // lap
+      writeUint8(10);  // num fields
+      writeUint8(253); writeUint8(4); writeUint8(134); // timestamp
+      writeUint8(2);   writeUint8(4); writeUint8(134); // start_time
+      writeUint8(7);   writeUint8(4); writeUint8(134); // total_elapsed_time (uint32, scale 1000 ms)
+      writeUint8(9);   writeUint8(4); writeUint8(134); // total_distance (uint32, scale 100 cm)
+      writeUint8(15);  writeUint8(1); writeUint8(2);   // avg_heart_rate (uint8, bpm)
+      writeUint8(16);  writeUint8(1); writeUint8(2);   // avg_cadence (uint8, rpm)
+      writeUint8(19);  writeUint8(2); writeUint8(132); // avg_power (uint16, watts)
+      writeUint8(20);  writeUint8(2); writeUint8(132); // max_power (uint16, watts)
+      writeUint8(25);  writeUint8(1); writeUint8(0);   // sport (enum: 2=cycling)
+      writeUint8(26);  writeUint8(1); writeUint8(0);   // sub_sport (enum: 58=virtual_cycling)
+    };
+    const dataLap = (fitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr, avgHr, avgCad) => {
+      writeUint8(0x03);
+      writeUint32(fitTs);
+      writeUint32(startFitTs);
+      writeUint32(Math.round(elapsedSec * 1000));
+      writeUint32(Math.round(distKm * 100000));
+      writeUint8(avgHr  > 0 ? Math.min(254, avgHr)  : 0xFF); // avg_heart_rate (0xFF=invalid)
+      writeUint8(avgCad > 0 ? Math.min(254, avgCad) : 0xFF); // avg_cadence    (0xFF=invalid)
+      writeUint16(avgPwr > 0 ? Math.min(0xFFFE, avgPwr) : 0xFFFF); // avg_power
+      writeUint16(maxPwr > 0 ? Math.min(0xFFFE, maxPwr) : 0xFFFF); // max_power
+      writeUint8(2);  // sport: cycling
+      writeUint8(58); // sub_sport: virtual_cycling
+    };
+
+    // Local msg 4 → session (mesg_num = 18)
+    // FIT SDK field IDs: avg_heart_rate=16(uint8), avg_cadence=17(uint8),
+    //                    avg_power=20(uint16), max_power=21(uint16)
+    const defSession = () => {
+      writeUint8(0x44);
+      writeUint8(0x00);
+      writeUint8(0x00);
+      writeUint16(18); // session
+      writeUint8(10);  // num fields
+      writeUint8(253); writeUint8(4); writeUint8(134); // timestamp
+      writeUint8(2);   writeUint8(4); writeUint8(134); // start_time
+      writeUint8(7);   writeUint8(4); writeUint8(134); // total_elapsed_time
+      writeUint8(9);   writeUint8(4); writeUint8(134); // total_distance
+      writeUint8(16);  writeUint8(1); writeUint8(2);   // avg_heart_rate (uint8, bpm)
+      writeUint8(17);  writeUint8(1); writeUint8(2);   // avg_cadence (uint8, rpm)
+      writeUint8(20);  writeUint8(2); writeUint8(132); // avg_power (uint16, watts)
+      writeUint8(21);  writeUint8(2); writeUint8(132); // max_power (uint16, watts)
+      writeUint8(25);  writeUint8(1); writeUint8(0);   // sport (enum: 2=cycling)
+      writeUint8(26);  writeUint8(1); writeUint8(0);   // sub_sport (enum: 58=virtual_cycling)
+    };
+    const dataSession = (fitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr, avgHr, avgCad) => {
+      writeUint8(0x04);
+      writeUint32(fitTs);
+      writeUint32(startFitTs);
+      writeUint32(Math.round(elapsedSec * 1000));
+      writeUint32(Math.round(distKm * 100000));
+      writeUint8(avgHr  > 0 ? Math.min(254, avgHr)  : 0xFF); // avg_heart_rate (0xFF=invalid)
+      writeUint8(avgCad > 0 ? Math.min(254, avgCad) : 0xFF); // avg_cadence    (0xFF=invalid)
+      writeUint16(avgPwr > 0 ? Math.min(0xFFFE, avgPwr) : 0xFFFF); // avg_power
+      writeUint16(maxPwr > 0 ? Math.min(0xFFFE, maxPwr) : 0xFFFF); // max_power
+      writeUint8(2);  // sport: cycling
+      writeUint8(58); // sub_sport: virtual_cycling
+    };
+
+    // Local msg 5 → activity (mesg_num = 34)
+    const defActivity = () => {
+      writeUint8(0x45);
+      writeUint8(0x00);
+      writeUint8(0x00);
+      writeUint16(34); // activity
+      writeUint8(4);   // 4 fields
+      writeUint8(253); writeUint8(4); writeUint8(134); // timestamp (uint32)
+      writeUint8(0);   writeUint8(4); writeUint8(134); // total_timer_time (ms, uint32)
+      writeUint8(1);   writeUint8(2); writeUint8(132); // num_sessions (uint16)
+      writeUint8(2);   writeUint8(1); writeUint8(0);   // type (enum: 0=manual)
+    };
+    const dataActivity = (fitTs, elapsedSec) => {
+      writeUint8(0x05);
+      writeUint32(fitTs);
+      writeUint32(Math.round(elapsedSec * 1000));
+      writeUint16(1); // num_sessions: 1
+      writeUint8(0);  // type: manual
+    };
+
+    // ---- Build FIT body ----
+    const startFitTs = toFitTime(session.startTime);
+    const endMs = session.endTime || (sensorData[sensorData.length - 1].timestamp);
+    const endFitTs = toFitTime(endMs);
+    const elapsedSec = (endMs - session.startTime) / 1000;
+    // avgPwr: solo puntos activos (power > 0) para no penalizar pausas
+    let totalPwr = 0;
+    let activePwrCount = 0;
+    let maxPwr = 0;
+    let totalHr = 0;
+    let activeHrCount = 0;
+    let totalCad = 0;
+    let activeCadCount = 0;
+    for (const pt of sensorData) {
+      const p = Number.isFinite(pt.power) ? pt.power : 0;
+      if (p > 0) { totalPwr += p; activePwrCount++; }
+      if (p > maxPwr) maxPwr = p;
+      const hr = Number.isFinite(pt.heartRate) ? pt.heartRate : 0;
+      if (hr > 0) { totalHr += hr; activeHrCount++; }
+      const cad = Number.isFinite(pt.cadence) ? pt.cadence : 0;
+      if (cad > 0) { totalCad += cad; activeCadCount++; }
+    }
+    const avgPwr = activePwrCount > 0 ? Math.round(totalPwr / activePwrCount) : 0;
+    const avgHr  = activeHrCount  > 0 ? Math.round(totalHr  / activeHrCount)  : 0;
+    const avgCad = activeCadCount > 0 ? Math.round(totalCad / activeCadCount) : 0;
+    const distKm = session.totalDistance || 0;
+
+    // file_id
+    defFileId();
+    dataFileId(startFitTs);
+
+    // start event
+    defEvent();
+    dataEvent(startFitTs, 0, 0); // event=timer, event_type=start
+
+    // records
+    defRecord();
+    for (const pt of sensorData) {
+      dataRecord(toFitTime(pt.timestamp), pt);
+    }
+
+    // stop event
+    dataEvent(endFitTs, 0, 1); // event=timer, event_type=stop_all
+
+    // lap
+    defLap();
+    dataLap(endFitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr, avgHr, avgCad);
+
+    // session
+    defSession();
+    dataSession(endFitTs, startFitTs, elapsedSec, distKm, avgPwr, maxPwr, avgHr, avgCad);
+
+    // activity
+    defActivity();
+    dataActivity(endFitTs, elapsedSec);
+
+    // ---- Build FIT header ----
+    const dataSize = buf.length;
+    const header = [];
+    const hPush8  = (v) => header.push(v & 0xFF);
+    const hPush16 = (v) => { header.push(v & 0xFF); header.push((v >> 8) & 0xFF); };
+    const hPush32 = (v) => { for (let i = 0; i < 4; i++) header.push((v >>> (i*8)) & 0xFF); };
+
+    hPush8(14);          // header size
+    hPush8(0x10);        // protocol version 1.0
+    hPush16(2117);       // profile version (21.17)
+    hPush32(dataSize);
+    // .FIT signature
+    [0x2E, 0x46, 0x49, 0x54].forEach(b => hPush8(b));
+
+    // Header CRC (CRC-16 over first 12 bytes)
+    const fitCrc = (bytes) => {
+      const TABLE = [0x0000,0xCC01,0xD801,0x1400,0xF001,0x3C00,0x2800,0xE401,
+                     0xA001,0x6C00,0x7800,0xB401,0x5000,0x9C01,0x8801,0x4400];
+      let crc = 0;
+      for (const b of bytes) {
+        let tmp = TABLE[crc & 0xF]; crc = (crc >> 4) & 0x0FFF; crc ^= tmp ^ TABLE[b & 0xF];
+        tmp = TABLE[crc & 0xF]; crc = (crc >> 4) & 0x0FFF; crc ^= tmp ^ TABLE[(b >> 4) & 0xF];
+      }
+      return crc;
+    };
+    const hCrc = fitCrc(header);
+    hPush16(hCrc);
+
+    // File CRC over entire body
+    const bodyCrc = fitCrc(buf);
+    buf.push(bodyCrc & 0xFF);
+    buf.push((bodyCrc >> 8) & 0xFF);
+
+    const allBytes = new Uint8Array(header.length + buf.length);
+    allBytes.set(header, 0);
+    allBytes.set(buf, header.length);
+    const blob = new Blob([allBytes], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const dateString = new Date(session.startTime).toISOString().slice(0, 10);
+    link.download = `Entrenamiento_RodilloInt_${session.id}_${dateString}.fit`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    console.log(`FIT exported successfully for session: ${session.id}`);
+    return true;
+  } catch (e) {
+    console.error('Error exporting session to FIT:', e);
+    return false;
+  }
+}
+
+/**
+ * Parses a GPX/TCX file asynchronously using a Web Worker to avoid blocking the main UI thread.
+ */
+function parseRouteAsync(fileText) {
+  return new Promise((resolve, reject) => {
+    // Check if Web Workers are supported
+    if (typeof Worker === 'undefined') {
+      console.warn('[GPX Parser] Web Workers no soportados en este navegador, usando fallback en el hilo principal.');
+      const result = parseRoute(fileText);
+      if (result) resolve(result);
+      else reject(new Error('Error al parsear el archivo de ruta en el hilo principal.'));
+      return;
+    }
+
+    try {
+      // Define parseRouteWithRegExp inside the worker scope
+      const workerCode = `
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+          const R = 6371.0;
+          const dLat = (lat2 - lat1) * Math.PI / 180;
+          const dLon = (lon2 - lon1) * Math.PI / 180;
+          const a = 
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          return R * c;
+        }
+
+        function parseRouteWithRegExp(fileText) {
+          const points = [];
+          const elevations = [];
+
+          const trkptRegex = /<trkpt\\s+lat=["'](-?\\d+(?:\\.\\d+)?)["']\\s+lon=["'](-?\\d+(?:\\.\\d+)?)["']\\s*>([\\s\\S]*?)<\\/trkpt>/gi;
+          const eleRegex = /<ele>([\\s\\S]*?)<\\/ele>/i;
+          
+          let match;
+          let hasGpxPoints = false;
+          
+          while ((match = trkptRegex.exec(fileText)) !== null) {
+            hasGpxPoints = true;
+            const lat = parseFloat(match[1]);
+            const lon = parseFloat(match[2]);
+            const inner = match[3];
+            const eleMatch = eleRegex.exec(inner);
+            const ele = eleMatch ? parseFloat(eleMatch[1]) : 0.0;
+            
+            if (!isNaN(lat) && !isNaN(lon)) {
+              points.push({ lat, lon });
+              elevations.push(isNaN(ele) ? 0.0 : ele);
+            }
+          }
+
+          if (!hasGpxPoints) {
+            const trackpointRegex = /<Trackpoint\\s*>([\\s\\S]*?)<\\/Trackpoint>/gi;
+            const latRegex = /<LatitudeDegrees>(-?\\d+(?:\\.\\d+)?)<\\/LatitudeDegrees>/i;
+            const lonRegex = /<LongitudeDegrees>(-?\\d+(?:\\.\\d+)?)<\\/LongitudeDegrees>/i;
+            const altRegex = /<AltitudeMeters>(-?\\d+(?:\\.\\d+)?)<\\/AltitudeMeters>/i;
+
+            while ((match = trackpointRegex.exec(fileText)) !== null) {
+              const inner = match[1];
+              const latMatch = latRegex.exec(inner);
+              const lonMatch = lonRegex.exec(inner);
+              const altMatch = altRegex.exec(inner);
+
+              if (latMatch && lonMatch) {
+                const lat = parseFloat(latMatch[1]);
+                const lon = parseFloat(lonMatch[1]);
+                const ele = altMatch ? parseFloat(altMatch[1]) : 0.0;
+
+                if (!isNaN(lat) && !isNaN(lon)) {
+                  points.push({ lat, lon });
+                  elevations.push(isNaN(ele) ? 0.0 : ele);
+                }
+              }
+            }
+          }
+
+          if (points.length === 0) return null;
+
+          const distances = [0.0];
+          let totalDist = 0.0;
+          for (let i = 1; i < points.length; i++) {
+            totalDist += calculateDistance(
+              points[i - 1].lat, points[i - 1].lon,
+              points[i].lat, points[i].lon
+            );
+            distances.push(totalDist);
+          }
+
+          return { points, elevations, distances };
+        }
+
+        self.onmessage = function(e) {
+          try {
+            const result = parseRouteWithRegExp(e.data);
+            if (result) {
+              self.postMessage({ success: true, data: result });
+            } else {
+              self.postMessage({ success: false, error: 'No se encontraron puntos de ruta válidos.' });
+            }
+          } catch (err) {
+            self.postMessage({ success: false, error: err.message });
+          }
+        };
+      `;
+
+      const blob = new Blob([workerCode], { type: 'application/javascript' });
+      const workerUrl = URL.createObjectURL(blob);
+      const worker = new Worker(workerUrl);
+
+      worker.onmessage = function(e) {
+        // Clean up worker and URL object
+        worker.terminate();
+        URL.revokeObjectURL(workerUrl);
+
+        if (e.data.success) {
+          resolve(e.data.data);
+        } else {
+          reject(new Error(e.data.error));
+        }
+      };
+
+      worker.onerror = function(err) {
+        worker.terminate();
+        URL.revokeObjectURL(workerUrl);
+        reject(err);
+      };
+
+      worker.postMessage(fileText);
+    } catch (err) {
+      console.warn('[GPX Parser Worker] Error al instanciar Worker, usando fallback:', err);
+      const result = parseRoute(fileText);
+      if (result) resolve(result);
+      else reject(err);
+    }
+  });
+}
+
+// Export GPX functions globally & as ES module
+export const GpxManager = {
+  parseRoute,
+  parseRouteAsync,
+  exportSession,
+  exportSessionCsv,
+  exportSessionFit
+};
+window.GpxManager = GpxManager;

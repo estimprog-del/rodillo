@@ -1,0 +1,2450 @@
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        />
+        <meta
+            http-equiv="Content-Security-Policy"
+            content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https: wss:; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'"
+        />
+        <title>RodilloInt - Training Lab</title>
+
+        <!-- PWA -->
+        <link rel="manifest" href="manifest.json" />
+        <meta name="theme-color" content="#1a1f35" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="RodilloInt" />
+        <link rel="icon" href="icons/icon-192.png" type="image/png" />
+        <link rel="apple-touch-icon" href="icons/icon-192.png" />
+
+        <!-- CSS Stylesheets -->
+      <script type="module" crossorigin src="/rodillo/assets/index-CpsUhv2z.js"></script>
+      <link rel="stylesheet" crossorigin href="/rodillo/assets/index-v-Tw8SXO.css">
+    </head>
+    <body>
+        <!-- 1. SCREEN: USER SELECTION -->
+        <div id="screen-user-select" class="screen active">
+            <div class="user-select-layout">
+                <h1 class="logo-title">RODILLO INT</h1>
+                <p class="logo-subtitle">TRAINING LAB</p>
+
+                <div class="users-grid" id="users-grid-container">
+                    <!-- populated dynamically via app.js -->
+                    <div
+                        class="glass-card user-card"
+                        style="grid-column: span 100%; cursor: default"
+                    >
+                        <p style="color: var(--text-secondary)">
+                            Cargando perfiles...
+                        </p>
+                    </div>
+
+                </div>
+
+                <div class="user-action-buttons">
+                    <button class="btn btn-primary" id="btn-show-add-user">
+                        Nuevo Usuario
+                    </button>
+                    <button class="btn btn-dark" id="btn-show-import-user">
+                        Importar Perfil
+                    </button>
+                    <button class="btn btn-dark" id="btn-trigger-import-backup">
+                        Restaurar Backup Completo
+                    </button>
+                </div>
+                <input type="file" id="backup-file-input" style="display:none" accept=".json">
+            </div>
+        </div>
+
+        <!-- 2. SCREEN: DASHBOARD -->
+        <div id="screen-dashboard" class="screen">
+            <div class="dashboard-header glass-card">
+                <div class="dashboard-header-left-group">
+                    <div class="active-profile-info" id="active-profile-header" style="cursor: pointer;">
+                        <div class="avatar-small">U</div>
+                        <button id="btn-open-user-profile-trigger" style="display:none"></button>
+                        <div class="active-profile-details">
+                            <span class="active-profile-greeting">Hola,</span>
+                            <span
+                                class="active-profile-name"
+                                id="dashboard-user-name"
+                                >Usuario</span
+                            >
+                        </div>
+                    </div>
+                </div>
+                <div class="dashboard-header-buttons">
+                    <button id="btn-dashboard-sensors" class="dashboard-sensor-btn" type="button" title="Sensores" aria-label="Sensores">Sensores</button>
+                    <button
+                        class="btn btn-dark"
+                        id="btn-dashboard-settings"
+                        style="padding: 10px 14px"
+                    >
+                        ⚙️ Ajustes
+                    </button>
+                    <button
+                        class="btn btn-dark"
+                        id="btn-toggle-fullscreen"
+                        style="padding: 10px 14px"
+                    >
+                        ⛶ Pantalla completa
+                    </button>
+                    <button
+                        class="btn btn-dark"
+                        id="btn-open-help"
+                        style="padding: 10px 14px"
+                    >
+                        ❓ Ayuda
+                    </button>
+                    <button
+                        class="btn btn-dark"
+                        id="btn-logout"
+                        style="
+                            padding: 10px 14px;
+                            border-color: rgba(239, 68, 68, 0.2);
+                            color: var(--accent-red);
+                        "
+                    >
+                        Cerrar Sesión Perfil
+                    </button>
+                </div>
+            </div>
+
+                <h2 style="font-size: 24px; margin-bottom: 20px">
+                    Entrenamientos
+                </h2>
+                <div class="dashboard-modes">
+                    <!-- Route training -->
+                    <div class="glass-card mode-card route" id="mode-route">
+                        <div>
+                            <div class="mode-icon">🗺️</div>
+                            <h3 class="mode-title">NUEVA SESIÓN</h3>
+                            <p class="mode-desc">
+                                Entrenamiento con simulador de ruta. Carga un
+                                archivo GPX/TCX y el rodillo cambiará la
+                                resistencia automáticamente.
+                            </p>
+                        </div>
+                        <span
+                            style="
+                                color: var(--accent-green);
+                                font-size: 13px;
+                                font-weight: 600;
+                                margin-top: 16px;
+                            "
+                            >Iniciar ➔</span
+                        >
+                        <button
+                            class="route-library-open"
+                            id="btn-open-saved-routes"
+                            type="button"
+                        >
+                            Rutas guardadas <span aria-hidden="true">➔</span>
+                        </button>
+                    </div>
+
+                    <!-- Manual training -->
+                    <div class="glass-card mode-card manual" id="mode-manual">
+                        <div>
+                            <div class="mode-icon">🎛️</div>
+                            <h3 class="mode-title">SESIÓN MANUAL</h3>
+                            <p class="mode-desc">
+                                Controla la resistencia de tu rodillo
+                                inteligente de manera manual usando botones de
+                                pendiente.
+                            </p>
+                        </div>
+                        <span
+                            style="
+                                color: var(--accent-blue);
+                                font-size: 13px;
+                                font-weight: 600;
+                                margin-top: 16px;
+                            "
+                            >Iniciar ➔</span
+                        >
+                    </div>
+
+                    <!-- ERG training -->
+                    <div class="glass-card mode-card erg" id="mode-erg">
+                        <div>
+                            <div class="mode-icon">⚡</div>
+                            <h3 class="mode-title">ENTRENAMIENTO ERG</h3>
+                            <p class="mode-desc">
+                                Entrenamientos estructurados por potencia objetivo (% FTP / W).
+                                Carga archivos .zwo o .erg y el rodillo ajustará la resistencia automáticamente.
+                            </p>
+                        </div>
+                        <span
+                            style="
+                                color: var(--accent-orange);
+                                font-size: 13px;
+                                font-weight: 600;
+                                margin-top: 16px;
+                            "
+                            >Elegir entrenamiento ➔</span
+                        >
+                    </div>
+
+                    <!-- Traditional training -->
+                    <div
+                        class="glass-card mode-card traditional"
+                        id="mode-traditional"
+                    >
+                        <div>
+                            <div class="mode-icon">🚲</div>
+                            <h3 class="mode-title">RODILLO TRADICIONAL</h3>
+                            <p class="mode-desc">
+                                Para rodillo no inteligente. Lee y registra la
+                                información de tus sensores externos
+                                (Vel/Cad/Pot) en tiempo real.
+                            </p>
+                        </div>
+                        <span
+                            style="
+                                color: var(--accent-purple);
+                                font-size: 13px;
+                                font-weight: 600;
+                                margin-top: 16px;
+                            "
+                            >Iniciar ➔</span
+                        >
+                    </div>
+                </div>
+
+                <h2
+                    style="
+                        font-size: 20px;
+                        margin-bottom: 16px;
+                        margin-top: 12px;
+                    "
+                >
+                    Estadísticas e Historial
+                </h2>
+                <div class="dashboard-shortcuts">
+                    <button
+                        class="btn btn-dark glass-card"
+                        id="btn-go-history"
+                        style="
+                            flex-direction: column;
+                            gap: 8px;
+                            padding: 20px 10px;
+                        "
+                    >
+                        <span style="font-size: 24px">📋</span>
+                        <span style="font-weight: 700">Historial</span>
+                    </button>
+                    <button
+                        class="btn btn-dark glass-card"
+                        id="btn-go-progress"
+                        style="
+                            flex-direction: column;
+                            gap: 8px;
+                            padding: 20px 10px;
+                        "
+                    >
+                        <span style="font-size: 24px">📈</span>
+                        <span style="font-weight: 700">Progreso</span>
+                    </button>
+                </div>
+            </div>
+
+        <!-- SCREEN: SAVED ROUTES -->
+        <div id="screen-routes" class="screen">
+            <div class="page-heading-row">
+                <div>
+                    <h2>Rutas guardadas</h2>
+                    <p class="help-intro">Elige una ruta para preparar tu próxima sesión. Las favoritas aparecen primero.</p>
+                </div>
+                <button class="btn btn-dark page-heading-back" id="btn-routes-back">← Volver</button>
+            </div>
+            <div class="route-library-toolbar">
+                <label for="route-library-filter">Mostrar</label>
+                <select id="route-library-filter">
+                    <option value="all">Todas las rutas</option>
+                    <option value="app">Rutas de la app</option>
+                    <option value="user">Mis rutas</option>
+                </select>
+                <input type="file" id="saved-route-file-input" accept=".gpx,.xml,.tcx" hidden />
+                <button class="btn btn-primary" id="btn-add-saved-route" type="button">＋ Añadir ruta GPX/TCX</button>
+                <span id="saved-route-library-status" role="status" aria-live="polite"></span>
+            </div>
+            <div id="route-library-list" class="route-library-list route-library-screen-list" aria-live="polite">
+                Cargando rutas...
+            </div>
+        </div>
+
+        <!-- SCREEN: WORKOUTS -->
+        <div id="screen-workouts" class="screen">
+            <div class="page-heading-row">
+                <div>
+                    <h2>Entrenamientos Estructurados (Modo ERG)</h2>
+                    <p class="help-intro">Elige un entrenamiento de la biblioteca o importa tus propios archivos <strong>.zwo</strong> o <strong>.erg</strong>. El rodillo ajustará automáticamente la resistencia en cada bloque.</p>
+                </div>
+                <button class="btn btn-dark page-heading-back" id="btn-workouts-back">← Volver</button>
+            </div>
+            <div class="route-library-toolbar">
+                <label for="workout-library-filter">Mostrar</label>
+                <select id="workout-library-filter">
+                    <option value="all">Todos los entrenamientos</option>
+                    <option value="presets">Entrenamientos predefinidos</option>
+                    <option value="user">Mis entrenamientos importados</option>
+                </select>
+                <input type="file" id="workout-file-input" accept=".zwo,.erg,.mrc,.xml" hidden />
+                <button class="btn btn-primary" id="btn-import-workout" type="button">＋ Importar archivo (.zwo / .erg)</button>
+                <button class="btn btn-secondary" id="btn-create-workout" type="button">＋ Crear entrenamiento</button>
+                <span id="workout-library-status" role="status" aria-live="polite"></span>
+            </div>
+            <section id="workout-editor" class="workout-editor glass-card" hidden>
+                <div class="workout-editor-header">
+                    <div>
+                        <h3 id="workout-editor-title">Crear entrenamiento</h3>
+                        <p>Define bloques de potencia; el perfil se actualiza mientras editas.</p>
+                    </div>
+                    <button class="btn btn-dark btn-sm" id="btn-close-workout-editor" type="button" aria-label="Cerrar editor">✕</button>
+                </div>
+                <div class="workout-editor-details">
+                    <label>Nombre
+                        <input id="workout-editor-name" type="text" maxlength="80" placeholder="Ej. Series de umbral" required />
+                    </label>
+                    <label>Descripción
+                        <input id="workout-editor-description" type="text" maxlength="180" placeholder="Descripción opcional" />
+                    </label>
+                    <label>Unidad de potencia
+                        <select id="workout-editor-unit">
+                            <option value="ftp">% FTP</option>
+                            <option value="watts">Vatios (W)</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="workout-editor-blocks-heading">
+                    <h4>Bloques</h4>
+                    <div class="workout-editor-block-actions">
+                        <button class="btn btn-secondary btn-sm" id="btn-add-workout-step" type="button">＋ Añadir bloque</button>
+                        <button class="btn btn-dark btn-sm" id="btn-add-workout-repeat" type="button">＋ Grupo repetido</button>
+                    </div>
+                </div>
+                <div id="workout-editor-steps" class="workout-editor-steps"></div>
+                <div class="workout-editor-preview">
+                    <div class="workout-editor-preview-heading">
+                        <strong>Perfil</strong>
+                        <span id="workout-editor-summary">0 bloques · 00:00</span>
+                    </div>
+                    <div id="workout-editor-chart"></div>
+                </div>
+                <div class="workout-editor-actions">
+                    <button class="btn btn-dark" id="btn-cancel-workout-editor" type="button">Cancelar</button>
+                    <button class="btn btn-primary" id="btn-save-created-workout" type="button">Guardar entrenamiento</button>
+                </div>
+            </section>
+            <div id="workout-library-list" class="workout-library-list" aria-live="polite">
+                Cargando entrenamientos...
+            </div>
+        </div>
+
+        <!-- 3. SCREEN: HELP -->
+        <div id="screen-help" class="screen">
+            <div class="page-heading-row">
+                <h2>Ayuda y guía de uso</h2>
+                <button class="btn btn-dark page-heading-back" id="btn-help-back">← Volver</button>
+            </div>
+            <p class="help-intro">
+                RodilloInt es una aplicación web para entrenar en interior,
+                simular rutas y guardar la evolución de tus sesiones.
+            </p>
+            <div class="help-grid">
+                <article class="glass-card help-card">
+                    <h3>¿Para qué sirve?</h3>
+                    <p>Permite registrar velocidad, distancia, potencia, cadencia, pulso, desnivel y tiempo durante el entrenamiento.</p>
+                    <p>Los datos se guardan en este navegador y se asocian al perfil activo.</p>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Tipos de uso</h3>
+                    <p><strong>Nueva sesión:</strong> carga un GPX/TCX y sigue la ruta con el cambio automático de pendiente.</p>
+                    <p><strong>Sesión manual:</strong> entrena sin ruta y ajusta pendiente o potencia.</p>
+                    <p><strong>Entrenamiento ERG:</strong> sigue bloques estructurados de potencia; con un rodillo compatible conectado, la app ajusta la resistencia al objetivo.</p>
+                    <p><strong>Rodillo tradicional:</strong> registra los sensores sin controlar la resistencia.</p>
+                    <p><strong>Rodillo Virtual:</strong> prueba la aplicación sin sensores físicos.</p>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Primeros pasos</h3>
+                    <ol>
+                        <li>Crea o selecciona un perfil.</li>
+                        <li>Revisa peso, FTP y frecuencia cardíaca máxima.</li>
+                        <li>Elige un modo de entrenamiento.</li>
+                        <li>Conecta los sensores o activa el Rodillo Virtual.</li>
+                        <li>Inicia la sesión y espera la cuenta atrás si está configurada.</li>
+                    </ol>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Comprobación rápida después de actualizar</h3>
+                    <ul>
+                        <li>Sin sensores: activa el Rodillo Virtual, inicia una sesión y confirma que cambian las métricas.</li>
+                        <li>Con sensores: conecta el rodillo o los sensores, inicia una sesión y comprueba que los indicadores muestran conexión y señal reciente.</li>
+                        <li>Prueba pausa y reanudación; en una ruta, comprueba también la pausa automática al dejar de pedalear y la reanudación al volver a moverte.</li>
+                        <li>En ERG: inicia un entrenamiento, comprueba el bloque y la potencia objetivo, y finaliza para revisar el resumen.</li>
+                        <li>Abre el historial, compara dos sesiones y verifica que sus métricas se muestran correctamente.</li>
+                    </ul>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Entrenamientos ERG</h3>
+                    <p>En <strong>Entrenamientos ERG</strong> puedes elegir un entrenamiento predefinido, importar archivos <strong>.zwo</strong> (Zwift) o <strong>.erg/.mrc</strong> (Computrainer), o crear uno propio.</p>
+                    <p>El editor permite añadir bloques y grupos repetidos, definir duración, potencia en <strong>% FTP o vatios</strong> y consultar el perfil antes de guardarlo.</p>
+                    <p>Puedes editar tus entrenamientos personalizados o copiar uno para modificar la copia; los predefinidos permanecen intactos. También puedes exportar tus entrenamientos personalizados a ZWO.</p>
+                    <p>Selecciona el entrenamiento y prepara la sesión. Durante el entrenamiento verás el bloque actual, el siguiente, el tiempo restante y tu potencia frente al objetivo. Al finalizar, el resumen muestra la adherencia al objetivo cuando hay lecturas de potencia.</p>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Ajustes importantes</h3>
+                    <p>En <strong>⚙️ Ajustes</strong> puedes elegir el mapa 2D/3D aéreo/FPV, la orientación Norte/Ruta, el diseño de pantalla y el tamaño del texto. En FPV, la cámara sigue el recorrido; puedes ajustar el zoom con los controles o las teclas + y −.</p>
+                    <p>También puedes configurar marchas virtuales, límites de pendiente, realismo, suavizado de sensores, zonas de potencia, el inicio al detectar movimiento y mostrar el fantasma de tu mejor sesión anterior en rutas.</p>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Durante la sesión</h3>
+                    <p>La ficha <strong>Progreso Ruta</strong> muestra lo recorrido, lo restante y el desnivel. <strong>Prox 500m</strong> sirve de referencia para la pendiente próxima.</p>
+                    <p>Puedes pausar, reanudar, finalizar y cambiar de marcha desde la pantalla. En rutas, la sesión puede pausarse automáticamente si deja de detectar movimiento y reanudarse al volver a pedalear. La distancia y la velocidad media se calculan con el tiempo activo.</p>
+                    <p>Los indicadores superiores muestran conexión y recepción reciente: el contorno naranja avisa si un sensor conectado lleva más de cinco segundos sin enviar datos.</p>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Historial y progreso</h3>
+                    <p>Desde el historial puedes consultar sesiones, repetir rutas, renombrarlas y exportarlas a CSV. La pantalla Progreso muestra la evolución acumulada del perfil.</p>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Backups y recuperación</h3>
+                    <p>En Ajustes puedes descargar el backup completo, exportar perfiles, historial, una sesión o la telemetría CSV. También puedes activar la descarga automática al finalizar cada sesión o guardar un backup desde el resumen.</p>
+                    <p>El backup completo incluye perfiles, sesiones, telemetría, preferencias y tus rutas GPX/TCX guardadas. Antes de restaurar se ofrece descargar una copia actual y se muestra cuántos registros se añadirán o reemplazarán. Los backups no están cifrados y se descargan en la carpeta configurada por el navegador; guárdalos de forma segura.</p>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Mando remoto</h3>
+                    <p>Abre el mando desde el botón 📱 de la sesión y escanea el código QR con otro dispositivo conectado a la misma red local. Permite subir o bajar marcha, pausar, reanudar y finalizar.</p>
+                    <p>En desarrollo, el servidor local emite tokens Ably de corta duración y limita cada token a su sala. En GitHub Pages hace falta configurar un servidor de autenticación seguro; sin él, los controles quedan desactivados. El mando también necesita Internet para comunicarse mediante Ably y debe mantenerse abierta la pantalla de la sesión.</p>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Si algo no funciona</h3>
+                    <ul>
+                        <li>Usa Chrome o Edge para Bluetooth.</li>
+                        <li>Comprueba los permisos Bluetooth del navegador.</li>
+                        <li>Activa el Rodillo Virtual para comprobar la aplicación sin sensores.</li>
+                        <li>Si el mando no responde, abre una sala nueva y recarga ambos dispositivos.</li>
+                        <li>No borres los datos del sitio si quieres conservar perfiles e historial.</li>
+                    </ul>
+                </article>
+                <article class="glass-card help-card">
+                    <h3>Privacidad y datos</h3>
+                    <p>Consulta cómo se guardan los datos y cambia tu elección sobre analítica opcional.</p>
+                    <button class="btn btn-dark" id="btn-open-privacy" type="button">🔒 Ver privacidad y preferencias</button>
+                </article>
+            </div>
+        </div>
+
+            <!-- 4. SCREEN: CONNECTIONS -->
+            <div id="screen-connections" class="screen">
+                <h2 style="font-size: 28px; margin-bottom: 6px">
+                    Conexiones Bluetooth
+                </h2>
+                <p style="color: var(--text-secondary); margin-bottom: 24px">
+                    Empareja tus sensores de ciclismo mediante Web Bluetooth.
+                </p>
+
+                <div
+                    id="bluetooth-support-warning"
+                    class="glass-card"
+                    style="
+                        display: none;
+                        border-color: var(--accent-red);
+                        background: var(--accent-red-glow);
+                        margin-bottom: 20px;
+                        padding: 16px;
+                    "
+                >
+                    <h3
+                        style="
+                            color: var(--accent-red);
+                            margin-bottom: 6px;
+                            font-size: 16px;
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                        "
+                    >
+                        ⚠️ Web Bluetooth No Disponible
+                    </h3>
+                    <p
+                        style="
+                            font-size: 13px;
+                            color: var(--text-primary);
+                            line-height: 1.4;
+                        "
+                    >
+                        Esta aplicación requiere <b>HTTPS</b> o
+                        <b>localhost</b>, y un navegador compatible (como Google
+                        Chrome, Microsoft Edge u Opera) para conectarse a los
+                        sensores físicos. Puedes usar el
+                        <b>Rodillo Virtual</b> para probar la aplicación.
+                    </p>
+                </div>
+
+                <div class="connection-flow">
+                    <div class="sensor-list">
+                        <!-- Trainer -->
+                        <div
+                            class="glass-card sensor-card disconnected"
+                            id="sensor-TRAINER"
+                        >
+                            <div class="sensor-info">
+                                <div class="sensor-type-icon">⚡</div>
+                                <div>
+                                    <div class="sensor-name">
+                                        Rodillo Controlable
+                                    </div>
+                                    <div
+                                        class="sensor-status-label"
+                                        id="status-label-TRAINER"
+                                    >
+                                        Desconectado
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                class="btn btn-dark btn-sm"
+                                id="btn-connect-TRAINER"
+                            >
+                                Conectar
+                            </button>
+                        </div>
+
+                        <!-- Heart Rate Monitor -->
+                        <div
+                            class="glass-card sensor-card disconnected"
+                            id="sensor-HRM"
+                        >
+                            <div class="sensor-info">
+                                <div class="sensor-type-icon">❤️</div>
+                                <div>
+                                    <div class="sensor-name">
+                                        Pulsómetro (BPM)
+                                    </div>
+                                    <div
+                                        class="sensor-status-label"
+                                        id="status-label-HRM"
+                                    >
+                                        Desconectado
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                class="btn btn-dark btn-sm"
+                                id="btn-connect-HRM"
+                            >
+                                Conectar
+                            </button>
+                        </div>
+
+                        <!-- Power Meter -->
+                        <div
+                            class="glass-card sensor-card disconnected"
+                            id="sensor-POWER"
+                        >
+                            <div class="sensor-info">
+                                <div class="sensor-type-icon">🔋</div>
+                                <div>
+                                    <div class="sensor-name">
+                                        Potenciómetro (Watts)
+                                    </div>
+                                    <div
+                                        class="sensor-status-label"
+                                        id="status-label-POWER"
+                                    >
+                                        Desconectado
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                class="btn btn-dark btn-sm"
+                                id="btn-connect-POWER"
+                            >
+                                Conectar
+                            </button>
+                        </div>
+
+                        <!-- Speed & Cadence -->
+                        <div
+                            class="glass-card sensor-card disconnected"
+                            id="sensor-CSC"
+                        >
+                            <div class="sensor-info">
+                                <div class="sensor-type-icon">🔄</div>
+                                <div>
+                                    <div class="sensor-name">
+                                        Velocidad / Cadencia
+                                    </div>
+                                    <div
+                                        class="sensor-status-label"
+                                        id="status-label-CSC"
+                                    >
+                                        Desconectado
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                class="btn btn-dark btn-sm"
+                                id="btn-connect-CSC"
+                            >
+                                Conectar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="glass-card" style="margin-top: 10px">
+                        <h3 style="font-size: 16px; margin-bottom: 8px">
+                            ℹ️ Modo Simulación Virtual
+                        </h3>
+                        <p
+                            style="
+                                font-size: 13px;
+                                color: var(--text-secondary);
+                                line-height: 1.4;
+                                margin-bottom: 16px;
+                            "
+                        >
+                            ¿No tienes sensores Bluetooth cerca? Activa el
+                            entrenamiento virtual para simular potencia,
+                            cadencia y ritmo cardíaco en tiempo real mediante
+                            deslizadores en pantalla o física de pedaleo.
+                        </p>
+                        <button
+                            class="btn btn-secondary"
+                            id="btn-toggle-sim"
+                            style="width: 100%"
+                        >
+                            Activar Rodillo Virtual
+                        </button>
+                    </div>
+
+                    <div style="display: flex; gap: 16px; margin-top: 20px">
+                        <button
+                            class="btn btn-dark"
+                            id="btn-connections-back"
+                            style="flex: 1"
+                        >
+                            Volver
+                        </button>
+                        <button
+                            class="btn btn-primary"
+                            id="btn-connections-continue"
+                            style="flex: 1"
+                        >
+                            Continuar Sesión
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. SCREEN: CYCLING WORKOUT (HUD sobre mapa) -->
+            <div id="screen-workout" class="screen">
+                <div class="workout-viewport">
+                    <div id="workout-map" class="workout-map-fullscreen"></div>
+
+                    <!-- Capa de Superposición de Cuenta Atrás -->
+                    <div id="workout-countdown-overlay" class="countdown-overlay" style="display: none;">
+                        <div class="countdown-number" id="countdown-text">3</div>
+                    </div>
+
+                    <!-- HUD superpuesto -->
+                    <div class="workout-hud-overlay">
+                        <div id="route-side-stack" class="hud-route-side-stack" style="display: none">
+                            <section id="route-overview-card" class="glass-card route-overview-card">
+                                <div class="mini-profile-title">
+                                    <span>VISTA GENERAL</span>
+                                    <button class="panel-toggle" data-panel-target="routeOverview" title="Mostrar u ocultar vista general">−</button>
+                                </div>
+                                <div class="panel-content route-overview-content">
+                                    <svg id="route-overview-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Vista general esquemática de la ruta">
+                                        <path id="route-overview-track" class="route-overview-track"></path>
+                                        <path id="route-overview-completed" class="route-overview-completed"></path>
+                                        <circle id="route-overview-start" class="route-overview-start" r="3"></circle>
+                                        <circle id="route-overview-end" class="route-overview-end" r="3"></circle>
+                                        <circle id="route-overview-position" class="route-overview-position" r="4"></circle>
+                                    </svg>
+                                </div>
+                            </section>
+                            <!-- HUD progreso (esquina inferior izquierda) -->
+                            <div class="hud-bottom-left glass-card" id="hud-progress">
+                                <div class="mini-profile-title">
+                                    <span>PROGRESO RUTA</span>
+                                    <button class="panel-toggle" data-panel-target="progress" title="Mostrar u ocultar panel">−</button>
+                                </div>
+                                <div class="panel-content">
+                              <div class="progress-item">
+                                <span class="progress-label">Recorrido</span>
+                                <span id="submetrics-distance">0.00 km</span>
+                              </div>
+                              <div class="progress-item">
+                                <span class="progress-label accent"
+                                    >Restante</span
+                                >
+                                <span id="submetrics-remaining">--</span>
+                              </div>
+                              <div class="progress-item" id="hud-progress-real-km-row" style="display: none; border-top: 1px dashed rgba(255, 255, 255, 0.15); padding-top: 4px; margin-top: 2px;">
+                                <span class="progress-label" style="color: #38bdf8;">Km Real</span>
+                                <span id="submetrics-real-km" style="color: #38bdf8; font-weight: 600;">--</span>
+                              </div>
+                              <div class="progress-item progress-item-spaced">
+                                <span class="progress-label">Desnivel +</span>
+                                <span id="submetrics-ascent">0 m</span>
+                              </div>
+                              <div class="progress-item">
+                                <span class="progress-label warn">Faltan</span>
+                                <span id="submetrics-remaining-ascent">--</span>
+                              </div>
+                            </div>
+                            </div>
+                        </div>
+
+                        <!-- Grupo HUD derecha inferior -->
+                        <div class="hud-bottom-right-group" style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
+                            <button
+                                class="btn-control btn-layout"
+                                id="btn-cycle-layout"
+                                style="width: fit-content; padding: 5px 15px;"
+                                title="Cambiar diseño de pantalla"
+                            >
+                                ▣ Diseño: Auto
+                            </button>
+                            <button
+                                class="btn-control btn-pause"
+                                id="btn-workout-pause"
+                                style="width: fit-content; padding: 5px 15px;"
+                            >
+                                ▶ Pausa
+                            </button>
+                            <button
+                                class="btn-control btn-stop"
+                                id="btn-workout-stop"
+                                style="width: fit-content; padding: 5px 15px;"
+                            >
+                                ⏹ Finalizar
+                            </button>
+                            <button
+                                class="btn-control btn-dark"
+                                id="btn-workout-fullscreen"
+                                type="button"
+                                title="Volver a pantalla completa"
+                                aria-label="Volver a pantalla completa"
+                                hidden
+                            >
+                                ⛶ Ampliar
+                            </button>
+                            <button
+                                class="btn-control btn-compact-panels"
+                                id="btn-compact-panels"
+                                type="button"
+                                aria-controls="workout-compact-drawer"
+                                aria-expanded="false"
+                                hidden
+                            >
+                                Más datos
+                            </button>
+                            <button
+                                class="btn-control btn-dark"
+                                id="btn-orient-toggle"
+                                style="width: fit-content; padding: 5px 15px;"
+                            >
+                                🗺️ Norte
+                            </button>
+                            <button
+                                class="btn-control btn-3d"
+                                id="btn-toggle-3d"
+                                style="width: fit-content; padding: 5px 15px; background-color: #4f46e5;"
+                            >
+                                🗺️ 3D Aéreo
+                            </button>
+
+                            <div class="virtual-gear-control glass-card" id="virtual-gear-control">
+                                <button class="btn-control remote-room-open-button" id="btn-open-remote-room" title="Mostrar mando móvil">📱</button>
+                                <button class="btn-control virtual-gear-button" id="btn-gear-down" title="Bajar marcha">− Marcha</button>
+                                <strong id="metrics-gear">
+                                    <span id="metrics-gear-number">Marcha: 9 / 14</span>
+                                    <span id="metrics-gear-ratio">50x17</span>
+                                </strong>
+                                <button class="btn-control virtual-gear-button" id="btn-gear-up" title="Subir marcha">+ Marcha</button>
+                            </div>
+                            <div
+                                id="upcoming-profile-chart"
+                                class="upcoming-profile-chart glass-card"
+                            >
+                                <div class="upcoming-profile-chart-title">
+                                    <span>Prox 500m</span>
+                                    <span id="upcoming-slope-label">⛰️ 0.0%</span>
+                                    <button class="panel-toggle" data-panel-target="upcoming" title="Mostrar u ocultar panel">−</button>
+                                </div>
+                                <div class="panel-content" style="flex-grow: 1">
+                                    <div id="upcoming-chart-inner"></div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="remote-room-panel glass-card" id="remote-room-panel" aria-hidden="true">
+                            <div class="remote-room-title">
+                                <span>MANDO MÓVIL</span>
+                                <button class="panel-toggle" id="btn-close-remote-room" title="Cerrar mando móvil">×</button>
+                            </div>
+                            <div class="panel-content">
+                                <img id="remote-room-qr" alt="Código QR para abrir el mando móvil" />
+                                <div class="remote-room-id" id="remote-room-id">Sala: --</div>
+                                <small id="remote-room-status">Ably: conectando...</small>
+                            </div>
+                        </div>
+
+                        <!-- Perfil de Elevación Inferior -->
+                        <div
+                            class="hud-elevation-footer glass-card"
+                            id="hud-elevation-footer"
+                            style="display: none"
+                        >
+                            <div class="elevation-profile-title">
+                                <span>PERFIL ALTITUD RUTA</span>
+                                <span id="workout-route-name" class="elevation-route-name" hidden></span>
+                                <button class="panel-toggle" data-panel-target="elevation" title="Mostrar u ocultar panel">−</button>
+                            </div>
+                            <div class="panel-content">
+                                <div id="elevation-chart"></div>
+                                <div id="elevation-chart-cursor"></div>
+                            </div>
+                        </div>
+
+                        <div
+                            class="slope-box glass-card"
+                            id="metrics-slope"
+                        >
+                            <div class="slope-reading" id="trainer-slope-reading" title="Pendiente suavizada que se está aplicando al rodillo">
+                                <span class="slope-reading-label">RODILLO</span>
+                                <strong><span aria-hidden="true">⛰️</span><span id="metrics-trainer-slope">+0.0%</span></strong>
+                            </div>
+                            <div class="slope-reading" id="route-slope-reading" title="Pendiente calculada a partir de la distancia y las elevaciones del perfil GPX">
+                                <span class="slope-reading-label">RUTA REAL</span>
+                                <strong><span aria-hidden="true">🗺️</span><span id="metrics-route-slope">+0.0%</span></strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <section
+                        class="compact-panels-drawer"
+                        id="workout-compact-drawer"
+                        aria-label="Datos y controles adicionales de la sesión"
+                        aria-hidden="true"
+                        hidden
+                    >
+                        <div class="compact-panels-drawer-header">
+                            <div class="compact-panels-drawer-heading">
+                                <span class="compact-panels-handle" aria-hidden="true"></span>
+                                <strong>Más datos de la sesión</strong>
+                            </div>
+                            <button
+                                class="panel-toggle"
+                                id="btn-close-compact-panels"
+                                type="button"
+                                aria-label="Cerrar datos adicionales"
+                            >×</button>
+                        </div>
+                        <label class="compact-priority-setting" for="setting-compact-priority-metric">
+                            Destacar
+                            <select id="setting-compact-priority-metric">
+                                <option value="heartRate">Pulso</option>
+                                <option value="cadence">Cadencia</option>
+                            </select>
+                        </label>
+                        <p class="compact-priority-hint">Velocidad y potencia permanecen destacadas.</p>
+                    </section>
+
+                    <!-- HUD superior (Global) -->
+                    <div id="route-alert-banner" class="hud-alert-banner" style="display: none;"></div>
+                    <div id="workout-warmup-banner" class="hud-warmup-banner" style="display: none;">
+                        <div class="warmup-banner-content">
+                            <span class="warmup-icon">⏱️</span>
+                            <div class="warmup-info">
+                                <span class="warmup-title">CALENTAMIENTO LLANO (0%)</span>
+                                <span class="warmup-timer" id="warmup-timer-text">05:00 restantes</span>
+                            </div>
+                            <button type="button" id="btn-skip-warmup" class="btn-skip-warmup" onclick="window.finishWarmup && window.finishWarmup()" title="Terminar calentamiento e iniciar el tramo ahora">
+                                Empezar puerto ⏩
+                            </button>
+                        </div>
+                    </div>
+                    <div
+                        id="workout-fullscreen-notice"
+                        class="workout-fullscreen-notice"
+                        role="status"
+                        aria-live="polite"
+                        hidden
+                    ></div>
+                    <div class="hud-top-bar" id="hud-top-bar">
+                        <div class="hud-left-group">
+                            <div
+                                class="clock-session clock-horizontal"
+                                style="
+                                    display: flex;
+                                    flex-direction: column;
+                                    align-items: center;
+                                    padding: 2px 10px;
+                                    gap: 0;
+                                    margin-right: 70px;
+                                "
+                            >
+                                <div class="clock-label" style="font-size: 8px; color: #ffffff">
+                                    HORA
+                                </div>
+                                <div
+                                    id="clock"
+                                    style="font-weight: bold; font-size: 1.1em"
+                                >
+                                    00:00
+                                </div>
+                            </div>
+
+                            <div class="hud-sensor-bar">
+                                <div
+                                    class="indicator-icon"
+                                    id="indicator-PWR"
+                                    title="Potencia"
+                                    role="button"
+                                    tabindex="0"
+                                    aria-label="Potencia: desconectado. Pulsa para conectar."
+                                >
+                                    PWR
+                                </div>
+                                <div
+                                    class="indicator-icon"
+                                    id="indicator-HR"
+                                    title="Pulso"
+                                    role="button"
+                                    tabindex="0"
+                                    aria-label="Pulso: desconectado. Pulsa para conectar."
+                                >
+                                    HR
+                                </div>
+                                <div
+                                    class="indicator-icon"
+                                    id="indicator-CAD"
+                                    title="Cadencia"
+                                    role="button"
+                                    tabindex="0"
+                                    aria-label="Cadencia: desconectado. Pulsa para conectar."
+                                >
+                                    CAD
+                                </div>
+                                <div
+                                    class="indicator-icon"
+                                    id="indicator-SPD"
+                                    title="Velocidad"
+                                    role="button"
+                                    tabindex="0"
+                                    aria-label="Velocidad: desconectado. Pulsa para conectar."
+                                >
+                                    SPD
+                                </div>
+                            </div>
+                            <div id="sensor-quality-status" class="sensor-quality-status" role="status" aria-live="polite">
+                                Esperando datos de sensores…
+                            </div>
+                        </div>
+
+                        <div class="hud-right-group">
+                            <div
+                                class="hud-font-selector clock-session"
+                                id="hud-font-selector"
+                                style="
+                                    pointer-events: auto;
+                                    display: flex;
+                                    gap: 4px;
+                                    align-items: center;
+                                "
+                            >
+                                <span
+                                    style="
+                                        font-size: 9px;
+                                        font-weight: 700;
+                                        color: #ffffff;
+                                        margin-right: 2px;
+                                    "
+                                    >TEXTO</span
+                                >
+                                <button
+                                    class="btn-font-scale"
+                                    data-scale="sm"
+                                    style="
+                                        background: none;
+                                        border: 1px solid var(--glass-border);
+                                        color: white;
+                                        padding: 2px 6px;
+                                        border-radius: 4px;
+                                        font-size: 10px;
+                                        cursor: pointer;
+                                        transition: all 0.2s;
+                                    "
+                                >
+                                    A-
+                                </button>
+                                <button
+                                    class="btn-font-scale active"
+                                    data-scale="md"
+                                    style="
+                                        background: none;
+                                        border: 1px solid var(--glass-border);
+                                        color: white;
+                                        padding: 2px 6px;
+                                        border-radius: 4px;
+                                        font-size: 12px;
+                                        cursor: pointer;
+                                        transition: all 0.2s;
+                                    "
+                                >
+                                    A
+                                </button>
+                                <button
+                                    class="btn-font-scale"
+                                    data-scale="lg"
+                                    style="
+                                        background: none;
+                                        border: 1px solid var(--glass-border);
+                                        color: white;
+                                        padding: 2px 6px;
+                                        border-radius: 4px;
+                                        font-size: 14px;
+                                        cursor: pointer;
+                                        transition: all 0.2s;
+                                    "
+                                >
+                                    A+
+                                </button>
+                            </div>
+
+                            <div class="metric-group metric-power-group">
+                                <div class="metric-main">
+                                    <span
+                                        class="metric-value"
+                                        id="metrics-power"
+                                        >0</span
+                                    >
+                                    <span class="metric-label" style="color: #ffffff">W</span>
+                                </div>
+                                <div class="metric-avg" id="metrics-power-avg">
+                                    0 Ø
+                                </div>
+                            </div>
+                            <div class="metric-main metric-work">
+                                <span class="metric-value work-main" id="metrics-kj">0</span>
+                                <span class="metric-label" style="color: #ffffff">kJ</span>
+                            </div>
+                            <div class="metric-main metric-cadence">
+                                <span class="metric-value" id="metrics-cadence"
+                                    >0</span
+                                >
+                                <span class="metric-label" style="color: #ffffff">RPM</span>
+                            </div>
+                            <div class="metric-group metric-speed-group">
+                                <div class="metric-main">
+                                    <span
+                                        class="metric-value speed-main"
+                                        id="metrics-speed"
+                                        >0.0</span
+                                    >
+                                    <span class="metric-label" style="color: #ffffff">km/h</span>
+                                </div>
+                                <div class="metric-avg" id="metrics-speed-avg">
+                                    0.0 Ø
+                                </div>
+                                <div
+                                    class="metric-real-km"
+                                    id="metrics-route-real-point"
+                                    style="display: none; font-size: 11px; color: #38bdf8; font-weight: 600; white-space: nowrap; margin-top: 3px; text-shadow: 0 1px 3px rgba(0,0,0,0.6);"
+                                    title="Punto kilométrico real en la ruta completa"
+                                >
+                                    📍 Km 0.0 / 0.0
+                                </div>
+                            </div>
+                            <div class="metric-group metric-heart-rate">
+                                <div class="metric-main">
+                                    <span
+                                        class="metric-value"
+                                        id="metrics-hr"
+                                        style="color: #ff6666"
+                                        >0</span
+                                    >
+                                    <span class="metric-label" style="color: #ffffff">BPM</span>
+                                </div>
+                                <div class="metric-avg" id="metrics-hr-avg">
+                                    0 Ø
+                                </div>
+                            </div>
+
+                            <div
+                                class="clock-session clock-horizontal clock-session-time"
+                            >
+                                <div class="clock-label accent" style="color: #ffffff">SESIÓN</div>
+                                <div id="workout-timer">00:00:00</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    id="workout-autopause-label"
+                    class="hud-autopause-label"
+                    style="display: none"
+                >
+                    ⏸️ AUTO-PAUSA
+                </div>
+            </div>
+
+            <!-- Vista secundaria para el mando móvil. Se activa con /mando o #/mando. -->
+            <div id="screen-remote" class="screen">
+                <div class="remote-controller">
+                    <h1>Mando virtual</h1>
+                    <p id="remote-room-label">Sala: --</p>
+                    <div id="remote-controls">
+                        <button class="remote-gear-button remote-gear-up" id="btn-remote-gear-up">Subir Marcha</button>
+                        <button class="remote-gear-button remote-gear-down" id="btn-remote-gear-down">Bajar Marcha</button>
+                        <div class="remote-session-actions">
+                            <button class="remote-session-button remote-pause-button" id="btn-remote-pause">Pausa / Reanudar</button>
+                            <button class="remote-session-button remote-stop-button" id="btn-remote-stop">Finalizar sesión</button>
+                        </div>
+                    </div>
+                    <div class="remote-status-row">
+                        <p class="remote-status" id="remote-status" data-connection-state="connecting">Conexión pendiente</p>
+                        <button class="remote-reconnect-button" id="btn-remote-reconnect" type="button" aria-label="Reconectar con la sala" title="Reconectar con la sala" hidden>↻</button>
+                    </div>
+                    <div class="remote-summary" id="remote-summary" hidden>
+                        <h2>Sesión finalizada</h2>
+                        <div class="remote-summary-grid">
+                            <span>Tiempo</span><strong id="remote-summary-duration">--</strong>
+                            <span>Distancia</span><strong id="remote-summary-distance">--</strong>
+                            <span>Velocidad media</span><strong id="remote-summary-speed">--</strong>
+                            <span>Velocidad máxima</span><strong id="remote-summary-max-speed">--</strong>
+                            <span>Potencia media</span><strong id="remote-summary-power">--</strong>
+                            <span>Potencia máxima</span><strong id="remote-summary-max-power">--</strong>
+                            <span>Pulso medio</span><strong id="remote-summary-hr">--</strong>
+                            <span>Pulso máximo</span><strong id="remote-summary-max-hr">--</strong>
+                            <span>Desnivel</span><strong id="remote-summary-ascent">--</strong>
+                            <span>Calorías</span><strong id="remote-summary-calories">--</strong>
+                            <span>NP / TSS</span><strong id="remote-summary-training-load">--</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ghost rival -->
+            <div class="ghost-banner hud-ghost" id="ghost-banner">
+                <span>👻 RIVAL GHOST:</span>
+                <span class="ghost-value ahead" id="ghost-time-gap">-0:00</span>
+            </div>
+
+            <!-- Panel modo manual -->
+            <div
+                class="hud-manual-overlay"
+                id="manual-mode-panel"
+                style="display: none;"
+            >
+                <div class="glass-card manual-slope-adjuster" style="height: 330px; display: flex; flex-direction: column; justify-content: center;">
+                    <div class="slope-dial">
+                        <span class="slope-dial-value" id="manual-slope-label">0.0%</span>
+                        <span class="slope-dial-label" id="manual-mode-label-text">Pendiente</span>
+                    </div>
+                    <div style="margin-top: 10px; margin-bottom: 10px;">
+                        <button class="btn btn-secondary btn-sm" id="btn-toggle-manual-mode" style="font-size: 0.8rem; padding: 5px 15px;">Cambiar a Modo ERG (W)</button>
+                    </div>
+                    <div class="slope-buttons">
+                        <button class="slope-btn" id="btn-slope-minus">-</button>
+                        <button class="slope-btn" id="btn-slope-plus">+</button>
+                    </div>
+                </div>
+
+                <!-- Contenedores de Gráficos Manuales -->
+                <div class="glass-card" style="width: 560px; height: 330px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div id="manual-power-chart" style="flex: 1;"></div>
+                    <div id="manual-hr-chart" style="flex: 1;"></div>
+                </div>
+            </div>
+
+            <!-- Panel Modo ERG / Entrenamiento Estructurado -->
+            <div
+                class="workout-erg-overlay"
+                id="workout-erg-panel"
+                style="display: none;"
+            >
+                <div class="workout-erg-hero">
+                    <!-- Tarjeta del paso activo -->
+                    <div class="workout-active-step-card glass-card" id="workout-active-step-card">
+                        <div class="workout-step-header">
+                            <span class="workout-step-tag" id="workout-step-tag">Calentamiento</span>
+                            <span class="workout-step-counter" id="workout-step-counter">Bloque 1 de 5</span>
+                        </div>
+
+                        <div class="workout-step-countdown-row">
+                            <span class="workout-step-countdown-val" id="workout-step-countdown">05:00</span>
+                            <span class="workout-step-countdown-lbl">Restante bloque</span>
+                        </div>
+
+                        <div class="workout-step-progress-track">
+                            <div class="workout-step-progress-bar" id="workout-step-progress-bar"></div>
+                        </div>
+
+                        <div class="workout-step-targets-grid">
+                            <div class="workout-target-pill">
+                                <span class="workout-target-pill-lbl">Potencia Objetivo</span>
+                                <span class="workout-target-pill-val" id="workout-target-power-val">150 W</span>
+                            </div>
+                            <div class="workout-target-pill workout-live-power-pill" id="workout-current-power-pill">
+                                <span class="workout-target-pill-lbl">Tu potencia</span>
+                                <span class="workout-target-pill-val" id="workout-current-power-val">-- W</span>
+                                <span class="workout-power-delta" id="workout-power-delta">Esperando potenciómetro</span>
+                            </div>
+                            <div class="workout-target-pill">
+                                <span class="workout-target-pill-lbl">Cadencia</span>
+                                <span class="workout-target-pill-val workout-cadence-values">
+                                    <span id="workout-current-cadence-val">-- rpm</span>
+                                    <span class="workout-cadence-target">Obj. <span id="workout-target-cadence-val">-- rpm</span></span>
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="workout-message-banner" id="workout-message-banner">
+                            <!-- Mensajes de texto del entrenamiento -->
+                        </div>
+                    </div>
+
+                    <!-- Panel lateral: próximo paso y bias -->
+                    <div class="workout-sidebar-card glass-card">
+                        <div class="workout-next-step-box">
+                            <div class="workout-next-title">Siguiente Bloque</div>
+                            <div class="workout-next-name" id="workout-next-step-name">--</div>
+                            <div class="workout-next-meta" id="workout-next-step-meta">--</div>
+                        </div>
+
+                        <div class="workout-bias-control">
+                            <div class="workout-bias-title">Ajuste de Intensidad</div>
+                            <div class="workout-bias-buttons">
+                                <button class="workout-bias-btn" id="btn-workout-bias-minus" type="button">− 5W</button>
+                                <button class="workout-bias-btn" id="btn-workout-bias-reset" type="button" title="Restablecer">0 W</button>
+                                <button class="workout-bias-btn" id="btn-workout-bias-plus" type="button">+ 5W</button>
+                            </div>
+                            <div class="workout-bias-label" id="workout-bias-label">Bias: 0 W</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gráfico del perfil completo del workout con aguja en tiempo real -->
+                <div class="workout-timeline-footer glass-card">
+                    <div class="workout-timeline-title">
+                        <span id="workout-timeline-name">PERFIL DEL ENTRENAMIENTO</span>
+                        <span class="workout-timeline-legend" aria-label="Leyenda del gráfico">
+                            <span><i class="workout-legend-target"></i>Objetivo</span>
+                            <span><i class="workout-legend-actual"></i>Potencia real</span>
+                        </span>
+                        <span id="workout-timeline-progress">00:00 / 00:00</span>
+                    </div>
+                    <div class="workout-timeline-container" id="workout-timeline-container">
+                        <!-- SVG del perfil activo renderizado dinámicamente -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Consola rodillo virtual -->
+            <div
+                class="hud-sim-panel glass-card simulator-control-panel"
+                id="virtual-trainer-panel"
+                style="display: none"
+            >
+                <h3 class="hud-sim-title">
+                    <span>🎛️ Consola del Rodillo Virtual</span>
+                    <button class="panel-toggle" data-panel-target="virtual" title="Mostrar u ocultar panel">−</button>
+                </h3>
+                <div class="panel-content">
+                    <div class="sim-slider-group">
+                        <div class="sim-slider-label">
+                            <span>Pedaleo Virtual: Potencia</span>
+                            <strong id="sim-power-val">150 W</strong>
+                        </div>
+                        <input
+                            type="range"
+                            class="sim-slider"
+                            id="sim-power-slider"
+                            min="50"
+                            max="600"
+                            value="150"
+                            step="5"
+                        />
+                    </div>
+                    <div class="sim-slider-group">
+                        <div class="sim-slider-label">
+                            <span>Pedaleo Virtual: Cadencia</span>
+                            <strong id="sim-cadence-val">85 rpm</strong>
+                        </div>
+                        <input
+                            type="range"
+                            class="sim-slider"
+                            id="sim-cadence-slider"
+                            min="40"
+                            max="130"
+                            value="85"
+                            step="1"
+                        />
+                    </div>
+                    <div class="sim-slider-group">
+                        <div class="sim-slider-label">
+                            <span>Ritmo Cardíaco Ficticio</span>
+                            <strong id="sim-hr-val">120 bpm</strong>
+                        </div>
+                        <input
+                            type="range"
+                            class="sim-slider"
+                            id="sim-hr-slider"
+                            min="60"
+                            max="190"
+                            value="120"
+                            step="1"
+                        />
+                    </div>
+
+                    <div class="sim-slider-group">
+                        <div class="sim-slider-label">
+                            <span>Factor de Realismo de la Pendiente</span>
+                            <strong id="realism-value-session">100%</strong>
+                        </div>
+                        <input
+                            type="range"
+                            id="realism-slider-session"
+                            min="30"
+                            max="150"
+                            value="100"
+                            step="1"
+                            style="width: 100%; height: 8px; accent-color: var(--accent-blue); background: var(--bg-secondary); border: 1px solid var(--glass-border); border-radius: 4px;"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal de carga de ruta -->
+            <div class="route-modal-overlay" id="route-modal">
+                <div class="route-modal-content">
+                    <div class="route-modal-title">Configurar Nueva Sesión</div>
+                    <div class="route-modal-section">
+                        <div class="route-modal-section-title">
+                            Cargar ruta desde tu dispositivo
+                        </div>
+                        <div class="gpx-load-area-modal">
+                            <span
+                                class="gpx-filename-label-modal"
+                                id="gpx-filename-label"
+                                >Ningún archivo seleccionado.</span
+                            >
+                            <input
+                                type="file"
+                                id="gpx-file-input"
+                                accept=".gpx,.xml,.tcx"
+                                style="display: none"
+                            />
+                            <button
+                                class="btn-gpx-pick-modal"
+                                id="btn-trigger-gpx-pick"
+                            >
+                                Seleccionar archivo GPX/TCX
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="route-modal-section">
+                        <div class="route-modal-section-title">
+                            O elegir una ruta guardada
+                        </div>
+                        <div class="saved-route-picker-modal">
+                            <select id="session-saved-route-select" aria-label="Seleccionar ruta guardada">
+                                <option value="">Cargando rutas guardadas...</option>
+                            </select>
+                            <button class="btn-gpx-pick-modal" id="btn-load-saved-route" type="button">
+                                Cargar ruta guardada
+                            </button>
+                            <span id="session-saved-route-status" role="status" aria-live="polite"></span>
+                        </div>
+                    </div>
+
+                    <div class="route-modal-section" id="route-segment-section" style="display: none;">
+                        <div class="route-modal-section-title">
+                            Seleccionar Tramo de la Ruta (Opcional)
+                        </div>
+                        <div class="route-segment-badge" id="route-segment-badge" style="background: rgba(255, 255, 255, 0.05); padding: 8px 12px; border-radius: 8px; font-size: 13px; color: var(--text-secondary); margin-bottom: 10px;">
+                            Ruta completa: <strong id="route-segment-orig-dist" style="color: white;">-- km</strong> • Desnivel: <strong id="route-segment-orig-elev" style="color: white;">+-- m</strong>
+                        </div>
+                        <!-- Interactive Elevation Profile Selector -->
+                        <div class="route-segment-chart-wrapper" style="margin-bottom: 12px; position: relative;">
+                            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">
+                                <span>🖱️ Arrastra sobre el gráfico para recortar tramo</span>
+                                <span id="route-segment-chart-hover" style="color: var(--accent-blue); font-weight: 500;">0.0 km</span>
+                            </div>
+                            <div id="route-segment-svg-container" style="width: 100%; height: 95px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--glass-border); border-radius: 8px; overflow: hidden; position: relative; touch-action: none; cursor: crosshair;">
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px;">
+                            <div class="input-group" style="margin-bottom: 0;">
+                                <label for="route-segment-start" style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Km Inicio</label>
+                                <input
+                                    type="number"
+                                    id="route-segment-start"
+                                    class="input-field"
+                                    min="0"
+                                    step="0.1"
+                                    value="0"
+                                    style="width: 100%; box-sizing: border-box;"
+                                />
+                            </div>
+                            <div class="input-group" style="margin-bottom: 0;">
+                                <label for="route-segment-end" style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Km Fin</label>
+                                <input
+                                    type="number"
+                                    id="route-segment-end"
+                                    class="input-field"
+                                    min="0.1"
+                                    step="0.1"
+                                    value="0"
+                                    style="width: 100%; box-sizing: border-box;"
+                                />
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0, 210, 106, 0.08); border: 1px solid rgba(0, 210, 106, 0.2); border-radius: 8px; padding: 8px 12px;">
+                            <span id="route-segment-summary" style="font-size: 13px; font-weight: 600; color: var(--accent-green);">
+                                Tramo seleccionado: -- km • +-- m
+                            </span>
+                            <button
+                                type="button"
+                                id="btn-route-segment-reset"
+                                class="btn btn-secondary"
+                                style="padding: 4px 10px; font-size: 11px; height: auto;"
+                            >
+                                Ruta completa
+                            </button>
+                        </div>
+                        <div class="route-warmup-option" style="margin-top: 10px; padding: 10px 14px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;">
+                            <label for="route-warmup-toggle" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: var(--text-primary); margin: 0;">
+                                <input type="checkbox" id="route-warmup-toggle" style="width: 17px; height: 17px; accent-color: #10b981; cursor: pointer;" />
+                                <div>
+                                    <div style="font-weight: 600;">⏱️ Añadir 5 min de calentamiento llano (0%)</div>
+                                    <div style="color: var(--text-secondary); font-size: 11px;">Rueda suave a 0% de pendiente antes de comenzar las subidas del tramo</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="route-modal-section">
+                        <div class="route-modal-section-title">
+                            Ajuste de Dureza
+                        </div>
+                        <div class="input-group">
+                            <label for="realism-slider" style="text-align: center;">Factor de Realismo de la Pendiente</label>
+                            <input
+                                type="range"
+                                id="realism-slider"
+                                min="30"
+                                max="150"
+                                value="100"
+                                step="1"
+                                style="width: 100%; height: 8px; accent-color: var(--accent-blue); background: var(--bg-secondary); border: 1px solid var(--glass-border); border-radius: 4px;"
+                            />
+                            <span id="realism-value" style="text-align: center; color: var(--text-primary); font-weight: bold; margin-top: 5px;">100%</span>
+                        </div>
+                    </div>
+
+                    <div class="route-modal-actions">
+                        <button class="btn-modal-cancel" id="btn-modal-cancel">
+                            Cancelar
+                        </button>
+                        <button
+                            class="btn-modal-confirm"
+                            id="btn-modal-confirm"
+                        >
+                            ¡Empezar Sesión!
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-overlay" id="modal-fullscreen-recovery" style="display: none;">
+            <div class="glass-card modal-content fullscreen-recovery-content">
+                <h3>Reactivar pantalla completa</h3>
+                <p>Chrome ha salido de pantalla completa al abrir el selector de archivos.</p>
+                <div class="fullscreen-recovery-actions">
+                    <button class="btn btn-dark" id="btn-fullscreen-recovery-cancel">Cancelar</button>
+                    <button class="btn btn-primary" id="btn-fullscreen-recovery-confirm">Reactivar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. SCREEN: SUMMARY CARD -->
+        <div id="screen-summary" class="screen">
+            <div class="page-heading-row">
+                <h2>¡Entrenamiento Completado!</h2>
+                <button class="btn btn-dark page-heading-back" id="btn-summary-close">
+                    ← Volver
+                </button>
+            </div>
+            <p style="color: var(--text-secondary); margin-bottom: 24px">
+                Gran trabajo. Aquí tienes el resumen y las analíticas de tu
+                sesión.
+            </p>
+
+            <div class="summary-grid">
+                <!-- Metrics summaries -->
+                <div class="glass-card summary-big-numbers">
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">Tiempo de Actividad</div>
+                        <div class="summary-num-value" id="summary-duration">
+                            00:00:00
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">Tiempo Total de Sesión</div>
+                        <div class="summary-num-value" id="summary-total-duration">
+                            00:00:00
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">Distancia Recorrida</div>
+                        <div
+                            class="summary-num-value blue"
+                            id="summary-distance"
+                        >
+                            0.0 km
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">
+                            Potencia Normalizada
+                        </div>
+                        <div class="summary-num-value green" id="summary-np">
+                            0 W
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">TSS</div>
+                        <div class="summary-num-value" id="summary-tss">0</div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">
+                            Factor de Intensidad
+                        </div>
+                        <div class="summary-num-value" id="summary-if">
+                            0.00
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">Calorías Totales</div>
+                        <div class="summary-num-value" id="summary-calories">
+                            0 kcal
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">Trabajo Total</div>
+                        <div class="summary-num-value" id="summary-kilojoules">
+                            0 kJ
+                        </div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">
+                            Potencia Media / Máx
+                        </div>
+                        <div
+                            class="summary-num-value"
+                            id="summary-power-stats"
+                            style="font-size: 20px; padding-top: 8px"
+                        >
+                            0 / 0 W
+                        </div>
+                    </div>
+                    <div class="summary-num-card" id="summary-erg-adherence-card" hidden>
+                        <div class="summary-num-title">Potencia dentro del objetivo</div>
+                        <div class="summary-num-value green" id="summary-erg-adherence">--%</div>
+                        <div class="summary-num-detail" id="summary-erg-adherence-detail">Sin lecturas válidas</div>
+                    </div>
+                    <div class="summary-num-card">
+                        <div class="summary-num-title">
+                            Velocidad Media / Máx
+                        </div>
+                        <div
+                            class="summary-num-value"
+                            id="summary-speed-stats"
+                            style="font-size: 20px; padding-top: 8px"
+                        >
+                            0 / 0 km/h
+                        </div>
+                    </div>
+                    <div class="summary-num-card" style="grid-column: span 2">
+                        <div class="summary-num-title">
+                            Pulso Medio / Máximo
+                        </div>
+                        <div
+                            class="summary-num-value"
+                            id="summary-hr-stats"
+                            style="
+                                font-size: 24px;
+                                padding-top: 4px;
+                                color: var(--accent-red);
+                            "
+                        >
+                            0 / 0 bpm
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Power zones charts -->
+                <div class="glass-card summary-charts">
+                    <h3
+                        style="
+                            font-size: 16px;
+                            margin-bottom: 8px;
+                            color: white;
+                        "
+                    >
+                        Minutos por Zona de Potencia
+                    </h3>
+                    <div
+                        class="chart-container"
+                        id="summary-zones-chart"
+                        style="height: 250px"
+                    ></div>
+                </div>
+            </div>
+
+            <div id="summary-route-grid" class="summary-route-grid" hidden>
+                <section id="summary-elevation-card" class="glass-card summary-route-card" hidden>
+                    <h3>Perfil de altitud de la ruta</h3>
+                    <div id="summary-elevation-chart" class="summary-elevation-chart"></div>
+                </section>
+                <section id="summary-map-card" class="glass-card summary-route-card" hidden>
+                    <h3>Recorrido de la ruta</h3>
+                    <div id="summary-route-map" class="summary-route-map" role="img" aria-label="Mapa del recorrido de la sesión"></div>
+                    <p class="summary-route-note">
+                        El trazado procede del archivo de ruta. El progreso es una estimación según la distancia del rodillo, no una posición GPS registrada. El mapa base requiere conexión a Internet.
+                    </p>
+                </section>
+            </div>
+
+            <div
+                class="glass-card"
+                style="
+                    margin-bottom: 24px;
+                    padding: 16px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                "
+            >
+                <div>
+                    <h4 style="color: white; font-size: 14px">
+                        Descargar datos de la sesión
+                    </h4>
+                    <p style="font-size: 12px; color: var(--text-secondary)">
+                        GPX para mapas y CSV para analizar la telemetría en Excel
+                        u otra aplicación.
+                    </p>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+                    <button class="btn btn-secondary" id="btn-export-gpx">
+                        Exportar GPX
+                    </button>
+                    <button class="btn btn-secondary" id="btn-export-csv">
+                        Exportar CSV
+                    </button>
+                    <button class="btn btn-primary" id="btn-export-fit" style="background: #6366f1;">
+                        Exportar FIT
+                    </button>
+                    <button class="btn btn-primary" id="btn-summary-backup">
+                        💾 Descargar backup completo
+                    </button>
+                </div>
+            </div>
+            <span id="session-save-status" style="display: block; margin-top: 12px; font-size: 12px; color: var(--text-secondary);">
+                Sesión guardada
+            </span>
+
+        </div>
+
+        <!-- 6. SCREEN: HISTORY -->
+        <div id="screen-history" class="screen">
+            <div class="page-heading-row">
+                <h2>Historial de Entrenamientos</h2>
+                <button class="btn btn-dark page-heading-back" id="btn-history-back-top">
+                    ← Volver
+                </button>
+            </div>
+            <p style="color: var(--text-secondary); margin-bottom: 20px">
+                Revisa y compara sesiones de rodillo registradas con tu perfil. Selecciona hasta dos sesiones finalizadas.
+            </p>
+
+            <section id="history-comparison" class="glass-card history-comparison" aria-live="polite" hidden></section>
+            <div class="history-list" id="history-items-container">
+                <!-- Populated dynamically -->
+                <div
+                    class="glass-card"
+                    style="
+                        text-align: center;
+                        padding: 40px;
+                        color: var(--text-secondary);
+                    "
+                >
+                    No se han encontrado sesiones en tu historial.
+                </div>
+            </div>
+
+            <button
+                class="btn btn-dark"
+                id="btn-history-back"
+                style="
+                    width: 100%;
+                    height: 50px;
+                    margin-top: 30px;
+                    margin-bottom: 40px;
+                "
+            >
+                Volver al Inicio
+            </button>
+        </div>
+
+        <!-- 7. SCREEN: STATS -->
+        <div id="screen-stats" class="screen">
+            <div class="page-heading-row">
+                <h2>Progreso de Entrenamiento</h2>
+                <button class="btn btn-dark page-heading-back" id="btn-stats-back-top">
+                    ← Volver
+                </button>
+            </div>
+            <p style="color: var(--text-secondary); margin-bottom: 24px">
+                Analíticas consolidadas de rendimiento del usuario.
+            </p>
+
+            <div
+                style="
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 16px;
+                    margin-bottom: 24px;
+                "
+            >
+                <div class="glass-card" style="text-align: center">
+                    <span
+                        style="
+                            font-size: 11px;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                        "
+                        >Sesiones Totales</span
+                    >
+                    <h1
+                        style="font-size: 36px; color: white; margin-top: 6px"
+                        id="stats-total-sessions"
+                    >
+                        0
+                    </h1>
+                </div>
+                <div class="glass-card" style="text-align: center">
+                    <span
+                        style="
+                            font-size: 11px;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                        "
+                        >Distancia Acumulada</span
+                    >
+                    <h1
+                        style="
+                            font-size: 36px;
+                            color: var(--accent-blue);
+                            margin-top: 6px;
+                        "
+                        id="stats-total-distance"
+                    >
+                        0.0 km
+                    </h1>
+                </div>
+                <div class="glass-card" style="text-align: center">
+                    <span
+                        style="
+                            font-size: 11px;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                        "
+                        >Tiempo Acumulado</span
+                    >
+                    <h1
+                        style="font-size: 30px; color: white; margin-top: 6px"
+                        id="stats-total-time"
+                    >
+                        0h 0m
+                    </h1>
+                </div>
+                <div class="glass-card" style="text-align: center">
+                    <span
+                        style="
+                            font-size: 11px;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                        "
+                        >Potencia Máxima Histórica</span
+                    >
+                    <h1
+                        style="
+                            font-size: 30px;
+                            color: var(--accent-green);
+                            margin-top: 6px;
+                        "
+                        id="stats-max-power"
+                    >
+                        0 W
+                    </h1>
+                </div>
+            </div>
+
+            <section class="training-calendar-section glass-card" aria-labelledby="training-calendar-heading">
+                <div class="training-calendar-heading-row">
+                    <div>
+                        <h3 id="training-calendar-heading">Calendario de entrenamiento</h3>
+                        <p>Consulta tus sesiones y el volumen de entrenamiento por semana y mes.</p>
+                    </div>
+                    <div class="training-calendar-navigation">
+                        <button class="btn btn-dark" id="btn-calendar-previous" type="button" aria-label="Mes anterior">‹</button>
+                        <strong id="training-calendar-month" aria-live="polite"></strong>
+                        <button class="btn btn-dark" id="btn-calendar-next" type="button" aria-label="Mes siguiente">›</button>
+                        <button class="btn btn-dark" id="btn-calendar-today" type="button">Hoy</button>
+                    </div>
+                </div>
+
+                <div class="training-period-summaries">
+                    <article class="training-period-summary">
+                        <h4>Este mes</h4>
+                        <div id="training-month-summary" class="training-summary-metrics"></div>
+                    </article>
+                    <article class="training-period-summary">
+                        <h4 id="training-week-heading">Semana seleccionada</h4>
+                        <div id="training-week-summary" class="training-summary-metrics"></div>
+                    </article>
+                </div>
+
+                <div class="training-calendar-grid" id="training-calendar-grid" role="group" aria-label="Calendario mensual de sesiones"></div>
+                <section class="training-selected-day" aria-labelledby="training-selected-day-heading">
+                    <h4 id="training-selected-day-heading">Sesiones del día</h4>
+                    <div id="training-selected-day-sessions" aria-live="polite"></div>
+                </section>
+            </section>
+
+            <div class="glass-card" style="margin-bottom: 24px">
+                <h3 style="font-size: 16px; margin-bottom: 12px; color: white">
+                    Progreso de Rendimiento
+                </h3>
+                <p
+                    style="
+                        font-size: 13px;
+                        color: var(--text-secondary);
+                        line-height: 1.4;
+                    "
+                >
+                    Tus métricas de entrenamiento (TSS e Intensidad) se calculan
+                    en base a tu umbral FTP. ¡Asegúrate de tener actualizado tu
+                    FTP en ajustes para que los datos sean 100% fiables!
+                </p>
+            </div>
+
+            <button
+                class="btn btn-dark"
+                id="btn-stats-back"
+                style="width: 100%; height: 50px; margin-bottom: 40px"
+            >
+                Volver al Inicio
+            </button>
+        </div>
+
+        <!-- --- OVERLAYS & MODALS SYSTEM --- -->
+
+        <!-- Resume Incomplete Route Modal -->
+        <div class="modal-overlay" id="modal-resume-route" style="display: none;">
+            <div class="glass-card modal-content" style="max-width: 460px; text-align: center; padding: 28px 24px;">
+                <div style="font-size: 40px; margin-bottom: 12px;">⏸️</div>
+                <h3 style="font-size: 20px; color: white; margin-bottom: 10px;" id="resume-route-title">
+                    Ruta Inconclusa
+                </h3>
+                <p id="resume-route-desc" style="color: var(--text-secondary); font-size: 14px; margin-bottom: 18px; line-height: 1.5;">
+                    En tu sesión anterior no terminaste la ruta.
+                </p>
+                <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; text-align: left;">
+                    <label for="resume-route-warmup" style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px; color: var(--text-primary); margin: 0;">
+                        <input type="checkbox" id="resume-route-warmup" style="width: 17px; height: 17px; accent-color: #10b981; cursor: pointer;" />
+                        <div>
+                            <div style="font-weight: 600;">⏱️ Añadir 5 min de calentamiento llano (0%)</div>
+                            <div style="color: var(--text-secondary); font-size: 11px;">Rueda suave antes de aplicar la pendiente del punto donde lo dejaste</div>
+                        </div>
+                    </label>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <button class="btn btn-primary" id="btn-resume-route-continue" style="width: 100%; justify-content: center; font-weight: 600; padding: 12px;">
+                        ⏩ Continuar donde lo dejé
+                    </button>
+                    <button class="btn btn-secondary" id="btn-resume-route-restart" style="width: 100%; justify-content: center; padding: 12px;">
+                        🔄 Empezar desde el inicio (Km 0)
+                    </button>
+                    <button class="btn" id="btn-resume-route-cancel" style="width: 100%; justify-content: center; background: transparent; color: var(--text-muted); border: none; padding: 10px;">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add User Modal -->
+        <div class="modal-overlay" id="modal-add-user">
+            <div class="glass-card modal-content">
+                <div class="modal-header">
+                    <h3 style="font-size: 20px; color: white">
+                        Crear Perfil Ciclista
+                    </h3>
+                    <button class="modal-close" id="btn-close-add-user">
+                        &times;
+                    </button>
+                </div>
+                <form id="form-add-user">
+                    <div class="avatar-upload-group">
+                        <div class="avatar-preview-container" id="new-user-avatar-preview">
+                            <span class="avatar-preview-placeholder">👤</span>
+                        </div>
+                        <div class="avatar-upload-controls">
+                            <div class="avatar-upload-actions">
+                                <label for="new-user-avatar-input" class="avatar-btn-upload">
+                                    📷 Elegir Avatar
+                                </label>
+                                <input
+                                    type="file"
+                                    id="new-user-avatar-input"
+                                    accept="image/*"
+                                    style="display: none"
+                                />
+                                <button
+                                    type="button"
+                                    class="avatar-btn-remove"
+                                    id="new-user-avatar-remove"
+                                    style="display: none"
+                                >
+                                    Quitar
+                                </button>
+                            </div>
+                            <span class="avatar-help-text">Se recorta y adapta automáticamente.</span>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label for="new-user-name">Nombre</label>
+                        <input
+                            type="text"
+                            class="input-field"
+                            id="new-user-name"
+                            required
+                            placeholder="Ej: Nombre de usuario"
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="new-user-weight">Peso (kg)</label>
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="new-user-weight"
+                            required
+                            value="75"
+                            step="0.1"
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="new-user-ftp"
+                            >FTP (Watts) - Umbral Funcional de Potencia</label
+                        >
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="new-user-ftp"
+                            required
+                            value="200"
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="new-user-maxhr"
+                            >Frecuencia Cardíaca Máxima (BPM)</label
+                        >
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="new-user-maxhr"
+                            required
+                            value="190"
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="new-user-age">Edad</label>
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="new-user-age"
+                            required
+                            value="30"
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="new-user-height">Altura (cm)</label>
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="new-user-height"
+                            required
+                            value="175"
+                        />
+                    </div>
+                    <button
+                        type="submit"
+                        class="btn btn-primary"
+                        style="width: 100%; margin-top: 10px"
+                    >
+                        Crear Perfil
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Import Profile Modal -->
+        <div class="modal-overlay" id="modal-import-user">
+            <div class="glass-card modal-content">
+                <div class="modal-header">
+                    <h3 style="font-size: 20px; color: white">
+                        Importar Perfil Ciclista
+                    </h3>
+                    <button class="modal-close" id="btn-close-import-user">
+                        &times;
+                    </button>
+                </div>
+                <div class="input-group">
+                    <label for="import-json-data"
+                        >Introduce el código JSON del Perfil</label
+                    >
+                    <textarea
+                        class="input-field"
+                        id="import-json-data"
+                        rows="8"
+                        placeholder='Ej: {"uuid":"...","name":"...","weight":75,"ftp":200}'
+                        style="
+                            resize: vertical;
+                            font-family: monospace;
+                            font-size: 12px;
+                        "
+                    ></textarea>
+                </div>
+                <button
+                    class="btn btn-primary"
+                    id="btn-submit-import-user"
+                    style="width: 100%; margin-top: 10px"
+                >
+                    Importar Perfil
+                </button>
+            </div>
+        </div>
+
+        <!-- Edit User / Settings Modal -->
+        <div class="modal-overlay" id="modal-edit-user">
+            <div class="glass-card modal-content">
+                <div class="modal-header">
+                    <h3 style="font-size: 20px; color: white">
+                        Ajustes de Perfil
+                    </h3>
+                    <button class="modal-close" id="btn-close-edit-user">
+                        &times;
+                    </button>
+                </div>
+                <form id="form-edit-user">
+                    <div class="avatar-upload-group">
+                        <div class="avatar-preview-container" id="edit-user-avatar-preview">
+                            <span class="avatar-preview-placeholder">👤</span>
+                        </div>
+                        <div class="avatar-upload-controls">
+                            <div class="avatar-upload-actions">
+                                <label for="edit-user-avatar-input" class="avatar-btn-upload">
+                                    📷 Cambiar Avatar
+                                </label>
+                                <input
+                                    type="file"
+                                    id="edit-user-avatar-input"
+                                    accept="image/*"
+                                    style="display: none"
+                                />
+                                <button
+                                    type="button"
+                                    class="avatar-btn-remove"
+                                    id="edit-user-avatar-remove"
+                                    style="display: none"
+                                >
+                                    Quitar Foto
+                                </button>
+                            </div>
+                            <span class="avatar-help-text">Se recorta y adapta automáticamente.</span>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-user-name">Nombre</label>
+                        <input
+                            type="text"
+                            class="input-field"
+                            id="edit-user-name"
+                            required
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-user-weight">Peso (kg)</label>
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="edit-user-weight"
+                            required
+                            step="0.1"
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-user-ftp">FTP (Watts)</label>
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="edit-user-ftp"
+                            required
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-user-maxhr"
+                            >Frecuencia Cardíaca Máxima (BPM)</label
+                        >
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="edit-user-maxhr"
+                            required
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-user-age">Edad</label>
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="edit-user-age"
+                            required
+                        />
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-user-height">Altura (cm)</label>
+                        <input
+                            type="number"
+                            class="input-field"
+                            id="edit-user-height"
+                            required
+                        />
+                    </div>
+
+                    <div id="user-power-zones" class="power-zones-panel" style="margin-top: 16px;"></div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 20px">
+                        <button
+                            type="button"
+                            class="btn btn-danger"
+                            id="btn-delete-profile"
+                            style="flex: 1; padding: 10px 0; font-size: 14px"
+                        >
+                            Eliminar
+                        </button>
+                        <button
+                            type="button"
+                            class="btn btn-dark"
+                            id="btn-export-profile"
+                            style="flex: 1; padding: 10px 0; font-size: 14px"
+                        >
+                            Exportar
+                        </button>
+                        <button
+                            type="submit"
+                            class="btn btn-primary"
+                            style="flex: 1.5; padding: 10px 0; font-size: 14px"
+                        >
+                            Guardar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Radar Scan Overlay -->
+        <div class="radar-overlay" id="radar-scan-overlay">
+            <div class="radar-ring">
+                <div class="radar-center">📡</div>
+            </div>
+            <h3 style="color: white; margin-bottom: 6px" id="radar-scan-title">
+                Buscando Sensor...
+            </h3>
+            <p style="color: var(--text-secondary); font-size: 13px">
+                Haz clic en tu dispositivo en el cuadro emergente del navegador.
+            </p>
+            <button
+                class="btn btn-dark"
+                id="btn-cancel-scan"
+                style="margin-top: 30px; padding: 8px 20px; font-size: 13px"
+            >
+                Cancelar
+            </button>
+        </div>
+
+        <!-- --- JAVASCRIPT SCRIPTS MODULES --- -->
+
+        <!-- Custom modules -->
+      <!-- Modal Ajustes Generales -->
+      <div id="modal-settings" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-card" style="width: 400px; padding: 24px; color: white;">
+          <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="margin: 0; font-size: 1.25rem;">⚙️ Ajustes Generales</h3>
+            <button id="btn-close-settings" style="background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 5px 15px; border-radius: 8px; cursor: pointer; font-size: 0.9rem;">Cerrar</button>
+          </div>
+          <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; gap: 10px;">
+              <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
+                <label style="font-size: 0.9rem; opacity: 0.8;">Mapa por defecto:</label>
+                <select id="setting-map-type" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+                  <option value="leaflet">Leaflet (2D)</option>
+                  <option value="maplibre">MapLibre (3D)</option>
+                  <option value="mapFPV">MapFPV (3D)</option>
+                </select>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
+                <label for="setting-map-orientation" style="font-size: 0.9rem; opacity: 0.8;">Orientación inicial:</label>
+                <select id="setting-map-orientation" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+                  <option value="NORTE">Norte</option>
+                  <option value="RUTA">Ruta</option>
+                </select>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label for="setting-workout-layout" style="font-size: 0.9rem; opacity: 0.8;">Diseño de pantalla de entrenamiento:</label>
+              <select id="setting-workout-layout" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+                <option value="auto">Automático</option>
+                <option value="horizontal-1">Horizontal 1 - Mapa completo</option>
+                <option value="horizontal-2">Horizontal 2 - Mapa y datos</option>
+                <option value="vertical-1">Vertical 1 - Mapa completo</option>
+                <option value="vertical-2">Vertical 2 - Mapa y datos</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="font-size: 0.9rem; opacity: 0.8;">Tamaño de fuente HUD:</label>
+              <input type="range" id="setting-font-scale" min="0.8" max="1.5" step="0.1" style="width: 100%;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="font-size: 0.9rem; opacity: 0.8;">Factor de Realismo (<span id="realism-val-display">100</span>%):</label>
+              <input type="range" id="setting-realism" min="10" max="150" step="5" style="width: 100%; cursor: pointer;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="font-size: 0.9rem; opacity: 0.8;">Suavizado de Potencia:</label>
+              <div id="btn-group-smoothing" style="display: flex; gap: 8px;">
+                <button type="button" class="btn-smoothing" data-val="1000" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #374151; background: #333; color: white; cursor: pointer;">1s</button>
+                <button type="button" class="btn-smoothing" data-val="3000" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #374151; background: #333; color: white; cursor: pointer;">3s</button>
+                <button type="button" class="btn-smoothing" data-val="5000" style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #374151; background: #333; color: white; cursor: pointer;">5s</button>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="font-size: 0.9rem; opacity: 0.8;">FTP (%) para Zonas:</label>
+              <input type="text" id="setting-power-zones" placeholder="55,75,88,95,106" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label style="font-size: 0.9rem; opacity: 0.8;">Segundos de cuenta atrás:</label>
+              <input type="number" id="setting-countdown-duration" min="0" max="10" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="checkbox" id="setting-start-on-movement" style="width: 18px; height: 18px;">
+              <label for="setting-start-on-movement" style="font-size: 0.9rem; opacity: 0.8;">Iniciar cuenta atrás al detectar movimiento</label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="checkbox" id="setting-session-safety-notice" style="width: 18px; height: 18px;">
+              <label for="setting-session-safety-notice" style="font-size: 0.9rem; opacity: 0.8;">Mostrar aviso de seguridad antes de cada sesión</label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="checkbox" id="setting-ghost-enabled" style="width: 18px; height: 18px;">
+              <label for="setting-ghost-enabled" style="font-size: 0.9rem; opacity: 0.8;">Mostrar fantasma de mi mejor sesión en rutas</label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="checkbox" id="setting-virtual-gears-enabled" style="width: 18px; height: 18px;">
+              <label for="setting-virtual-gears-enabled" style="font-size: 0.9rem; opacity: 0.8;">Mostrar ficha de marchas</label>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label for="setting-initial-virtual-gear" style="font-size: 0.9rem; opacity: 0.8;">Marcha inicial:</label>
+              <input type="number" id="setting-initial-virtual-gear" min="1" max="14" step="1" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
+                <label for="setting-virtual-slope-min" style="font-size: 0.9rem; opacity: 0.8;">Pendiente mínima (%):</label>
+                <input type="number" id="setting-virtual-slope-min" min="-15" max="20" step="0.5" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
+                <label for="setting-virtual-slope-max" style="font-size: 0.9rem; opacity: 0.8;">Pendiente máxima (%):</label>
+                <input type="number" id="setting-virtual-slope-max" min="-15" max="20" step="0.5" style="padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;">
+              </div>
+            </div>
+            <section class="backup-settings-section" aria-labelledby="backup-settings-heading">
+              <div class="backup-settings-heading">
+                <h4 id="backup-settings-heading">💾 Copias de seguridad</h4>
+                <p>El backup completo conserva perfiles, actividades, preferencias y rutas personales guardadas.</p>
+              </div>
+
+              <div class="backup-destination-card">
+                <div class="backup-destination-title">
+                  <strong>En este dispositivo</strong>
+                  <span class="backup-availability">Disponible</span>
+                </div>
+                <label class="backup-option-row" for="setting-auto-backup">
+                  <input type="checkbox" id="setting-auto-backup">
+                  <span>Descargar un backup automáticamente al finalizar cada sesión</span>
+                </label>
+                <p class="backup-help-text">
+                  El archivo se descarga en la carpeta configurada por el navegador; no se sube a Drive. Puede pedir permiso para descargas múltiples y la app no puede confirmar que el archivo se haya guardado.
+                </p>
+              </div>
+
+              <div class="backup-destination-card backup-destination-disabled">
+                <div class="backup-destination-title">
+                  <strong>Google Drive</strong>
+                  <span class="backup-availability">Próximamente</span>
+                </div>
+                <p class="backup-help-text">
+                  La sincronización con Drive se añadirá más adelante y requerirá autorizar tu cuenta de Google.
+                </p>
+              </div>
+
+              <div class="backup-actions">
+                <button id="btn-backup-data" class="btn btn-primary">Descargar backup completo (JSON)</button>
+                <button id="btn-settings-import-backup" class="btn btn-secondary">Restaurar backup...</button>
+              </div>
+              <div id="backup-last-status" class="backup-last-status">El estado de la descarga aparecerá aquí después del primer backup.</div>
+              <p class="backup-help-text">
+                Los backups contienen datos personales y deportivos y no están cifrados. Guárdalos en un lugar seguro y no los compartas públicamente.
+              </p>
+
+              <details class="backup-advanced-options">
+                <summary>Exportaciones adicionales</summary>
+                <div class="backup-export-grid">
+                  <button id="btn-backup-profiles" class="btn btn-secondary">Solo perfiles (JSON)</button>
+                  <button id="btn-backup-history" class="btn btn-secondary">Historial (JSON)</button>
+                  <button id="btn-backup-csv" class="btn btn-secondary">Telemetría completa (CSV)</button>
+                  <select id="setting-backup-session" aria-label="Sesión para exportar">
+                    <option value="">Selecciona una sesión</option>
+                  </select>
+                  <button id="btn-backup-session" class="btn btn-secondary backup-export-session">Exportar sesión seleccionada (JSON)</button>
+                </div>
+              </details>
+              <p class="backup-help-text backup-restore-note">
+                Al restaurar, los registros con el mismo identificador se reemplazan y los demás se añaden; no se borran los datos que solo existan en este navegador. Se ofrecerá descargar primero una copia actual.
+              </p>
+            </section>
+          </div>
+          <div class="modal-footer" style="margin-top: 24px; display: flex; justify-content: flex-end;">
+            <button id="btn-settings-help" class="btn btn-dark" style="margin-right: auto; padding: 10px 16px; border-radius: 8px;">❓ Ayuda</button>
+            <button id="btn-settings-privacy" class="btn btn-dark" style="padding: 10px 16px; border-radius: 8px;">🔒 Privacidad</button>
+            <button id="btn-save-settings" class="btn btn-primary" style="padding: 10px 24px; border-radius: 8px; background: #10b981; border: none; color: white; font-weight: 600; cursor: pointer;">Guardar Cambios</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="modal-privacy" class="modal-overlay privacy-overlay" style="display: none;">
+        <section class="modal-content glass-card privacy-dialog" role="dialog" aria-modal="true" aria-labelledby="privacy-title">
+          <header class="privacy-heading">
+            <div>
+              <p class="privacy-eyebrow" id="privacy-eyebrow">BIENVENIDA</p>
+              <h2 id="privacy-title">Bienvenido a RodilloInt</h2>
+            </div>
+            <button id="btn-privacy-close" class="privacy-close-button" type="button" aria-label="Cerrar preferencias de privacidad" hidden>×</button>
+          </header>
+          <div class="privacy-content">
+            <p>
+              RodilloInt permite entrenar con rodillo y sensores, seguir rutas y consultar el historial de tus sesiones.
+            </p>
+            <h3>Datos guardados en este navegador</h3>
+            <p>
+              Los perfiles, entrenamientos, telemetría, preferencias y rutas personales se guardan en el almacenamiento local del navegador (IndexedDB y localStorage). No son cookies, pero pueden borrarse al limpiar los datos del sitio o cambiar de navegador/dispositivo. Puedes descargar backups completos desde Ajustes y restaurarlos en otro navegador/dispositivo.
+            </p>
+            <h3>Servicios externos al usar funciones</h3>
+            <ul>
+              <li>Google Analytics: medición opcional de uso; solo se activa si la aceptas.</li>
+              <li>Mapas: MapTiler/OpenStreetMap y recursos de mapa asociados reciben solicitudes cuando se muestra un mapa.</li>
+              <li>Mando remoto: Ably transmite órdenes entre tus dispositivos y el QR se genera localmente. El mando permanece desactivado hasta configurar un endpoint seguro de autenticación Ably.</li>
+              <li>Los componentes JavaScript y CSS se incluyen en la aplicación; los mapas siguen solicitando recursos a sus proveedores.</li>
+            </ul>
+            <h3>Uso y seguridad</h3>
+            <p>
+              RodilloInt es una herramienta de entrenamiento personal/comunitaria, no un dispositivo médico ni un sistema de seguridad. La app, la conexión y las métricas pueden fallar o ser inexactas; no se garantiza un funcionamiento continuo ni el control fiable del rodillo. Comprueba el montaje y el espacio antes de entrenar, sigue las instrucciones del fabricante y utiliza los controles de parada del propio equipo. Detén el ejercicio si te encuentras mal y no dependas de la app para prevenir caídas o lesiones.
+            </p>
+            <h3>Condiciones básicas y reporte de fallos</h3>
+            <p>
+              El uso es voluntario y bajo el criterio de cada persona. El aviso de seguridad ayuda a informar, pero no elimina derechos ni sustituye las obligaciones legales aplicables. Si detectas un fallo, deja de usar la función afectada y comunícalo a <a href="mailto:estimprog@gmail.com?subject=Incidencia%20en%20RodilloInt">estimprog@gmail.com</a>, indicando los pasos para reproducirlo y el navegador/dispositivo. No incluyas datos personales o de salud innecesarios.
+            </p>
+            <label class="privacy-analytics-choice" for="privacy-analytics-consent">
+              <input id="privacy-analytics-consent" type="checkbox">
+              <span>Permitir Google Analytics opcional para medir el uso de la aplicación.</span>
+            </label>
+            <p class="privacy-footnote">
+              Puedes cambiar esta elección en cualquier momento desde <strong>Ayuda o Ajustes → Privacidad</strong>. La app necesita almacenamiento local para guardar perfiles y sesiones; si retiras el consentimiento analítico, se detienen futuras mediciones, aunque el navegador puede conservar cookies ya creadas por terceros. Para consultas sobre privacidad: <a href="mailto:estimprog@gmail.com">estimprog@gmail.com</a>. Antes del uso público, conviene completar una política de privacidad con los datos del responsable, conservación y derechos aplicables.
+            </p>
+          </div>
+          <footer class="privacy-actions">
+            <button id="btn-privacy-essential" class="btn btn-primary" type="button">Solo esenciales</button>
+            <button id="btn-privacy-save" class="btn btn-secondary" type="button">Guardar elección</button>
+            <button id="btn-privacy-accept" class="btn btn-primary" type="button">Aceptar analítica</button>
+          </footer>
+        </section>
+      </div>
+
+      <div id="modal-session-safety" class="modal-overlay privacy-overlay" style="display: none;">
+        <section class="modal-content glass-card session-safety-dialog" role="dialog" aria-modal="true" aria-labelledby="session-safety-title" aria-describedby="session-safety-description">
+          <header class="privacy-heading">
+            <div>
+              <p class="privacy-eyebrow">ANTES DE ENTRENAR</p>
+              <h2 id="session-safety-title">Entrena con seguridad</h2>
+            </div>
+          </header>
+          <div class="privacy-content" id="session-safety-description">
+            <p>
+              RodilloInt no es un dispositivo médico ni un sistema de seguridad. La app, la conexión o las métricas pueden fallar o ser inexactas y no se garantiza el control fiable del rodillo.
+            </p>
+            <ul>
+              <li>Comprueba el montaje, la estabilidad de la bicicleta y que el área esté despejada.</li>
+              <li>Sigue las instrucciones del fabricante y ten a mano los controles de parada del rodillo.</li>
+              <li>No dependas de la app para prevenir caídas o lesiones. Detente si notas dolor, mareo o malestar.</li>
+            </ul>
+            <p>
+              El entrenamiento es voluntario y queda a tu criterio. Este aviso informa de las precauciones, pero no supone una renuncia a derechos ni una exención de responsabilidad.
+            </p>
+            <p class="privacy-footnote">
+              ¿Has encontrado un problema? Escríbenos a <a href="mailto:estimprog@gmail.com?subject=Incidencia%20en%20RodilloInt">estimprog@gmail.com</a>. Describe cómo reproducirlo y tu navegador/dispositivo; evita enviar datos personales o de salud innecesarios.
+            </p>
+            <label class="privacy-analytics-choice session-safety-choice" for="session-safety-acknowledgement">
+              <input id="session-safety-acknowledgement" type="checkbox">
+              <span>He leído las precauciones, he comprobado el equipo y deseo iniciar la sesión.</span>
+            </label>
+            <label class="privacy-analytics-choice session-safety-choice" for="session-safety-skip-future">
+              <input id="session-safety-skip-future" type="checkbox">
+              <span>No volver a mostrar este aviso antes de las sesiones. Puedes volver a activarlo en Ajustes.</span>
+            </label>
+          </div>
+          <footer class="privacy-actions">
+            <button id="btn-session-safety-cancel" class="btn btn-dark" type="button">Cancelar</button>
+            <button id="btn-session-safety-confirm" class="btn btn-primary" type="button" disabled>Continuar a la sesión</button>
+          </footer>
+        </section>
+      </div>
+
+    </body>
+</html>
+
+

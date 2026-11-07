@@ -1,0 +1,807 @@
+import { showModal, hideModal } from "./ui.js";
+import {
+  openAddUserModal,
+  closeAddUserModal,
+  openImportUserModal,
+  closeImportUserModal,
+  openEditUserModal,
+  closeEditUserModal,
+  openSettingsModal,
+  closeSettingsModal,
+  openRouteModal,
+  closeRouteModal,
+  applyRouteSegmentSelection,
+} from "../ui/modals.js";
+import { state, saveStateToLocalStorage } from "./state.js";
+import {
+  exportAllData,
+  exportAllDataCsv,
+  getBackupStatus,
+  importAllData,
+  previewImportData,
+} from "../db.js";
+import { DEFAULT_VIRTUAL_GEAR, clampVirtualGear } from "./virtualGears.js";
+
+function formatBackupStatus(status) {
+  const container = document.getElementById("backup-last-status");
+  if (!container) return;
+  if (!status) {
+    container.textContent = "El estado de la descarga aparecerá aquí después del primer backup.";
+    return;
+  }
+  const date = new Date(status.initiatedAt || status.createdAt);
+  const dateText = Number.isNaN(date.getTime())
+    ? "Fecha desconocida"
+    : date.toLocaleString("es-ES");
+  const sizeText = Number.isFinite(status.sizeBytes)
+    ? `${(status.sizeBytes / (1024 * 1024)).toFixed(2)} MB`
+    : "tamaño desconocido";
+  const scopeNames = {
+    all: "Backup completo",
+    users: "Solo perfiles",
+    history: "Historial",
+    session: "Sesión individual",
+    csv: "Telemetría CSV",
+  };
+  const source = status.automatic ? "automático" : "manual";
+  const savedRoutesText = status.scope === "all"
+    ? ` · ${status.savedRoutesCount ?? 0} rutas personales`
+    : "";
+  container.textContent = `Última descarga iniciada: ${dateText} · ${source} · ${scopeNames[status.scope] || status.scope} · ${status.sessionsCount ?? 0} sesiones${savedRoutesText} · ${sizeText}. Archivo: ${status.filename || "desconocido"}. El navegador no confirma que se haya guardado.`;
+}
+
+async function populateBackupSessionPicker() {
+  const select = document.getElementById("setting-backup-session");
+  if (!select) return;
+  const sessions = await DbManager.getAllSessions();
+  const selectedValue = select.value;
+  select.replaceChildren(new Option("Selecciona una sesión", ""));
+  sessions
+    .sort((a, b) => Number(b.startTime) - Number(a.startTime))
+    .forEach((session) => {
+      const date = new Date(session.startTime).toLocaleString("es-ES");
+      const label = `${date} · ${session.routeName || session.gpxPath || "Sesión manual"} · ${Number(session.totalDistance || 0).toFixed(2)} km`;
+      select.add(new Option(label, String(session.id)));
+    });
+  if (selectedValue && [...select.options].some((option) => option.value === selectedValue)) {
+    select.value = selectedValue;
+  }
+}
+
+async function startBackupDownload(options = {}) {
+  try {
+    const status = await exportAllData(options);
+    formatBackupStatus(status);
+    return status;
+  } catch (error) {
+    console.error("No se pudo iniciar la descarga del backup:", error);
+    alert(`No se pudo generar el backup: ${error.message}`);
+    return null;
+  }
+}
+
+export function bindEvents(handlers) {
+  document.getElementById("active-profile-header")?.addEventListener("click", (event) => {
+    if (event.target.closest("#btn-open-user-profile-trigger")) return;
+    document.getElementById("btn-open-user-profile-trigger")?.click();
+  });
+
+  const {
+    handleAddUserSubmit,
+    handleEditUserSubmit,
+    handleImportUserSubmit,
+    handleDeleteProfile,
+    handleExportProfile,
+    handleLogout,
+    startModeFlow,
+    navigateTo,
+    triggerBleConnection,
+    togglePause,
+    stopSessionFlow,
+    handleGpxUpload,
+    saveUserRoute,
+    setRouteLibraryFilter,
+    changeTrainingCalendarMonth,
+    selectTrainingCalendarDate,
+    goToTrainingCalendarToday,
+    populateSessionSavedRoutes,
+    loadSavedRouteInSessionModal,
+    adjustManualSlope,
+    adjustManualPower,
+    changeVirtualGear,
+    setWorkoutFontScale,
+    startSession,
+    confirmSessionSafety,
+  } = handlers;
+
+  const safetyAcknowledgement = document.getElementById(
+    "session-safety-acknowledgement",
+  );
+  const safetyConfirmButton = document.getElementById(
+    "btn-session-safety-confirm",
+  );
+  safetyAcknowledgement?.addEventListener("change", () => {
+    if (safetyConfirmButton) {
+      safetyConfirmButton.disabled = !safetyAcknowledgement.checked;
+    }
+  });
+
+  document
+    .getElementById("setting-compact-priority-metric")
+    ?.addEventListener("change", (event) => {
+      if (typeof window.setWorkoutPriorityMetric === "function") {
+        window.setWorkoutPriorityMetric(event.target.value);
+      }
+    });
+
+  // Add user form submission
+  const addUserForm = document.getElementById("form-add-user");
+  if (addUserForm) {
+    addUserForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      handleAddUserSubmit(e);
+    });
+  }
+
+  // Edit user form submission
+  const editUserForm = document.getElementById("form-edit-user");
+  if (editUserForm) {
+    editUserForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      handleEditUserSubmit(e);
+    });
+  }
+
+  document.body.addEventListener("click", (e) => {
+    const target = e.target.closest(
+      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-erg, #mode-erg-workout, #mode-traditional, #btn-workouts-back, #btn-import-workout, #btn-workout-bias-minus, #btn-workout-bias-plus, #btn-workout-bias-reset, #btn-workout-pause, #btn-workout-stop, #btn-workout-fullscreen, #btn-cycle-layout, #btn-compact-panels, #btn-close-compact-panels, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, #btn-export-csv, #btn-export-fit, [id^='btn-export-csv-'], [id^='btn-export-fit-'], [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-history-back-top, #btn-stats-back-top, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-settings-help, #btn-open-help, #btn-help-back, #btn-toggle-3d, #btn-toggle-manual-mode, #btn-session-safety-confirm, #btn-session-safety-cancel",
+    );
+
+    if (!target) return;
+    const id = target.id;
+
+    const ble = window.BleManager;
+    const canStartSession =
+      ble?.simulator?.isActive ||
+      ble?.connections?.TRAINER?.status === "CONECTADO" ||
+      ble?.connections?.POWER?.status === "CONECTADO" ||
+      ble?.connections?.CSC?.status === "CONECTADO";
+    const requestsSessionFullscreen =
+      (id === "btn-connections-continue" && canStartSession) ||
+      (id === "btn-modal-confirm" && state.routePoints.length > 0) ||
+      id === "btn-session-safety-confirm" ||
+      (id === "btn-workout-pause" &&
+        (state.isSessionActive ||
+          state.currentMode !== "ROUTE" ||
+          state.routePoints.length > 0)) ||
+      target.matches("[data-route-select]");
+
+    if (requestsSessionFullscreen && typeof window.ensureWorkoutFullscreen === "function") {
+      void window.ensureWorkoutFullscreen();
+    }
+    if (id === "btn-workout-fullscreen" && typeof window.ensureWorkoutFullscreen === "function") {
+      void window.ensureWorkoutFullscreen();
+    }
+    if (id === "btn-toggle-fullscreen" && typeof window.toggleFullscreen === "function") {
+      void window.toggleFullscreen();
+    }
+
+    setTimeout(() => {
+      // Modales y Navegación
+      if (id === "btn-show-add-user") openAddUserModal();
+      if (id === "btn-show-import-user") openImportUserModal();
+      if (id === "btn-close-add-user") closeAddUserModal();
+      if (id === "btn-close-import-user") closeImportUserModal();
+      if (id === "btn-close-edit-user") closeEditUserModal();
+      const openUserProfile = () => {
+        const u = state.currentUser;
+        if (u) {
+          document.getElementById("edit-user-name").value = u.name || "";
+          document.getElementById("edit-user-weight").value = u.weight || "";
+          document.getElementById("edit-user-ftp").value = u.ftp || "";
+          document.getElementById("edit-user-maxhr").value =
+            u.maxHeartRate || "";
+          document.getElementById("edit-user-age").value = u.age || "";
+          document.getElementById("edit-user-height").value = u.height || "";
+        }
+        openEditUserModal();
+      };
+
+      const openSettingsModalHandler = () => {
+        openSettingsModal();
+      };
+
+      if (id === "btn-open-user-profile-trigger") {
+        openUserProfile();
+      }
+      if (id === "btn-dashboard-settings") {
+        openSettingsModal();
+        setTimeout(() => {
+          // Determinar la opción de mapa correcta para el desplegable
+          let mapTypeValue = "maplibre";
+          if (state.mapType === "leaflet") {
+            mapTypeValue = "leaflet";
+          } else if (state.mapType === "maplibre" && state.mapViewMode === "3D_FPV") {
+            mapTypeValue = "mapFPV";
+          }
+          
+          document.getElementById("setting-map-type").value = mapTypeValue;
+          document.getElementById("setting-map-orientation").value =
+            state.mapInitialOrientation || "NORTE";
+          document.getElementById("setting-workout-layout").value = state.workoutLayout || 'auto';
+          document.getElementById("setting-font-scale").value = state.fontScale || 1.0;
+          
+          const realismSlider = document.getElementById("setting-realism");
+          const realismDisplay = document.getElementById("realism-val-display");
+          realismSlider.value = Math.round(state.realismFactor * 100) || 100;
+          realismDisplay.textContent = realismSlider.value;
+          
+          realismSlider.oninput = (e) => realismDisplay.textContent = e.target.value;
+
+          document.getElementById("setting-power-zones").value = state.powerZones ? state.powerZones.join(',') : "55,75,88,95,106";
+          document.getElementById("setting-countdown-duration").value = state.countdownDuration || 3;
+          document.getElementById("setting-start-on-movement").checked = state.startOnMovement || false;
+          document.getElementById("setting-session-safety-notice").checked =
+            state.sessionSafetyNoticeEnabled !== false;
+          document.getElementById("setting-ghost-enabled").checked = state.ghostEnabled !== false;
+          document.getElementById("setting-virtual-gears-enabled").checked = state.virtualGearsEnabled !== false;
+          document.getElementById("setting-auto-backup").checked = state.autoBackupOnSessionEnd !== false;
+          document.getElementById("setting-initial-virtual-gear").value = state.initialVirtualGear || DEFAULT_VIRTUAL_GEAR;
+          document.getElementById("setting-virtual-slope-min").value = state.virtualSlopeMin;
+          document.getElementById("setting-virtual-slope-max").value = state.virtualSlopeMax;
+          formatBackupStatus(getBackupStatus());
+          void populateBackupSessionPicker().catch((error) => {
+            console.error("No se pudo cargar la lista de sesiones para backup:", error);
+          });
+  	        
+  	        document.querySelectorAll('.btn-smoothing').forEach(btn => {
+            btn.style.background = btn.getAttribute('data-val') == (state.sensorSmoothing || 3000) ? '#10b981' : '#333';
+          });
+        }, 250);
+      }
+      if (id === "btn-fullscreen-recovery-cancel" && typeof window.closeFullscreenRecovery === "function") {
+        window.closeFullscreenRecovery();
+      }
+      if (id === "btn-fullscreen-recovery-confirm" && typeof window.reactivateFullscreen === "function") {
+        window.reactivateFullscreen();
+      }
+      
+      if (id === "btn-close-settings") {
+        hideModal('settings');
+      }
+      if (id === "btn-open-help" || id === "btn-settings-help") {
+        if (id === "btn-settings-help") hideModal("settings");
+        navigateTo("help");
+      }
+      if (id === "btn-save-settings") {
+        const enablingAutoBackup =
+          !state.autoBackupOnSessionEnd &&
+          document.getElementById("setting-auto-backup").checked;
+        if (enablingAutoBackup && !confirm(
+          "Al finalizar cada sesión, RodilloInt iniciará la descarga de un backup. El navegador puede pedir permiso para descargas múltiples y la aplicación no puede confirmar que el archivo se haya guardado. ¿Activar esta opción?",
+        )) {
+          document.getElementById("setting-auto-backup").checked = false;
+        }
+        const selectedMapType = document.getElementById("setting-map-type").value;
+        state.mapType = selectedMapType === "leaflet" ? "leaflet" : "maplibre";
+        
+        // Sincronizar el modo de vista según la opción seleccionada
+        if (selectedMapType === "leaflet") {
+          state.mapViewMode = "2D";
+        } else if (selectedMapType === "mapFPV") {
+          state.mapViewMode = "3D_FPV";
+        } else {
+          state.mapViewMode = "3D_AEREO";
+        }
+        state.mapInitialOrientation =
+          document.getElementById("setting-map-orientation").value === "RUTA"
+            ? "RUTA"
+            : "NORTE";
+
+        state.workoutLayout = document.getElementById("setting-workout-layout").value;
+        state.fontScale = parseFloat(document.getElementById("setting-font-scale").value);
+        state.realismFactor = parseInt(document.getElementById("setting-realism").value) / 100;
+        state.powerZones = document.getElementById("setting-power-zones").value.split(',').map(Number);
+        
+        state.countdownDuration = parseInt(document.getElementById("setting-countdown-duration").value) || 3;
+        state.startOnMovement = document.getElementById("setting-start-on-movement").checked;
+        state.sessionSafetyNoticeEnabled = document.getElementById(
+          "setting-session-safety-notice",
+        ).checked;
+        state.ghostEnabled = document.getElementById("setting-ghost-enabled").checked;
+        state.virtualGearsEnabled = document.getElementById("setting-virtual-gears-enabled").checked;
+        state.autoBackupOnSessionEnd = document.getElementById("setting-auto-backup").checked;
+        const initialVirtualGear = Number(document.getElementById("setting-initial-virtual-gear").value);
+        state.initialVirtualGear = Number.isFinite(initialVirtualGear)
+          ? clampVirtualGear(initialVirtualGear)
+          : DEFAULT_VIRTUAL_GEAR;
+        const virtualSlopeMin = Number(document.getElementById("setting-virtual-slope-min").value);
+        const virtualSlopeMax = Number(document.getElementById("setting-virtual-slope-max").value);
+        if (
+          !Number.isFinite(virtualSlopeMin) ||
+          !Number.isFinite(virtualSlopeMax) ||
+          virtualSlopeMin < -15 ||
+          virtualSlopeMax > 20 ||
+          virtualSlopeMin >= virtualSlopeMax
+        ) {
+          alert("Los límites deben estar entre -15% y 20%, y el mínimo debe ser menor que el máximo.");
+          return;
+        }
+        state.virtualSlopeMin = virtualSlopeMin;
+        state.virtualSlopeMax = virtualSlopeMax;
+        saveStateToLocalStorage();
+        if (typeof window.applyWorkoutLayout === "function") {
+          window.applyWorkoutLayout();
+        }
+        closeSettingsModal();
+      }
+      if (e.target.classList.contains('btn-smoothing')) {
+        state.sensorSmoothing = parseInt(e.target.getAttribute('data-val'));
+        document.querySelectorAll('.btn-smoothing').forEach(btn => {
+          btn.style.background = btn === e.target ? '#10b981' : '#333';
+        });
+      }
+      if (id === "btn-backup-data") {
+        void startBackupDownload();
+      }
+      if (id === "btn-backup-profiles") {
+        void startBackupDownload({ scope: "users" });
+      }
+      if (id === "btn-backup-history") {
+        void startBackupDownload({ scope: "history" });
+      }
+      if (id === "btn-backup-session") {
+        const sessionId = document.getElementById("setting-backup-session").value;
+        if (!sessionId) {
+          alert("Selecciona primero una sesión.");
+        } else {
+          void startBackupDownload({ scope: "session", sessionId });
+        }
+      }
+      if (id === "btn-backup-csv") {
+        void exportAllDataCsv()
+          .then((status) => {
+            formatBackupStatus(status);
+            alert(`Descarga CSV iniciada con ${status.rows} puntos de telemetría.`);
+          })
+          .catch((error) => {
+            console.error("No se pudo exportar la telemetría CSV:", error);
+            alert(`No se pudo exportar el CSV: ${error.message}`);
+          });
+      }
+      if (id === "btn-summary-backup") {
+        void startBackupDownload();
+      }
+
+      if (id === "btn-dashboard-connections") {
+        state.connectionsReturnScreen = "dashboard";
+        navigateTo("connections");
+      }
+      if (id === "btn-summary-close") {
+        navigateTo(state.summaryReturnScreen || "dashboard");
+      }
+      if (id === "btn-go-history") navigateTo("history");
+      if (id === "btn-history-back") navigateTo("dashboard");
+      if (id === "btn-history-back-top") navigateTo("dashboard");
+      if (id === "btn-go-progress") navigateTo("stats");
+      if (id === "btn-calendar-previous") changeTrainingCalendarMonth(-1);
+      if (id === "btn-calendar-next") changeTrainingCalendarMonth(1);
+      if (id === "btn-calendar-today") goToTrainingCalendarToday();
+      if (target.dataset.calendarDate) {
+        selectTrainingCalendarDate(target.dataset.calendarDate);
+      }
+      if (id === "btn-help-back") navigateTo("dashboard");
+      if (id === "btn-routes-back") navigateTo("dashboard");
+      if (id === "btn-workouts-back") navigateTo("dashboard");
+      if (id === "btn-open-saved-routes") navigateTo("routes");
+      if (id === "btn-logout") handleLogout();
+      if (id === "btn-connections-back") {
+        state.routeSelectedFromLibrary = false;
+        const returnScreen = state.connectionsReturnScreen || "dashboard";
+        state.connectionsReturnScreen = "dashboard";
+        navigateTo(returnScreen);
+      }
+      if (id === "btn-stats-back") navigateTo("dashboard");
+      if (id === "btn-stats-back-top") navigateTo("dashboard");
+
+      // Modos
+      if (id === "mode-route") {
+        state.currentMode = "ROUTE";
+        state.connectionsReturnScreen = "dashboard";
+        state.routeSelectedFromLibrary = false;
+        navigateTo("connections");
+      }
+      if (id === "mode-manual") {
+        state.currentMode = "MANUAL";
+        state.connectionsReturnScreen = "dashboard";
+        state.manualMode = "SLOPE";
+        navigateTo("connections");
+      }
+      if (id === "mode-erg" || id === "mode-erg-workout") {
+        navigateTo("workouts");
+      }
+      if (id === "mode-traditional") {
+        state.currentMode = "TRADITIONAL";
+        state.connectionsReturnScreen = "dashboard";
+        navigateTo("connections");
+      }
+
+      // Bias y controles de workout ERG
+      if (id === "btn-import-workout") {
+        document.getElementById("workout-file-input")?.click();
+      }
+      if (id === "btn-workout-bias-minus" && typeof window.adjustWorkoutBias === "function") {
+        window.adjustWorkoutBias(-5);
+      }
+      if (id === "btn-workout-bias-plus" && typeof window.adjustWorkoutBias === "function") {
+        window.adjustWorkoutBias(5);
+      }
+      if (id === "btn-workout-bias-reset" && typeof window.resetWorkoutBias === "function") {
+        window.resetWorkoutBias();
+      }
+
+      // Controles entrenamiento
+      if (id === "btn-workout-pause") togglePause();
+      if (id === "btn-workout-stop") stopSessionFlow();
+      if (id === "btn-skip-warmup" && typeof window.finishWarmup === "function") {
+        window.finishWarmup();
+      }
+      if (id === "btn-session-safety-confirm") confirmSessionSafety();
+      if (id === "btn-session-safety-cancel") hideModal("session-safety");
+      if (id === "btn-cycle-layout" && typeof window.cycleWorkoutLayout === "function") {
+        window.cycleWorkoutLayout();
+      }
+      if (
+        (id === "btn-compact-panels" || id === "btn-close-compact-panels") &&
+        typeof window.toggleCompactWorkoutPanels === "function"
+      ) {
+        window.toggleCompactWorkoutPanels();
+      }
+      if (target.classList.contains("panel-toggle") && typeof window.toggleWorkoutPanel === "function") {
+        window.toggleWorkoutPanel(target.getAttribute("data-panel-target"));
+      }
+      if (id === "btn-toggle-3d") {
+        const btn = document.getElementById("btn-toggle-3d");
+        if (typeof window.toggleMapEngine === "function") {
+          window.toggleMapEngine(btn);
+        }
+      }
+      // Control de fuentes
+      if (e.target.classList.contains("btn-font-scale")) {
+        const scale = e.target.getAttribute("data-scale");
+        const increment = scale === "sm" ? -0.1 : scale === "lg" ? 0.1 : 0;
+        if (increment !== 0) {
+          setWorkoutFontScale(increment);
+          // Actualizar visualmente la clase active
+          document.querySelectorAll(".btn-font-scale").forEach((btn) => {
+            btn.classList.remove("active");
+          });
+          e.target.classList.add("active");
+        }
+      }
+      if (id === "btn-slope-minus") {
+        if (state.manualMode === 'SLOPE') {
+          adjustManualSlope(-0.5);
+        } else if (state.manualMode === 'ERG') {
+          adjustManualPower(-1);
+        }
+      }
+      if (id === "btn-slope-plus") {
+        if (state.manualMode === 'SLOPE') {
+          adjustManualSlope(0.5);
+        } else if (state.manualMode === 'ERG') {
+          adjustManualPower(1);
+        }
+      }
+      if (id === "btn-gear-down") changeVirtualGear(-1);
+      if (id === "btn-gear-up") changeVirtualGear(1);
+      if (id === "btn-open-remote-room" && typeof window.toggleRemoteRoomPanel === "function") {
+        window.toggleRemoteRoomPanel();
+      }
+      if (id === "btn-close-remote-room" && typeof window.toggleRemoteRoomPanel === "function") {
+        window.toggleRemoteRoomPanel(false);
+      }
+
+      if (id === "btn-toggle-manual-mode") {
+        state.manualMode = state.manualMode === 'SLOPE' ? 'ERG' : 'SLOPE';
+        
+        const label = document.getElementById("manual-slope-label");
+        const modeText = document.getElementById("manual-mode-label-text");
+        const btn = document.getElementById("btn-toggle-manual-mode");
+
+        if (state.manualMode === 'ERG') {
+          if (modeText) modeText.textContent = "Potencia Objetivo";
+          if (label) label.textContent = `${state.targetWatts} W`;
+          if (btn) btn.textContent = "Cambiar a Modo Pendiente (%)";
+          if (typeof BleManager !== "undefined") BleManager.setTargetPower(state.targetWatts);
+        } else {
+          if (modeText) modeText.textContent = "Pendiente";
+          if (label) label.textContent = `${state.currentSlope.toFixed(1)}%`;
+          if (btn) btn.textContent = "Cambiar a Modo ERG (W)";
+          if (typeof BleManager !== "undefined") BleManager.setTrainerSlope(state.currentSlope);
+        }
+      }
+
+      if (id === "btn-export-gpx") {
+        if (typeof window.handleSessionExport === 'function') {
+          window.handleSessionExport();
+        } else {
+          console.error("handleSessionExport no está disponible");
+        }
+      }
+
+      if (id === "btn-export-csv") {
+        if (typeof window.handleSessionCsvExport === 'function') {
+          window.handleSessionCsvExport();
+        } else {
+          console.error("handleSessionCsvExport no está disponible");
+        }
+      }
+
+      if (id && id.startsWith("btn-export-csv-")) {
+        const sessionId = id.replace("btn-export-csv-", "");
+        if (typeof window.downloadSpecificHistoryCsv === 'function') {
+          window.downloadSpecificHistoryCsv(sessionId);
+        } else {
+          console.error("downloadSpecificHistoryCsv no está disponible");
+        }
+      }
+
+      if (id === "btn-export-fit") {
+        if (typeof window.handleSessionFitExport === 'function') {
+          window.handleSessionFitExport();
+        } else {
+          console.error("handleSessionFitExport no está disponible");
+        }
+      }
+
+      if (id && id.startsWith("btn-export-fit-")) {
+        const sessionId = id.replace("btn-export-fit-", "");
+        if (typeof window.downloadSpecificHistoryFit === 'function') {
+          window.downloadSpecificHistoryFit(sessionId);
+        } else {
+          console.error("downloadSpecificHistoryFit no está disponible");
+        }
+      }
+
+      // Bluetooth
+      if (id && id.startsWith("btn-connect-")) {
+        triggerBleConnection(id.replace("btn-connect-", ""));
+      }
+
+      // Simulador - Toggle
+      if (id === "btn-toggle-sim") {
+        if (typeof BleManager !== "undefined") {
+          const btn = document.getElementById("btn-toggle-sim");
+          if (BleManager.simulator.isActive) {
+            BleManager.stopSimulator();
+            const sensors = ["TRAINER", "POWER", "CSC"];
+            sensors.forEach((type) => {
+              const status = BleManager.connections[type].device
+                ? "CONECTADO"
+                : "DESCONECTADO";
+              
+              // Actualizar el estado interno
+              BleManager.connections[type].status = status;
+              
+              // Forzar actualización de los iconos del HUD (indicadores superiores)
+              if (typeof BleManager.onStatusChanged === "function") {
+                  BleManager.onStatusChanged(type, status);
+              }
+            });
+
+            // Refrescar toda la interfaz de conexiones usando la función expuesta globalmente
+            if (typeof window.refreshConnectionScreen === "function") {
+                window.refreshConnectionScreen();
+            }
+            btn.textContent = "Activar Rodillo Virtual";
+            btn.className = "btn btn-secondary";
+            document.getElementById("virtual-trainer-panel").style.display = "none";
+          } else {
+            const weight = state.currentUser ? state.currentUser.weight : 75.0;
+            BleManager.startSimulator(weight);
+            btn.textContent = "Desactivar Rodillo Virtual";
+            btn.className = "btn btn-danger";
+            // No mostrar el panel aquí, se mostrará en enterWorkoutScreen
+            document.getElementById("virtual-trainer-panel").style.display =
+              "none";
+          }
+        }
+      }
+
+      // Simulador - Enlace de sliders
+      const powerSlider = document.getElementById("sim-power-slider");
+      const cadenceSlider = document.getElementById("sim-cadence-slider");
+      const hrSlider = document.getElementById("sim-hr-slider");
+
+      const updateSim = () => {
+        const p = powerSlider.value;
+        const c = cadenceSlider.value;
+        const h = hrSlider.value;
+
+        document.getElementById("sim-power-val").textContent = `${p} W`;
+        document.getElementById("sim-cadence-val").textContent = `${c} rpm`;
+        document.getElementById("sim-hr-val").textContent = `${h} bpm`;
+
+        if (typeof BleManager !== "undefined") {
+          BleManager.setSimulatedMetrics(p, h, c);
+        }
+      };
+
+      if (powerSlider) powerSlider.oninput = updateSim;
+      if (cadenceSlider) cadenceSlider.oninput = updateSim;
+      if (hrSlider) hrSlider.oninput = updateSim;
+
+      // Flujo de continuación
+      if (id === "btn-connections-continue") {
+        const ble = window.BleManager;
+        const isVirtual = ble?.simulator?.isActive;
+        const hasControllable = ble?.connections?.TRAINER?.status === "CONECTADO";
+        const hasPower = ble?.connections?.POWER?.status === "CONECTADO";
+        const hasSpeed = ble?.connections?.CSC?.status === "CONECTADO";
+        if (isVirtual || hasControllable || hasPower || hasSpeed) {
+          if (state.currentMode === "ROUTE") {
+            if (
+              (state.routeLoadedFromHistory || state.routeSelectedFromLibrary) &&
+              state.routePoints.length > 0
+            ) {
+              navigateTo("workout");
+              state.routeSelectedFromLibrary = false;
+              if (!state.isSessionActive) startSession();
+            } else {
+              openRouteModal();
+              void populateSessionSavedRoutes();
+            }
+          } else {
+            navigateTo("workout");
+          }
+        } else {
+          alert(
+            "Debes conectar al menos un sensor (Rodillo, Potencia o Velocidad) o activar el Rodillo Virtual para continuar.",
+          );
+        }
+      }
+
+      if (id === "btn-add-saved-route") {
+        const routeInput = document.getElementById("saved-route-file-input");
+        if (!state.currentUser) {
+          const status = document.getElementById("saved-route-library-status");
+          if (status) status.textContent = "Selecciona un perfil antes de guardar rutas.";
+        } else {
+          routeInput.value = "";
+          routeInput.click();
+        }
+      }
+    }, 0);
+  });
+
+  const savedRouteLoadButton = document.getElementById("btn-load-saved-route");
+  savedRouteLoadButton?.addEventListener("click", () => {
+    void loadSavedRouteInSessionModal(savedRouteLoadButton);
+  });
+
+  document.getElementById("btn-modal-cancel")?.addEventListener("click", () => {
+    closeRouteModal();
+    navigateTo("dashboard");
+  });
+
+  document.getElementById("btn-modal-confirm")?.addEventListener("click", () => {
+    if (state.currentMode !== "ROUTE" || state.routePoints.length < 2) {
+      alert("Primero carga una ruta guardada o un archivo GPX/TCX válido.");
+      return;
+    }
+    applyRouteSegmentSelection();
+    closeRouteModal();
+    navigateTo("workout");
+    if (!state.isSessionActive) startSession();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    const target = event.target;
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      target?.isContentEditable
+    ) {
+      return;
+    }
+
+    if (event.key.toLowerCase() === "w" || event.key === "ArrowUp") {
+      event.preventDefault();
+      changeVirtualGear(1);
+    } else if (event.key.toLowerCase() === "s" || event.key === "ArrowDown") {
+      event.preventDefault();
+      changeVirtualGear(-1);
+    } else if (event.code === "Space" && state.isSessionActive) {
+      event.preventDefault();
+      if (typeof togglePause === "function") togglePause();
+    } else if (event.key.toLowerCase() === "m" && state.isSessionActive) {
+      event.preventDefault();
+      const btn = document.getElementById("btn-toggle-3d");
+      if (btn && typeof window.toggleMapEngine === "function") {
+        window.toggleMapEngine(btn);
+      }
+    }
+  });
+
+  // Eventos específicos (formularios, GPX, fuentes)
+  document.getElementById("btn-submit-import-user").onclick =
+    handleImportUserSubmit;
+  document.getElementById("btn-delete-profile").onclick = handleDeleteProfile;
+  document.getElementById("btn-export-profile").onclick = handleExportProfile;
+
+  // Manejador GPX - Único y centralizado
+  const gpxInput = document.getElementById("gpx-file-input");
+  const gpxTrigger = document.getElementById("btn-trigger-gpx-pick");
+  if (gpxTrigger && gpxInput) {
+    gpxTrigger.onclick = () => {
+      state.fullscreenFilePickerActive = true;
+      if (document.fullscreenElement) {
+        state.fullscreenPreference = true;
+        saveStateToLocalStorage();
+      }
+      gpxInput.value = "";
+      gpxInput.click();
+    };
+    gpxInput.removeEventListener("change", handleGpxUpload);
+    gpxInput.addEventListener("change", handleGpxUpload);
+  }
+
+  const savedRouteInput = document.getElementById("saved-route-file-input");
+  savedRouteInput?.addEventListener("change", (event) => {
+    const [file] = event.target.files || [];
+    if (file) void saveUserRoute(file);
+  });
+
+  document.getElementById("route-library-filter")?.addEventListener("change", (event) => {
+    setRouteLibraryFilter(event.target.value);
+  });
+
+  // Restaurar backup
+  const backupInput = document.getElementById("backup-file-input");
+  const backupTrigger = document.getElementById("btn-trigger-import-backup");
+  const settingsBackupTrigger = document.getElementById("btn-settings-import-backup");
+  if (backupInput) {
+    const openBackupPicker = () => {
+      backupInput.value = "";
+      backupInput.click();
+    };
+    if (backupTrigger) backupTrigger.onclick = openBackupPicker;
+    if (settingsBackupTrigger) settingsBackupTrigger.onclick = openBackupPicker;
+    backupInput.addEventListener("change", (e) => {
+      if (e.target.files.length > 0) {
+        const file = e.target.files[0];
+        void (async () => {
+          try {
+            const preview = await previewImportData(file);
+            const previewLines = Object.entries(preview)
+              .map(([storeName, counts]) =>
+                `${storeName}: ${counts.incoming} incluidos, ${counts.overwrites} se reemplazarán, ${counts.additions} se añadirán`)
+              .join("\n");
+            const downloadCurrentBackup = confirm(
+              "Antes de restaurar, ¿quieres descargar una copia de los datos actuales como protección?",
+            );
+            if (downloadCurrentBackup && !(await startBackupDownload())) return;
+            const confirmed = confirm(
+              `Vista previa de restauración:\n${previewLines}\n\nLos registros con el mismo ID se reemplazarán; los nuevos se añadirán. Los registros que no estén en el archivo se conservarán. ¿Continuar?`,
+            );
+            if (confirmed) await importAllData(file);
+          } catch (error) {
+            console.error("No se pudo preparar la restauración del backup:", error);
+            alert(`No se pudo preparar la restauración: ${error.message}`);
+          }
+        })();
+      }
+    });
+  }
+
+  formatBackupStatus(getBackupStatus());
+  window.addEventListener("rodilloint:backup-started", (event) => {
+    formatBackupStatus(event.detail);
+    const summaryStatus = document.getElementById("session-save-status");
+    if (summaryStatus) {
+      summaryStatus.textContent = `Descarga iniciada: ${event.detail.filename}. Comprueba la carpeta de descargas del navegador.`;
+    }
+  });
+}
