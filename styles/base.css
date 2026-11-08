@@ -449,6 +449,12 @@ h4 {
     width: 100%;
 }
 
+.dashboard-header-left-group {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
 .dashboard-header-buttons {
     display: flex;
     gap: 12px; /* Ajusta este valor para más o menos espacio */
