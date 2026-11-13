@@ -91,7 +91,7 @@ function openPrivacyModal(isFirstVisit = false) {
   checkbox.checked = consent?.analytics === true;
   closeButton.hidden = isFirstVisit;
   title.textContent = isFirstVisit
-    ? "Bienvenido a RodilloInt"
+    ? "Bienvenido a Rodillo Interactivo Ciclismo"
     : "Privacidad y preferencias";
   eyebrow.textContent = isFirstVisit ? "BIENVENIDA" : "PRIVACIDAD";
   modal.style.display = "flex";

@@ -269,7 +269,7 @@ export function createWorkoutEditorController({ refreshLibrary }) {
     const workout = {
       id: existingWorkout?.id || `custom-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`,
       name,
-      description: document.getElementById("workout-editor-description")?.value.trim() || "Entrenamiento creado en RodilloInt.",
+      description: document.getElementById("workout-editor-description")?.value.trim() || "Entrenamiento creado en Rodillo Interactivo Ciclismo.",
       author: existingWorkout?.author || state.currentUser?.name || "Usuario",
       totalDurationSeconds,
       steps,

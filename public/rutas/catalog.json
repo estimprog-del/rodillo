@@ -1,16 +1,40 @@
 {
   "routes": [
     {
+      "file": "Aitana Tour.gpx",
+      "name": "Aitana Tour"
+    },
+    {
       "file": "baztan-real-v3.gpx",
       "name": "Baztan Real V3"
+    },
+    {
+      "file": "desafio-lagos-de-covadonga.gpx",
+      "name": "Desafio Lagos De Covadonga"
     },
     {
       "file": "la-cantabrona-2026-gran-fondo.gpx",
       "name": "La Cantabrona 2026 Gran Fondo"
     },
     {
+      "file": "La Indurain.gpx",
+      "name": "La Indurain"
+    },
+    {
+      "file": "La Legendaria.gpx",
+      "name": "La Legendaria"
+    },
+    {
+      "file": "La Magia Del Grial.gpx",
+      "name": "La Magia Del Grial"
+    },
+    {
       "file": "la-perico-gran-fondo.gpx",
       "name": "La Perico Gran Fondo"
+    },
+    {
+      "file": "Legendaria-El Bosquet.gpx",
+      "name": "Legendaria El Bosquet"
     },
     {
       "file": "legendaria-granfondo-legendaria.gpx",

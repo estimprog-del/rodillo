@@ -1,7 +1,7 @@
 {
   "name": "rodilloint-web",
   "version": "1.6.0",
-  "description": "Rodillo Interactivo Training Lab para Navegador Web",
+  "description": "Rodillo Interactivo Ciclismo para Navegador Web",
   "main": "index.html",
   "scripts": {
     "predev": "node scripts/generate-route-catalog.js",
