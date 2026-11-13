@@ -1,8 +1,8 @@
 {
   "routes": [
     {
-      "file": "Aitana Tour.gpx",
-      "name": "Aitana Tour"
+      "file": "AitanaTour.gpx",
+      "name": "AitanaTour"
     },
     {
       "file": "BAZTAN-REAL-V3.gpx",
@@ -17,15 +17,15 @@
       "name": "La Cantabrona 2026 Gran Fondo"
     },
     {
-      "file": "La Indurain.gpx",
+      "file": "La-Indurain.gpx",
       "name": "La Indurain"
     },
     {
-      "file": "La Legendaria.gpx",
+      "file": "La-Legendaria.gpx",
       "name": "La Legendaria"
     },
     {
-      "file": "La Magia Del Grial.gpx",
+      "file": "La-Magia-Del-Grial.gpx",
       "name": "La Magia Del Grial"
     },
     {
@@ -33,12 +33,8 @@
       "name": "La Perico Gran Fondo"
     },
     {
-      "file": "Legendaria-El Bosquet.gpx",
-      "name": "Legendaria El Bosquet"
-    },
-    {
-      "file": "Legendaria-GranFondo-Legendaria.gpx",
-      "name": "Legendaria GranFondo Legendaria"
+      "file": "Legendaria-ElBosquet.gpx",
+      "name": "Legendaria ElBosquet"
     },
     {
       "file": "oiartzun-artikutza.gpx",
