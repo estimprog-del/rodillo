@@ -22,16 +22,17 @@
         <link rel="icon" href="icons/icon-192.png" type="image/png" />
         <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
-        <!-- CSS Stylesheets -->
-
-      <script type="module" crossorigin src="/rodillo/assets/index-CpsUhv2z.js"></script>
-      <link rel="stylesheet" crossorigin href="/rodillo/assets/index-v-Tw8SXO.css">
+        <!-- CSS Stylesheets -->
+        <style>.app-icon{vertical-align:middle;display:inline-block}.app-icon-start{width:48px;height:48px;margin-right:12px}.app-icon-dashboard{width:42px;height:42px;margin-right:10px}</style>
+      <script type="module" crossorigin src="/rodillo/assets/index-BHOHWYbp.js"></script>
+      <link rel="stylesheet" crossorigin href="/rodillo/assets/index-0YheCkQM.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
         <div id="screen-user-select" class="screen active">
             <div class="user-select-layout">
-                <h1 class="logo-title">RODILLO INT</h1>
+                <img src="icons/icon-192.png" alt="RodilloInt" class="app-icon app-icon-start" />
+                <h1 class="logo-title">RODILLO INTERACTIVO CICLISMO</h1>
                 <p class="logo-subtitle">TRAINING LAB</p>
 
                 <div class="users-grid" id="users-grid-container">
@@ -66,15 +67,16 @@
         <div id="screen-dashboard" class="screen">
             <div class="dashboard-header glass-card">
                 <div class="dashboard-header-left-group">
+                    <img src="icons/icon-192.png" alt="Rodillo" class="app-icon app-icon-dashboard" /><span class="app-title">Rodillo</span>
                     <div class="active-profile-info" id="active-profile-header" style="cursor: pointer;">
-                        <div class="avatar-small">U</div>
+                        <div class="avatar-small" style="background: var(--accent-green); color: #ffffff;">G</div>
                         <button id="btn-open-user-profile-trigger" style="display:none"></button>
                         <div class="active-profile-details">
                             <span class="active-profile-greeting">Hola,</span>
                             <span
                                 class="active-profile-name"
                                 id="dashboard-user-name"
-                                >Usuario</span
+                                >gf</span
                             >
                         </div>
                     </div>
@@ -102,6 +104,7 @@
                     >
                         ❓ Ayuda
                     </button>
+
                     <button
                         class="btn btn-dark"
                         id="btn-logout"
@@ -355,7 +358,7 @@
                 <button class="btn btn-dark page-heading-back" id="btn-help-back">← Volver</button>
             </div>
             <p class="help-intro">
-                Rodillo Interactivo Ciclismo es una aplicación web para entrenar en interior,
+                Rodillo Interior Ciclismo es una aplicación web para entrenar en interior,
                 simular rutas y guardar la evolución de tus sesiones.
             </p>
             <div class="help-grid">
@@ -2204,13 +2207,7 @@
 
         <!-- --- JAVASCRIPT SCRIPTS MODULES --- -->
 
-        <!-- Custom modules -->
-
-
-
-
-
-
+        <!-- Custom modules -->
       <!-- Modal Ajustes Generales -->
       <div id="modal-settings" class="modal-overlay" style="display: none;">
         <div class="modal-content glass-card" style="width: 400px; padding: 24px; color: white;">
@@ -2422,7 +2419,7 @@
           </header>
           <div class="privacy-content" id="session-safety-description">
             <p>
-              Rodillo Interactivo Ciclismo no es un dispositivo médico ni un sistema de seguridad. La aplicación, la conexión o las métricas pueden fallar o ser inexactas y no se garantiza el control fiable del rodillo.
+              Rodillo Interactivo Ciclismo no es un dispositivo médico ni un sistema de seguridad. La app, la conexión o las métricas pueden fallar o ser inexactas y no se garantiza el control fiable del rodillo.
             </p>
             <ul>
               <li>Comprueba el montaje, la estabilidad de la bicicleta y que el área esté despejada.</li>
@@ -2430,7 +2427,7 @@
               <li>No dependas de la app para prevenir caídas o lesiones. Detente si notas dolor, mareo o malestar.</li>
             </ul>
             <p>
-              El entrenamiento es voluntario y queda a tu criterio. Este aviso informa de las precauciones. En ningún caso este software será el responsable de daños, perjuicios u otra responsabilidad.
+              El entrenamiento es voluntario y queda a tu criterio. Este aviso informa de las precauciones, pero no supone una renuncia a derechos ni una exención de responsabilidad.
             </p>
             <p class="privacy-footnote">
               ¿Has encontrado un problema? Escríbenos a <a href="mailto:estimprog@gmail.com?subject=Incidencia%20en%20RodilloInt">estimprog@gmail.com</a>. Describe cómo reproducirlo y tu navegador/dispositivo; evita enviar datos personales o de salud innecesarios.
@@ -2451,5 +2448,10 @@
         </section>
       </div>
 
+  <footer class="dev-footer" style="text-align:center; padding: 1.5rem 0; border-top: 1px solid var(--glass-border); background: var(--bg-secondary);">
+    <p style="margin: 0; color: var(--text-muted); font-size: 0.85rem;">
+      <a href="https://estimprog-del.github.io/web-personal/" target="_blank" rel="noopener noreferrer" style="color: var(--accent-blue); text-decoration: none;">🔗 Ver todas las apps de estimprog</a>
+    </p>
+  </footer>
     </body>
 </html>
