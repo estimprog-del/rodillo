@@ -1156,14 +1156,17 @@ function setTargetPowerImmediate(watts) {
   const controlChar = trainer.charWrite;
   if (!controlChar) return;
 
+  // Clamping de seguridad: evitar órdenes de potencia absurdas (0..1500 W)
+  const clampedWatts = Math.max(0, Math.min(1500, Math.round(watts)));
+
   const buffer = new ArrayBuffer(3);
   const view = new DataView(buffer);
 
   view.setUint8(0, 0x05); // OpCode 0x05: Set Target Power (ERG)
-  view.setInt16(1, watts, true); // Little-Endian (SINT16)
+  view.setInt16(1, clampedWatts, true); // Little-Endian (SINT16)
 
   controlChar.writeValueWithResponse(buffer)
-    .then(() => console.log(`[FTMS → Rodillo] Vatios ERG aplicados: ${watts}W`))
+    .then(() => console.log(`[FTMS → Rodillo] Vatios ERG aplicados: ${clampedWatts}W`))
     .catch(err => console.error("Error enviando potencia ERG:", err));
 }
 

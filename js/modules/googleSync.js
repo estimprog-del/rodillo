@@ -30,43 +30,19 @@ const MAX_GOOGLE_LOGIN_RETRIES = 3;
 const GOOGLE_SESSION_KEY = "rodilloint_google_session";
 const TOKEN_TTL_MS = 3600000; // 1 hora
 
+// Token de Google se mantiene SOLO en memoria (no en sessionStorage/localStorage)
+// para reducir el riesgo de robo por XSS o extensiones maliciosas.
 function saveGoogleSession() {
   if (!accessToken || !accountEmail) return;
   tokenExpiresAt = Date.now() + TOKEN_TTL_MS;
-  try {
-    const sessionData = {
-      accessToken,
-      accountEmail,
-      accountName,
-      accountPicture,
-      expiresAt: tokenExpiresAt,
-      drivePermissionsGranted,
-    };
-    sessionStorage.setItem(GOOGLE_SESSION_KEY, JSON.stringify(sessionData));
-  } catch (e) {}
 }
 
 function restoreGoogleSession() {
-  try {
-    const raw = sessionStorage.getItem(GOOGLE_SESSION_KEY);
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    if (!data || !data.accessToken || !data.expiresAt) return;
-    if (Date.now() > data.expiresAt) {
-      sessionStorage.removeItem(GOOGLE_SESSION_KEY);
-      return;
-    }
-    accessToken = data.accessToken;
-    accountEmail = data.accountEmail;
-    accountName = data.accountName || null;
-    accountPicture = data.accountPicture || null;
-    tokenExpiresAt = data.expiresAt;
-    drivePermissionsGranted = data.drivePermissionsGranted === true;
-  } catch (e) {}
+  // No se restaura desde almacenamiento: el usuario debe reconectar tras recargar.
 }
 
 function clearGoogleSession() {
-  try { sessionStorage.removeItem(GOOGLE_SESSION_KEY); } catch (e) {}
+  // No hay nada que limpiar en almacenamiento persistente.
 }
 
 function clearTimers() {

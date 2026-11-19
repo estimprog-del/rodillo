@@ -812,8 +812,26 @@ export async function importAllData(file) {
   }
 }
 export async function mergeBackupData(data) {
-  if (!data || data.format !== 'RodilloInt backup') {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw new Error('El archivo no contiene un backup válido de RodilloInt.');
+  }
+  if (data.format !== 'RodilloInt backup') {
+    throw new Error('El archivo no contiene un backup válido de RodilloInt.');
+  }
+
+  // Clon profundo para evitar prototype pollution (__proto__, constructor, etc.)
+  try {
+    data = JSON.parse(JSON.stringify(data));
+  } catch (e) {
+    throw new Error('El backup contiene datos no serializables.');
+  }
+
+  // Límites de seguridad para evitar DoS por archivos enormes
+  const MAX = { users: 10000, sessions: 100000, saved_routes: 10000, sensor_data: 1000000 };
+  for (const key of Object.keys(MAX)) {
+    if (data[key] != null && (!Array.isArray(data[key]) || data[key].length > MAX[key])) {
+      throw new Error(`Backup inválido: ${key} supera el límite permitido.`);
+    }
   }
 
   const db = await initDb();
