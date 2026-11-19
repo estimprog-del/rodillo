@@ -182,6 +182,7 @@ module.exports = defineConfig(({ mode, command }) => {
       ? (env.VITE_ABLY_AUTH_URL || '/api/ably-auth')
       : (process.env.VITE_ABLY_AUTH_URL || ''),
     VITE_MAPTILER_API_KEY: env.VITE_MAPTILER_API_KEY || '',
+  base: '/rodillo/',
   };
 
   return {
