@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Boceto Nueva Interfaz - RodilloInt</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #1a1a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+            overflow: hidden;
+        }
+
+        /* Simulador de Mapa */
+        .map-simulator {
+            width: 100vw;
+            height: 100vh;
+            background: url('https://user-images.githubusercontent.com/11250/114915609-85834180-9e19-11eb-890a-115f013d7119.png'); /* Imagen de mapa de ejemplo */
+            background-size: cover;
+            background-position: center;
+            position: relative;
+        }
+
+        /* HUD SUPERIOR REFINADO */
+        .hud-top {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 90px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 10px 30px;
+            backdrop-filter: blur(2px);
+        }
+
+        .metric-group {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+        }
+
+        .metric-main {
+            text-align: center;
+        }
+
+        .metric-avg {
+            font-size: 14px;
+            color: #00ffcc;
+            opacity: 0.8;
+            border-left: 1px solid rgba(255,255,255,0.2);
+            padding-left: 8px;
+        }
+
+        .clock-session {
+            font-size: 16px;
+            font-family: monospace;
+            color: #fff;
+            background: rgba(255,255,255,0.1);
+            padding: 5px 12px;
+            border-radius: 5px;
+        }
+
+        /* HUD INFERIOR IZQUIERDA (PROGRESO) */
+        .hud-bottom-left {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            background: rgba(0,0,0,0.7);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 12px;
+            padding: 15px;
+            width: 200px;
+            backdrop-filter: blur(10px);
+        }
+
+        .progress-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        /* HUD INFERIOR DERECHA (PERFIL + PENDIENTE) */
+        .hud-bottom-right-container {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+        }
+
+        .slope-box {
+            background: rgba(255, 68, 68, 0.9);
+            padding: 8px 15px;
+            border-radius: 10px;
+            font-size: 20px;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            width: fit-content;
+        }
+
+        .mini-profile-card {
+            width: 300px;
+            background: rgba(0,0,0,0.7);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 12px;
+            padding: 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        /* CONTROLES */
+        .hud-controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn-control {
+            padding: 12px 25px;
+            border-radius: 50px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            text-transform: uppercase;
+        }
+
+        .btn-pause { background: #ffbb33; color: black; }
+        .btn-stop { background: #ff4444; color: white; }
+    </style>
+</head>
+<body>
+
+    <div class="map-simulator">
+        <!-- HUD SUPERIOR -->
+        <div class="hud-top">
+            <div class="clock-session">
+                <div id="clock">18:45</div>
+                <div style="font-size: 11px; color: #aaa;">HORA</div>
+            </div>
+
+            <div class="metric-group">
+                <div class="metric-main">
+                    <span class="metric-value">250 W</span>
+                    <span class="metric-label">Power</span>
+                </div>
+                <div class="metric-avg">
+                    <span>210 Ø</span>
+                </div>
+            </div>
+
+            <div class="metric-main">
+                <span class="metric-value">92</span>
+                <span class="metric-label">RPM</span>
+            </div>
+
+            <div class="metric-group">
+                <div class="metric-main">
+                    <span class="metric-value speed-main">35.4</span>
+                    <span class="metric-label">km/h</span>
+                </div>
+                <div class="metric-avg">
+                    <span>31.2 Ø</span>
+                </div>
+            </div>
+
+            <div class="metric-group">
+                <div class="metric-main">
+                    <span class="metric-value" style="color: #ff6666;">158</span>
+                    <span class="metric-label">BPM</span>
+                </div>
+                <div class="metric-avg">
+                    <span>145 Ø</span>
+                </div>
+            </div>
+
+            <div class="clock-session" style="background: rgba(0,255,204,0.1); border: 1px solid rgba(0,255,204,0.3);">
+                <div>00:42:15</div>
+                <div style="font-size: 11px; color: #00ffcc;">TIEMPO</div>
+            </div>
+        </div>
+
+        <!-- HUD PROGRESO (IZQUIERDA) -->
+        <div class="hud-bottom-left">
+            <div class="mini-profile-title" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; margin-bottom: 10px;">PROGRESO RUTA</div>
+            <div class="progress-item">
+                <span style="color: #aaa;">Recorrido</span>
+                <span>14.2 km</span>
+            </div>
+            <div class="progress-item">
+                <span style="color: #00ffcc;">Restante</span>
+                <span style="font-weight: bold;">8.5 km</span>
+            </div>
+            <div class="progress-item" style="margin-top: 10px;">
+                <span style="color: #aaa;">Desnivel +</span>
+                <span>450 m</span>
+            </div>
+            <div class="progress-item">
+                <span style="color: #ffbb33;">Faltan</span>
+                <span style="font-weight: bold;">120 m+</span>
+            </div>
+        </div>
+
+        <!-- CONTROLES -->
+        <div class="hud-controls">
+            <button class="btn-control btn-pause">⏸ Pausa</button>
+            <button class="btn-control btn-stop">⏹ Finalizar</button>
+        </div>
+
+        <!-- HUD DERECHA (PENDIENTE + PERFIL) -->
+        <div class="hud-bottom-right-container">
+            <div class="slope-box">
+                ⛰️ 8.5%
+            </div>
+            <div class="mini-profile-card">
+                <div class="mini-profile-title">PRÓXIMOS 500m</div>
+                <div style="position: relative;">
+                    <div class="chart-mockup"></div>
+                    <div class="position-line"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="legend">
+            <b>HUD ACTUALIZADO</b><br>
+            • Medias añadidas al lado de métricas.<br>
+            • Pendiente movida sobre el mini-perfil.<br>
+            • Paneles de progreso y tiempo añadidos.<br>
+            • Controles flotantes inferiores.
+        </div>
+    </div>
+
+        <div class="legend">
+            <b>BOCETO DE INTERFAZ HUD</b><br>
+            • Los datos flotan sobre el mapa.<br>
+            • Colores según zonas de esfuerzo.<br>
+            • Mini-perfil dinámico con colores por pendiente.
+        </div>
+    </div>
+
+</body>
+</html>

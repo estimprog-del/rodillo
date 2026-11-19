@@ -1,0 +1,1238 @@
+/* bluetooth.js - Web Bluetooth & Virtual Simulator Manager for RodilloInt */
+import { state } from "./modules/state.js";
+import {
+  createCscDecoder,
+  decodeCyclingPower,
+  decodeFtmsControlResponse,
+  decodeHeartRate,
+  decodeIndoorBikeData,
+} from "./modules/bluetoothDecoders.js";
+import { calculateVirtualSpeed } from "./core/physics.js";
+
+// Bluetooth UUIDs
+const SERVICES = {
+  HRM: "heart_rate", // 0x180d
+  POWER: "cycling_power", // 0x1818
+  CSC: "cycling_speed_and_cadence", // 0x1816
+  FTMS: "fitness_machine", // 0x1826
+};
+
+const CHARACTERISTICS = {
+  HRM_MEASUREMENT: "heart_rate_measurement", // 0x2a37
+  POWER_MEASUREMENT: "cycling_power_measurement", // 0x2a63
+  CSC_MEASUREMENT: "csc_measurement", // 0x2a5b
+  INDOOR_BIKE_DATA: "indoor_bike_data", // 0x2ad2
+  FTMS_CONTROL_POINT: "fitness_machine_control_point", // 0x2ad9
+};
+
+// Global Bluetooth State
+const connections = {
+  TRAINER: {
+    device: null,
+    server: null,
+    charRead: null,
+    charWrite: null,
+    status: "DESCONECTADO",
+    name: "",
+    lastSentInclination: null,
+    useSimulationParameters: true,
+    isWritingSlope: false,
+  },
+  HRM: {
+    device: null,
+    server: null,
+    charNotify: null,
+    status: "DESCONECTADO",
+    name: "",
+  },
+  POWER: {
+    device: null,
+    server: null,
+    charNotify: null,
+    status: "DESCONECTADO",
+    name: "",
+  },
+  CSC: {
+    device: null,
+    server: null,
+    charNotify: null,
+    status: "DESCONECTADO",
+    name: "",
+  },
+};
+
+// Escuchador de estado
+let dataListener = null;
+const deviceDisconnectListeners = new WeakMap();
+
+function registerDisconnectListener(device, type) {
+  let registeredTypes = deviceDisconnectListeners.get(device);
+  if (!registeredTypes) {
+    registeredTypes = new Set();
+    deviceDisconnectListeners.set(device, registeredTypes);
+  }
+  if (registeredTypes.has(type)) return;
+  registeredTypes.add(type);
+  device.addEventListener("gattserverdisconnected", () => {
+    handleDisconnect(type);
+  });
+}
+
+// Virtual Simulator Settings
+const simulator = {
+  isActive: false,
+  power: 150, // Watts
+  cadence: 85, // RPM
+  heartRate: 120, // BPM
+  slope: 0.0, // %
+  weight: 75, // kg
+  intervalId: null,
+};
+
+// 🌟 VARIABLES DE CONTROL AÑADIDAS PARA LAS MEJORAS 🌟
+let lastFtmsWriteTime = 0; 
+let powerHistory = [];         // Almacena los últimos vatios para el suavizado (Moving Average)
+let ergRampInterval = null;    // Almacena el setInterval de la rampa ERG progresiva
+
+function setBleListener(listener) {
+  dataListener = listener;
+}
+
+/**
+ * Manejador para cuando el rodillo se desconecta físicamente
+ */
+function onTrainerDisconnected(event) {
+  const device = event.target;
+  console.warn(`[Bluetooth] El rodillo ${device.name || "desconocido"} se ha desconectado de forma inesperada.`);
+  
+  // Limpamos estados y temporizadores activos
+  if (ergRampInterval) {
+    clearInterval(ergRampInterval);
+    ergRampInterval = null;
+  }
+  powerHistory = [];
+
+  // Actualizamos el estado de la conexión
+  connections.TRAINER.status = "DESCONECTADO";
+  connections.TRAINER.server = null;
+  connections.TRAINER.charWrite = null;
+  connections.TRAINER.charRead = null;
+
+  // Notificamos a la interfaz
+  if (dataListener && dataListener.onTrainerDisconnected) {
+    dataListener.onTrainerDisconnected();
+  }
+}
+
+const decodeCSC = createCscDecoder();
+
+function decodeHRM(dataView) {
+  const heartRate = decodeHeartRate(dataView);
+  if (heartRate !== null && dataListener?.onHeartRateReceived) {
+    dataListener.onHeartRateReceived(heartRate);
+  }
+}
+
+function decodePower(dataView) {
+  const rawPower = decodeCyclingPower(dataView);
+  if (rawPower === null) return;
+
+  const smoothingSeconds = Number.isFinite(state.sensorSmoothing)
+    ? Math.max(1, Math.round(state.sensorSmoothing / 1000))
+    : 3;
+  powerHistory.push(rawPower);
+  if (powerHistory.length > smoothingSeconds) powerHistory.shift();
+  const smoothedPower = Math.round(
+    powerHistory.reduce((total, value) => total + value, 0) /
+      powerHistory.length,
+  );
+  dataListener?.onPowerReceived?.(smoothedPower);
+}
+
+function handleCscData(dataView) {
+  const metrics = decodeCSC(dataView);
+  if (!metrics) return;
+  if (metrics.speedKph !== undefined) {
+    dataListener?.onSpeedReceived?.(
+      metrics.speedKph,
+      metrics.hasWheelRevolution,
+    );
+  }
+  if (metrics.cadenceRpm !== undefined) {
+    dataListener?.onCadenceReceived?.(metrics.cadenceRpm);
+  }
+}
+
+function handleIndoorBikeData(dataView) {
+  const metrics = decodeIndoorBikeData(dataView);
+  if (!metrics) return;
+  if (metrics.speedKph !== undefined) {
+    dataListener?.onSpeedReceived?.(
+      metrics.speedKph,
+      metrics.hasWheelRevolution,
+    );
+  }
+  if (metrics.cadenceRpm !== undefined) {
+    dataListener?.onCadenceReceived?.(metrics.cadenceRpm);
+  }
+  if (metrics.powerWatts !== undefined) {
+    dataListener?.onPowerReceived?.(metrics.powerWatts);
+  }
+}
+
+function handleFtmsControlResponse(dataView) {
+  const response = decodeFtmsControlResponse(dataView);
+  if (!response) return;
+  const { requestOpCode, resultCode } = response;
+
+  const opCodeNames = {
+    0x00: "Request Control",
+    0x03: "Set Target Inclination",
+    0x05: "Set Target Resistance Level",
+    0x07: "Start/Resume",
+    0x08: "Stop/Pause",
+    0x11: "Set Indoor Bike Simulation Parameters",
+  };
+  const resultNames = {
+    0x01: "\u2705 Éxito",
+    0x02: "\u274c OpCode no soportado",
+    0x03: "\u274c Parámetro inválido",
+    0x04: "\u274c Operación fallida",
+    0x05: "\u274c Control no permitido",
+  };
+
+  const opName =
+    opCodeNames[requestOpCode] ||
+    `OpCode 0x${requestOpCode.toString(16).toUpperCase()}`;
+  const resName =
+    resultNames[resultCode] ||
+    `Result 0x${resultCode.toString(16).toUpperCase()}`;
+
+  if (resultCode === 0x01) {
+    console.log(`[FTMS Response] ${opName} → ${resName}`);
+  } else {
+    console.warn(
+      `[FTMS Response] ${opName} → ${resName} (código: 0x${resultCode.toString(16)})`,
+    );
+
+    // Fallback logic: if OpCode 0x11 or 0x06 fails on a smart trainer
+    if ((requestOpCode === 0x11 || requestOpCode === 0x06) && connections.TRAINER.useSimulationParameters) {
+      console.warn(
+        `[FTMS Fallback] OpCode 0x${requestOpCode.toString(16)} rechazado. Desactivando SimulationParameters...`,
+      );
+      connections.TRAINER.useSimulationParameters = false;
+      connections.TRAINER.lastSentInclination = null;
+    }
+  }
+
+  // Notificar al listener si existe
+  if (dataListener && dataListener.onFtmsResponse) {
+    dataListener.onFtmsResponse(requestOpCode, resultCode);
+  }
+}
+
+/**
+ * Configures the FTMS Control Point (0x2ad9) on connection or reconnection
+ */
+async function setupFtmsControlPoint(service, type) {
+  console.log("[FTMS Setup] Buscando el punto de control FTMS (0x2ad9)...");
+
+  // Diagnostic: List all characteristics in this service
+  let characteristics = [];
+  try {
+    characteristics = await service.getCharacteristics();
+    console.log(
+      `[FTMS Setup] Características del servicio FTMS encontradas (${characteristics.length}):`,
+    );
+    for (const char of characteristics) {
+      const props = char.properties;
+      const propList = [];
+      if (props.read) propList.push("READ");
+      if (props.write) propList.push("WRITE");
+      if (props.writeWithoutResponse) propList.push("WRITE_WITHOUT_RESPONSE");
+      if (props.notify) propList.push("NOTIFY");
+      if (props.indicate) propList.push("INDICATE");
+      console.log(
+        `  - UUID: ${char.uuid} | Propiedades: [${propList.join(", ")}]`,
+      );
+    }
+  } catch (diagErr) {
+    console.warn(
+      "[FTMS Setup] No se pudo hacer el listado de diagnóstico de características:",
+      diagErr,
+    );
+  }
+
+  // Find the FTMS Control Point characteristic
+  let charWrite = null;
+
+  // Try 1: Try finding it in the scanned characteristics list (more robust)
+  if (characteristics.length > 0) {
+    charWrite = characteristics.find(
+      (char) =>
+        char.uuid === "00002ad9-0000-1000-8000-00805f9b34fb" ||
+        char.uuid.toLowerCase().includes("2ad9"),
+    );
+  }
+
+  // Try 2: Fallback to getCharacteristic if not found in list
+  if (!charWrite) {
+    console.log(
+      "[FTMS Setup] Intentando getCharacteristic para FTMS_CONTROL_POINT...",
+    );
+    charWrite = await service.getCharacteristic(
+      CHARACTERISTICS.FTMS_CONTROL_POINT,
+    );
+  }
+
+  if (!charWrite) {
+    throw new Error(
+      "No se encontró la característica del Punto de Control FTMS (0x2ad9).",
+    );
+  }
+
+  connections[type].charWrite = charWrite;
+  connections[type].lastSentInclination = null; // Reset last sent inclination
+  connections[type].useSimulationParameters = true; // Reset fallback on connection
+  console.log(
+    "[FTMS Setup] Característica del Punto de Control encontrada. Configurando...",
+  );
+
+  // Step 1: Subscribe to indications/notifications BEFORE requesting control.
+  // This is required because writing 0x00 expects an indication response from the trainer.
+  try {
+    console.log(
+      "[FTMS Setup] Suscribiendo a indicaciones del Control Point...",
+    );
+    await charWrite.startNotifications();
+    charWrite.addEventListener("characteristicvaluechanged", (e) => {
+      handleFtmsControlResponse(e.target.value);
+    });
+    console.log(
+      "[FTMS Setup] Suscripción exitosa a indicaciones del Control Point.",
+    );
+  } catch (notifyErr) {
+    console.warn(
+      "[FTMS Setup] Advertencia: No se pudo suscribir a indicaciones del Control Point (se continuará):",
+      notifyErr,
+    );
+  }
+
+  // Small delay to allow the BLE stack to register the CCCD subscription
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  // Step 2: Request Control (Write 0x00)
+  console.log(
+    "[FTMS Setup] Enviando comando de solicitud de control (0x00)...",
+  );
+  let writeSuccess = false;
+
+  // Try writeValueWithResponse (modern Web Bluetooth)
+  if (charWrite.writeValueWithResponse) {
+    try {
+      await charWrite.writeValueWithResponse(new Uint8Array([0x00]));
+      console.log(
+        "[FTMS Setup] Control solicitado con éxito (0x00 enviado via writeValueWithResponse)",
+      );
+      writeSuccess = true;
+    } catch (writeErr) {
+      console.warn(
+        "[FTMS Setup] Falló writeValueWithResponse. Probando writeValue alternativo...",
+        writeErr,
+      );
+    }
+  }
+
+  // Try legacy writeValue
+  if (!writeSuccess) {
+    try {
+      await charWrite.writeValue(new Uint8Array([0x00]));
+      console.log(
+        "[FTMS Setup] Control solicitado con éxito (0x00 enviado via writeValue)",
+      );
+      writeSuccess = true;
+    } catch (writeErr) {
+      console.error("[FTMS Setup] Falló también writeValue:", writeErr);
+      throw writeErr;
+    }
+  }
+}
+
+/**
+ * Connect to a BLE Device
+ */
+async function connectDevice(type) {
+  if (!navigator.bluetooth) {
+    throw new Error(
+      "Web Bluetooth no está soportado en este navegador o requiere HTTPS/localhost.",
+    );
+  }
+
+  let serviceUuid,
+    charUuid,
+    isTrainer = false;
+  switch (type) {
+    case "TRAINER":
+      serviceUuid = SERVICES.FTMS;
+      isTrainer = true;
+      break;
+    case "HRM":
+      serviceUuid = SERVICES.HRM;
+      charUuid = CHARACTERISTICS.HRM_MEASUREMENT;
+      break;
+    case "POWER":
+      serviceUuid = SERVICES.POWER;
+      charUuid = CHARACTERISTICS.POWER_MEASUREMENT;
+      break;
+    case "CSC":
+      serviceUuid = SERVICES.CSC;
+      charUuid = CHARACTERISTICS.CSC_MEASUREMENT;
+      break;
+    default:
+      throw new Error("Tipo de sensor no reconocido.");
+  }
+
+  try {
+    intentionalDisconnects[type] = false;
+    clearReconnectTimer(type);
+    reconnectAttempts[type] = 0;
+    updateStatus(type, "BUSCANDO");
+
+    // Request device
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [serviceUuid] }],
+      optionalServices: isTrainer ? [SERVICES.FTMS] : [],
+    });
+
+    updateStatus(type, "CONECTANDO");
+
+    // Connect to GATT with a 12-second timeout
+    let server;
+    try {
+      const connectPromise = device.gatt.connect();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("TIMEOUT")), 12000),
+      );
+      server = await Promise.race([connectPromise, timeoutPromise]);
+    } catch (err) {
+      if (err.message === "TIMEOUT") {
+        try {
+          device.gatt.disconnect();
+        } catch (_) {}
+        throw new Error(
+          "Tiempo de espera de conexión Bluetooth agotado (12s).",
+        );
+      }
+      throw err;
+    }
+
+    // Discover service with retry logic
+    let service;
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        service = await server.getPrimaryService(serviceUuid);
+        break;
+      } catch (err) {
+        retries--;
+        if (retries === 0)
+          throw new Error(
+            `No se pudo descubrir el servicio después de 3 intentos: ${err.message}`,
+          );
+        await new Promise((resolve) => setTimeout(resolve, 500)); // wait 500ms before retry
+      }
+    }
+
+    connections[type].device = device;
+    connections[type].server = server;
+    connections[type].name = device.name || "Dispositivo Bluetooth";
+
+    // Handle Disconnections
+    registerDisconnectListener(device, type);
+
+    if (isTrainer) {
+      // FTMS setup
+      const charRead = await service.getCharacteristic(
+        CHARACTERISTICS.INDOOR_BIKE_DATA,
+      );
+      connections[type].charRead = charRead;
+
+      // Start notifications for FTMS Indoor Bike Data
+      await charRead.startNotifications();
+      charRead.addEventListener("characteristicvaluechanged", (e) => {
+        handleIndoorBikeData(e.target.value);
+      });
+
+      try {
+        await setupFtmsControlPoint(service, type);
+      } catch (controlError) {
+        console.warn(
+          "El punto de control FTMS no está disponible o falló la solicitud, conectando en modo de solo lectura:",
+          controlError,
+        );
+        connections[type].charWrite = null;
+      }
+    } else {
+      // General notify sensor setup
+      const charNotify = await service.getCharacteristic(charUuid);
+      connections[type].charNotify = charNotify;
+
+      await charNotify.startNotifications();
+      charNotify.addEventListener("characteristicvaluechanged", (e) => {
+        if (type === "HRM") decodeHRM(e.target.value);
+        if (type === "POWER") decodePower(e.target.value);
+        if (type === "CSC") handleCscData(e.target.value);
+      });
+    }
+
+    updateStatus(type, "CONECTADO");
+    return connections[type].name;
+  } catch (error) {
+    console.error(`Error connecting to ${type}:`, error);
+    updateStatus(type, "DESCONECTADO");
+    if (state.isSessionActive && connections[type].device) {
+      scheduleAutoReconnect(type, connections[type].device);
+    }
+    throw error;
+  }
+}
+
+const reconnectAttempts = {
+  TRAINER: 0,
+  HRM: 0,
+  POWER: 0,
+  CSC: 0,
+};
+const reconnectTimers = {
+  TRAINER: null,
+  HRM: null,
+  POWER: null,
+  CSC: null,
+};
+const reconnectInProgress = {
+  TRAINER: false,
+  HRM: false,
+  POWER: false,
+  CSC: false,
+};
+const intentionalDisconnects = {
+  TRAINER: false,
+  HRM: false,
+  POWER: false,
+  CSC: false,
+};
+
+// Período de gracia para microcortes Bluetooth por interferencias RF (2.4 GHz)
+const DISCONNECT_GRACE_PERIOD_MS = 6000;
+const disconnectGraceTimers = {
+  TRAINER: null,
+  HRM: null,
+  POWER: null,
+  CSC: null,
+};
+const inGracePeriod = {
+  TRAINER: false,
+  HRM: false,
+  POWER: false,
+  CSC: false,
+};
+
+function clearGraceTimer(type) {
+  if (disconnectGraceTimers[type] !== null) {
+    clearTimeout(disconnectGraceTimers[type]);
+    disconnectGraceTimers[type] = null;
+  }
+  inGracePeriod[type] = false;
+}
+
+function clearReconnectTimer(type) {
+  if (reconnectTimers[type] !== null) {
+    clearTimeout(reconnectTimers[type]);
+    reconnectTimers[type] = null;
+  }
+}
+
+function scheduleAutoReconnect(type, device, immediate = false) {
+  if (
+    !state.isSessionActive ||
+    intentionalDisconnects[type] ||
+    reconnectTimers[type] !== null ||
+    reconnectInProgress[type]
+  ) {
+    return;
+  }
+  // En microcortes el primer intento es inmediato (300ms) para reconectar de forma transparente
+  const delay = immediate
+    ? 300
+    : Math.min(2000 * 2 ** Math.min(reconnectAttempts[type], 3), 15000);
+
+  reconnectTimers[type] = setTimeout(() => {
+    reconnectTimers[type] = null;
+    void attemptAutoReconnect(type, device);
+  }, delay);
+}
+
+async function attemptAutoReconnect(type, device) {
+  if (reconnectInProgress[type]) return;
+  if (!state.isSessionActive || intentionalDisconnects[type] || !device) {
+    clearGraceTimer(type);
+    updateStatus(type, "DESCONECTADO");
+    return;
+  }
+
+  reconnectInProgress[type] = true;
+  reconnectAttempts[type]++;
+
+  // Solo alteramos el estado visual si ya expiró el período de gracia
+  if (!inGracePeriod[type]) {
+    updateStatus(type, "CONECTANDO");
+  }
+
+  console.log(
+    `[Auto-Reconnect] Intentando reconectar ${type} (intento ${reconnectAttempts[type]}; período de gracia: ${inGracePeriod[type] ? "ACTIVO" : "INACTIVO"})...`,
+  );
+
+  try {
+    // Connect to GATT with a 12-second timeout
+    let server;
+    try {
+      const connectPromise = device.gatt.connect();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("TIMEOUT")), 12000),
+      );
+      server = await Promise.race([connectPromise, timeoutPromise]);
+    } catch (err) {
+      if (err.message === "TIMEOUT") {
+        try {
+          device.gatt.disconnect();
+        } catch (_) {}
+        throw new Error("TIMEOUT");
+      }
+      throw err;
+    }
+
+    let serviceUuid = SERVICES.FTMS;
+    if (type === "HRM") serviceUuid = SERVICES.HRM;
+    if (type === "POWER") serviceUuid = SERVICES.POWER;
+    if (type === "CSC") serviceUuid = SERVICES.CSC;
+
+    const service = await server.getPrimaryService(serviceUuid);
+    connections[type].server = server;
+
+    if (type === "TRAINER") {
+      const charRead = await service.getCharacteristic(
+        CHARACTERISTICS.INDOOR_BIKE_DATA,
+      );
+      connections[type].charRead = charRead;
+
+      await charRead.startNotifications();
+      charRead.addEventListener("characteristicvaluechanged", (e) => {
+        handleIndoorBikeData(e.target.value);
+      });
+
+      try {
+        await setupFtmsControlPoint(service, type);
+      } catch (controlError) {
+        console.warn(
+          "[FTMS Reconex.] El punto de control FTMS falló durante la reconexión:",
+          controlError,
+        );
+        connections[type].charWrite = null;
+      }
+    } else {
+      let charUuid = CHARACTERISTICS.HRM_MEASUREMENT;
+      if (type === "POWER") charUuid = CHARACTERISTICS.POWER_MEASUREMENT;
+      if (type === "CSC") charUuid = CHARACTERISTICS.CSC_MEASUREMENT;
+
+      const charNotify = await service.getCharacteristic(charUuid);
+      connections[type].charNotify = charNotify;
+
+      await charNotify.startNotifications();
+      charNotify.addEventListener("characteristicvaluechanged", (e) => {
+        if (type === "HRM") decodeHRM(e.target.value);
+        if (type === "POWER") decodePower(e.target.value);
+        if (type === "CSC") handleCscData(e.target.value);
+      });
+    }
+
+    reconnectAttempts[type] = 0;
+    clearGraceTimer(type);
+    updateStatus(type, "CONECTADO");
+    console.log(`[Auto-Reconnect] ${type} reconectado con éxito.`);
+  } catch (error) {
+    console.warn(
+      `[Auto-Reconnect] Fallo en intento ${reconnectAttempts[type]} para ${type}:`,
+      error,
+    );
+    reconnectInProgress[type] = false;
+    // Solo mostramos "DESCONECTADO" si ya no estamos en el período de gracia
+    if (!inGracePeriod[type]) {
+      updateStatus(type, "DESCONECTADO");
+    }
+    scheduleAutoReconnect(type, device);
+  } finally {
+    reconnectInProgress[type] = false;
+  }
+}
+
+function handleDisconnect(type) {
+  console.warn(`Dispositivo de tipo ${type} desconectado.`);
+
+  const conn = connections[type];
+  const device = conn.device;
+
+  conn.server = null;
+  conn.charRead = null;
+  conn.charWrite = null;
+  conn.charNotify = null;
+  if (type === "TRAINER") {
+    conn.lastSentInclination = null;
+  }
+
+  if (intentionalDisconnects[type] || !device) {
+    clearGraceTimer(type);
+    conn.device = null;
+    conn.name = "";
+    updateStatus(type, "DESCONECTADO");
+  } else if (state.isSessionActive) {
+    // Micro-desconexión involuntaria durante la sesión: activar período de gracia transparente
+    clearGraceTimer(type);
+    inGracePeriod[type] = true;
+    console.log(
+      `[Bluetooth] Microcorte detectado en ${type}. Iniciando período de gracia de ${DISCONNECT_GRACE_PERIOD_MS / 1000}s e intentando reconectar en segundo plano...`,
+    );
+
+    disconnectGraceTimers[type] = setTimeout(() => {
+      disconnectGraceTimers[type] = null;
+      inGracePeriod[type] = false;
+      console.warn(
+        `[Bluetooth] Período de gracia expirado para ${type}. Notificando desconexión a la interfaz.`,
+      );
+      updateStatus(type, "DESCONECTADO");
+    }, DISCONNECT_GRACE_PERIOD_MS);
+
+    // Intentar reconectar de forma inmediata (300ms) sin pausar ni asustar al usuario
+    scheduleAutoReconnect(type, device, true);
+  } else {
+    clearGraceTimer(type);
+    updateStatus(type, "DESCONECTADO");
+  }
+}
+
+function updateStatus(type, status) {
+  connections[type].status = status;
+  if (dataListener && dataListener.onStatusChanged) {
+    dataListener.onStatusChanged(type, status);
+  }
+
+  // Si se conecta/desconecta el rodillo interactivo, sincronizamos también potenciómetro y cadencia en la interfaz
+  if (type === "TRAINER" && !simulator.isActive) {
+    if (status === "CONECTADO") {
+      const trainerName = connections.TRAINER.name || "Rodillo Inteligente";
+
+      if (connections.POWER.status !== "CONECTADO") {
+        connections.POWER.status = "CONECTADO";
+        connections.POWER.name = `${trainerName} (Vía Rodillo)`;
+        if (dataListener && dataListener.onStatusChanged) {
+          dataListener.onStatusChanged("POWER", "CONECTADO");
+        }
+      }
+
+      if (connections.CSC.status !== "CONECTADO") {
+        connections.CSC.status = "CONECTADO";
+        connections.CSC.name = `${trainerName} (Vía Rodillo)`;
+        if (dataListener && dataListener.onStatusChanged) {
+          dataListener.onStatusChanged("CSC", "CONECTADO");
+        }
+      }
+    } else if (status === "DESCONECTADO") {
+      // Solo desconectamos automáticamente si estaban vinculados virtualmente (su dispositivo físico es nulo)
+      if (
+        connections.POWER.status === "CONECTADO" &&
+        connections.POWER.device === null
+      ) {
+        connections.POWER.status = "DESCONECTADO";
+        connections.POWER.name = "";
+        if (dataListener && dataListener.onStatusChanged) {
+          dataListener.onStatusChanged("POWER", "DESCONECTADO");
+        }
+      }
+
+      if (
+        connections.CSC.status === "CONECTADO" &&
+        connections.CSC.device === null
+      ) {
+        connections.CSC.status = "DESCONECTADO";
+        connections.CSC.name = "";
+        if (dataListener && dataListener.onStatusChanged) {
+          dataListener.onStatusChanged("CSC", "DESCONECTADO");
+        }
+      }
+    }
+  }
+}
+
+async function disconnectDevice(type) {
+  intentionalDisconnects[type] = true;
+  clearGraceTimer(type);
+  clearReconnectTimer(type);
+  const conn = connections[type];
+
+  // Enviar pendiente 0 al rodillo antes de desconectar, si es posible
+  if (type === "TRAINER" && conn.status === "CONECTADO" && conn.charWrite) {
+    try {
+      const buffer = new ArrayBuffer(3);
+      const view = new DataView(buffer);
+      view.setUint8(0, 0x03);
+      view.setInt16(1, 0, true);
+      await conn.charWrite.writeValue(buffer);
+      conn.lastSentInclination = 0;
+    } catch (e) {
+      console.warn("[FTMS] No se pudo enviar pendiente 0 antes de desconectar:", e);
+    }
+  }
+
+  if (conn.device && conn.device.gatt.connected) {
+    conn.device.gatt.disconnect();
+  }
+  handleDisconnect(type);
+}
+
+async function disconnectAll() {
+  stopSimulator();
+  for (const type in connections) {
+    await disconnectDevice(type);
+  }
+}
+
+function stopAutoReconnect() {
+  for (const type of Object.keys(reconnectTimers)) {
+    clearReconnectTimer(type);
+    clearGraceTimer(type);
+    reconnectAttempts[type] = 0;
+  }
+}
+
+/**
+ * Write Target Inclination (Slope) to Controllable FTMS Smart Trainer
+ * Inclination represented as short (sint16), unit is 0.1%
+ */
+async function setTrainerSlope(slope) {
+  // Aplicar factor de realismo/dureza (del 30% al 150%)
+  const realismFactor =
+    state.realismFactor !== undefined ? state.realismFactor : 1.0;
+  const adjustedSlope = slope * realismFactor;
+
+  if (simulator.isActive) {
+    simulator.slope = adjustedSlope;
+    return;
+  }
+
+  const trainer = connections.TRAINER;
+  if (trainer.status === "CONECTADO" && trainer.charWrite) {
+    if (trainer.isWritingSlope) {
+      // Evitar colisiones GATT si ya hay una operación en curso
+      return;
+    }
+
+    try {
+      trainer.isWritingSlope = true;
+      // Clamped to standard -15.0% to +20.0%
+      const clampedSlope = Math.max(-15.0, Math.min(20.0, adjustedSlope));
+
+      if (trainer.useSimulationParameters === undefined) {
+        trainer.useSimulationParameters = false; // Forzamos el uso de OpCode 0x03
+      }
+
+      if (trainer.useSimulationParameters) {
+        // OpCode 0x11: Set Indoor Bike Simulation Parameters
+        // Grade resolution is 0.01%
+        const inclination = Math.round(clampedSlope * 100);
+
+        // Deduplicar: no enviar si la inclinación es la misma que la anterior
+        if (trainer.lastSentInclination === inclination) {
+          return;
+        }
+
+        // Build 7-byte buffer
+        const buffer = new ArrayBuffer(7);
+        const view = new DataView(buffer);
+        view.setUint8(0, 0x11);
+        view.setInt16(1, 0, true); // Wind Speed = 0 m/s
+        view.setInt16(3, inclination, true); // Grade in 0.01%
+        view.setUint8(5, 33); // Crr = 0.0033 (scaled by 10000 = 33)
+        view.setUint8(6, 51); // Cw = 0.51 kg/m (scaled by 100 = 51)
+
+        await trainer.charWrite.writeValue(buffer);
+        trainer.lastSentInclination = inclination;
+        console.log(
+          `[FTMS → Rodillo] Set Inclination (OpCode 0x11): ${clampedSlope.toFixed(2)}% (valor bruto: ${inclination}) enviado correctamente`,
+        );
+      } else {
+        // OpCode 0x03: Set Target Inclination
+        // Grade resolution is 0.01% para el Suito-T
+        const inclination = Math.round(clampedSlope * 100);
+
+        // Deduplicar: no enviar si la inclinación es la misma que la anterior
+        if (trainer.lastSentInclination === inclination) {
+          return;
+        }
+
+        // Build 3-byte buffer
+        const buffer = new ArrayBuffer(3);
+        const view = new DataView(buffer);
+        view.setUint8(0, 0x03);
+        view.setInt16(1, inclination, true); // Little endian
+
+        await trainer.charWrite.writeValue(buffer);
+        trainer.lastSentInclination = inclination;
+        console.log(
+          `[FTMS → Rodillo] Set Inclination (OpCode 0x03): ${clampedSlope.toFixed(1)}% (valor bruto: ${inclination}) enviado correctamente`,
+        );
+      }
+    } catch (e) {
+      console.error("[FTMS → Rodillo] Error al enviar pendiente:", e);
+    } finally {
+      trainer.isWritingSlope = false;
+    }
+  } else {
+    if (trainer.status !== "CONECTADO") {
+      console.warn(
+        `[FTMS] No se envía pendiente: rodillo en estado '${trainer.status}'`,
+      );
+    } else if (!trainer.charWrite) {
+      console.warn(
+        "[FTMS] No se envía pendiente: charWrite no disponible (modo solo lectura o sin FTMS Control Point)",
+      );
+    }
+  }
+}
+
+// --- PHYSICS ENGINE FOR SIMULATED OR SENSOR LACK workouts ---
+// calculateVirtualSpeed importada desde core/physics.js
+
+// --- VIRTUAL SENSOR SIMULATOR ---
+function startSimulator(userWeight = 75.0) {
+  if (simulator.isActive) return;
+
+  simulator.isActive = true;
+  simulator.weight = Number(userWeight) || 75.0;
+
+  // Dispatch status updates for simulator (only for trainer, power, AND CSC)
+  updateStatus("TRAINER", "CONECTADO");
+  updateStatus("POWER", "CONECTADO");
+  updateStatus("CSC", "CONECTADO");
+
+  connections.TRAINER.name = "Rodillo Virtual";
+  connections.POWER.name = "Potenciómetro Virtual";
+  connections.CSC.name = "Velocidad/Cadencia Virtual";
+
+  simulator.intervalId = setInterval(() => {
+    if (!simulator.isActive) return;
+
+    // Simulate cadences with minor jitter
+    const cadJitter = Math.floor(Math.random() * 5) - 2;
+    const currentCad = Math.max(
+      60,
+      Math.min(110, simulator.cadence + cadJitter),
+    );
+
+    // Simulate Heart Rate with minor jitter
+    const hrJitter = Math.floor(Math.random() * 3) - 1;
+    const currentHr = Math.max(
+      70,
+      Math.min(190, simulator.heartRate + hrJitter),
+    );
+
+    // Calculate Speed based on physics
+    const currentSpeed = calculateVirtualSpeed(
+      simulator.power,
+      simulator.slope,
+      simulator.weight,
+    );
+
+    // Callbacks
+    if (dataListener) {
+      if (dataListener.onPowerReceived)
+        dataListener.onPowerReceived(simulator.power);
+      if (dataListener.onCadenceReceived)
+        dataListener.onCadenceReceived(currentCad);
+      if (dataListener.onHeartRateReceived)
+        dataListener.onHeartRateReceived(currentHr);
+      if (dataListener.onSpeedReceived)
+        dataListener.onSpeedReceived(currentSpeed, currentSpeed > 0);
+    }
+  }, 1000);
+
+  console.log("Virtual Sensor Simulator started");
+}
+
+function stopSimulator() {
+  if (!simulator.isActive) return;
+
+  simulator.isActive = false;
+  if (simulator.intervalId) {
+    clearInterval(simulator.intervalId);
+    simulator.intervalId = null;
+  }
+
+  // Limpiar estado de las conexiones simuladas
+  ["TRAINER", "POWER", "CSC"].forEach((type) => {
+    if (connections[type].status === "CONECTADO" && connections[type].name.includes("Virtual")) {
+      connections[type].status = "DESCONECTADO";
+      connections[type].name = "";
+      // Notificar el cambio de estado para que la UI se refresque
+      if (dataListener && dataListener.onStatusChanged) 
+          dataListener.onStatusChanged(type, "DESCONECTADO");
+    }
+  });
+
+  console.log("Virtual Sensor Simulator stopped");
+}
+
+function setSimulatedMetrics(power, hr, cadence) {
+  if (power !== undefined) simulator.power = Number(power);
+  if (hr !== undefined) simulator.heartRate = Number(hr);
+  if (cadence !== undefined) simulator.cadence = Number(cadence);
+}
+
+/**
+ * Intenta reconectar silenciosamente a dispositivos vinculados anteriormente sin mostrar el selector.
+ */
+async function autoReconnectSavedDevices() {
+  if (!navigator.bluetooth || !navigator.bluetooth.getDevices) {
+    console.log(
+      "[Auto-Reconnect] El navegador no soporta navigator.bluetooth.getDevices()",
+    );
+    return;
+  }
+
+  try {
+    const devices = await navigator.bluetooth.getDevices();
+    if (devices.length === 0) {
+      console.log(
+        "[Auto-Reconnect] No hay dispositivos aprobados previamente en este navegador.",
+      );
+      return;
+    }
+
+    const lastTrainerName = localStorage.getItem("rodilloint_lastTrainerName");
+    const lastHrmName = localStorage.getItem("rodilloint_lastHrmName");
+
+    console.log(
+      `[Auto-Reconnect] getDevices() devolvió ${devices.length} dispositivos. Buscando coincidencias...`,
+    );
+
+    for (const device of devices) {
+      if (
+        lastTrainerName &&
+        device.name === lastTrainerName &&
+        connections.TRAINER.status === "DESCONECTADO"
+      ) {
+        console.log(
+          `[Auto-Reconnect] Coincidencia: Rodillo "${device.name}". Conectando...`,
+        );
+        silenceConnect(device, "TRAINER");
+      }
+      if (
+        lastHrmName &&
+        device.name === lastHrmName &&
+        connections.HRM.status === "DESCONECTADO"
+      ) {
+        console.log(
+          `[Auto-Reconnect] Coincidencia: Pulsómetro "${device.name}". Conectando...`,
+        );
+        silenceConnect(device, "HRM");
+      }
+    }
+  } catch (err) {
+    console.warn(
+      "[Auto-Reconnect] Error al obtener dispositivos pre-vinculados:",
+      err,
+    );
+  }
+}
+
+/**
+ * Conecta a un dispositivo bluetooth ya obtenido sin usar requestDevice()
+ */
+async function silenceConnect(device, type) {
+  let serviceUuid,
+    isTrainer = false;
+  switch (type) {
+    case "TRAINER":
+      serviceUuid = SERVICES.FTMS;
+      isTrainer = true;
+      break;
+    case "HRM":
+      serviceUuid = SERVICES.HRM;
+      break;
+    default:
+      return;
+  }
+
+  try {
+    intentionalDisconnects[type] = false;
+    clearReconnectTimer(type);
+    reconnectAttempts[type] = 0;
+    updateStatus(type, "CONECTANDO");
+
+    // Conectar GATT con timeout
+    let server;
+    try {
+      const connectPromise = device.gatt.connect();
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("TIMEOUT")), 12000),
+      );
+      server = await Promise.race([connectPromise, timeoutPromise]);
+    } catch (err) {
+      if (err.message === "TIMEOUT") {
+        try {
+          device.gatt.disconnect();
+        } catch (_) {}
+      }
+      throw err;
+    }
+
+    const service = await server.getPrimaryService(serviceUuid);
+
+    connections[type].device = device;
+    connections[type].server = server;
+    connections[type].name = device.name || "Dispositivo Bluetooth";
+
+    registerDisconnectListener(device, type);
+
+    if (isTrainer) {
+      const charRead = await service.getCharacteristic(
+        CHARACTERISTICS.INDOOR_BIKE_DATA,
+      );
+      connections[type].charRead = charRead;
+
+      await charRead.startNotifications();
+      charRead.addEventListener("characteristicvaluechanged", (e) => {
+        handleIndoorBikeData(e.target.value);
+      });
+
+      try {
+        await setupFtmsControlPoint(service, type);
+      } catch (controlError) {
+        console.warn(
+          "[FTMS Silence] El punto de control FTMS falló al autoconectar:",
+          controlError,
+        );
+        connections[type].charWrite = null;
+      }
+    } else {
+      let charUuid = CHARACTERISTICS.HRM_MEASUREMENT;
+      const charNotify = await service.getCharacteristic(charUuid);
+      connections[type].charNotify = charNotify;
+
+      await charNotify.startNotifications();
+      charNotify.addEventListener("characteristicvaluechanged", (e) => {
+        if (type === "HRM") decodeHRM(e.target.value);
+      });
+    }
+
+    updateStatus(type, "CONECTADO");
+    console.log(
+      `[Auto-Reconnect] Conectado exitosamente (silencioso) a ${type}: ${device.name}`,
+    );
+  } catch (error) {
+    console.error(
+      `[Auto-Reconnect] Error al autoconectar silenciosamente a ${type}:`,
+      error,
+    );
+    updateStatus(type, "DESCONECTADO");
+  }
+}
+
+/**
+ * Envía de forma inmediata los bytes de potencia ERG al rodillo (OpCode 0x05)
+ */
+function setTargetPowerImmediate(watts) {
+  lastFtmsWriteTime = Date.now();
+  const trainer = connections.TRAINER;
+  
+  const controlChar = trainer.charWrite;
+  if (!controlChar) return;
+
+  const buffer = new ArrayBuffer(3);
+  const view = new DataView(buffer);
+
+  view.setUint8(0, 0x05); // OpCode 0x05: Set Target Power (ERG)
+  view.setInt16(1, watts, true); // Little-Endian (SINT16)
+
+  controlChar.writeValueWithResponse(buffer)
+    .then(() => console.log(`[FTMS → Rodillo] Vatios ERG aplicados: ${watts}W`))
+    .catch(err => console.error("Error enviando potencia ERG:", err));
+}
+
+/**
+ * Transiciona de la potencia actual a la potencia objetivo de forma suave (Rampa)
+ * @param {number} targetWatts - Los vatios finales que queremos alcanzar
+ * @param {number} currentWatts - Los vatios en los que está el ciclista actualmente
+ * @param {number} durationSeconds - Cuánto tiempo debe durar la transición (ej. 3 segundos)
+ */
+function setTargetPower(targetWatts, currentWatts = 150, durationSeconds = 3) {
+  if (ergRampInterval) {
+    clearInterval(ergRampInterval);
+  }
+
+  const stepsPerSecond = 2; 
+  const totalSteps = durationSeconds * stepsPerSecond;
+  const wattsDifference = targetWatts - currentWatts;
+  const wattsPerStep = wattsDifference / totalSteps;
+  
+  let currentStep = 0;
+  let runningWatts = currentWatts;
+
+  console.log(`[ERG Ramp] Transición: ${currentWatts}W -> ${targetWatts}W`);
+
+  runningWatts += wattsPerStep;
+  setTargetPowerImmediate(Math.round(runningWatts));
+
+  ergRampInterval = setInterval(() => {
+    currentStep++;
+    runningWatts += wattsPerStep;
+
+    if (currentStep >= totalSteps) {
+      clearInterval(ergRampInterval);
+      ergRampInterval = null;
+      setTargetPowerImmediate(targetWatts);
+      console.log(`[ERG Ramp] Objetivo ${targetWatts}W alcanzado.`);
+    } else {
+      setTargetPowerImmediate(Math.round(runningWatts));
+    }
+  }, 1000 / stepsPerSecond);
+}
+
+/**
+ * Libera el modo ERG del rodillo enviando 0 W de forma inmediata.
+ * Útil al finalizar un test de rampa para evitar la "espiral de la muerte".
+ */
+function releaseErg() {
+  if (ergRampInterval) {
+    clearInterval(ergRampInterval);
+    ergRampInterval = null;
+  }
+  setTargetPowerImmediate(0);
+}
+
+// Export Bluetooth Manager globally & as ES module
+export const BleManager = {
+  connections,
+  setBleListener,
+  connectDevice,
+  disconnectAll,
+  setTrainerSlope,
+  setTargetPower,
+  releaseErg,
+  calculateVirtualSpeed,
+  autoReconnectSavedDevices,
+  stopAutoReconnect,
+  startSimulator,
+  stopSimulator,
+  setSimulatedMetrics,
+  simulator,
+};
+window.BleManager = BleManager;
