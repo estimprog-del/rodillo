@@ -182,12 +182,12 @@ module.exports = defineConfig(({ mode, command }) => {
       ? (env.VITE_ABLY_AUTH_URL || '/api/ably-auth')
       : (process.env.VITE_ABLY_AUTH_URL || ''),
     VITE_MAPTILER_API_KEY: env.VITE_MAPTILER_API_KEY || '',
-  base: '/rodillo/',
+    VITE_GOOGLE_CLIENT_ID: env.VITE_GOOGLE_CLIENT_ID || '',
   };
 
   return {
     base: '/rodillo/',
-    envPrefix: ['VITE_ABLY_AUTH_URL', 'VITE_MAPTILER_API_KEY'],
+    envPrefix: ['VITE_ABLY_AUTH_URL', 'VITE_MAPTILER_API_KEY', 'VITE_GOOGLE_CLIENT_ID'],
     server: { host: true },
     plugins: command === 'serve'
       ? [localAblyAuthPlugin(env.ABLY_API_KEY)]
@@ -195,6 +195,7 @@ module.exports = defineConfig(({ mode, command }) => {
     define: {
       'import.meta.env.VITE_ABLY_AUTH_URL': JSON.stringify(publicEnv.VITE_ABLY_AUTH_URL),
       'import.meta.env.VITE_MAPTILER_API_KEY': JSON.stringify(publicEnv.VITE_MAPTILER_API_KEY),
+      'import.meta.env.VITE_GOOGLE_CLIENT_ID': JSON.stringify(publicEnv.VITE_GOOGLE_CLIENT_ID),
     },
   };
 });

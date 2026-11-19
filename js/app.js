@@ -556,11 +556,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // Expose state globally for easier debugging in DevTools console
-  try {
-    window.state = state;
-  } catch (err) {
-    // noop if running in restricted environment
+  // Expose state globally for easier debugging in DevTools console (solo en desarrollo)
+  if (import.meta.env?.DEV) {
+    try {
+      window.state = state;
+    } catch (err) {
+      // noop if running in restricted environment
+    }
   }
 
   BleManager.setBleListener({

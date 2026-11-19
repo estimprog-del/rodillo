@@ -3,7 +3,7 @@ import { showToast } from "./toast.js";
 import { DbManager } from "../db.js";
 import { loadProfilesGrid, selectUser } from "../core/userProfile.js";
 
-const CLIENT_ID = (import.meta.env?.VITE_GOOGLE_CLIENT_ID || "745504557715-mspvncfrqj1pvbod06rjq1806epuq52i.apps.googleusercontent.com").trim();
+const CLIENT_ID = (import.meta.env?.VITE_GOOGLE_CLIENT_ID || "").trim();
 const BACKUP_FILE_NAME = "rodilloint-backup.json";
 
 // Scopes separados: login básico (siempre) y permisos de Drive (solo cuando se necesita)
@@ -814,37 +814,7 @@ export async function initGoogleSync() {
 
   updateStatusUI();
 
-  // --- Leyenda de iconos (solo primera carga) ---
-  const LEGEND_KEY = "google_sync_legend_shown";
-  if (!localStorage.getItem(LEGEND_KEY)) {
-    // Crear y mostrar leyenda pequeña
-    const legend = document.createElement("div");
-    legend.style = `
-      position: fixed;
-      bottom: 20px;
-      left: 20px;
-      background: var(--card-background);
-      border: 1px solid var(--border-color);
-      padding: 12px 16px;
-      border-radius: 8px;
-      font-size: 0.85rem;
-      z-index: 1000;
-      max-width: 300px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-    `;
-    legend.innerHTML = `
-      <strong>Leyenda de estado Google Drive:</strong><br>
-      ⚠️ = Sin permisos de Drive (funcionalidad limitada)<br>
-      ✅ = Todo OK (backup activo y sincronizado)<br>
-      🔄 = Sincronizando (en este momento)
-    `;
-    document.body.appendChild(legend);
-    // Auto-eliminar después de 8 segundos
-    setTimeout(() => {
-      legend.remove();
-    }, 8000);
-    localStorage.setItem(LEGEND_KEY, "1");
-  }
+  // Leyenda de iconos de Google Drive ocultada a petición del usuario.
 
   // --- Función para eliminar datos de Google Drive ---
   async function deleteDriveData() {
