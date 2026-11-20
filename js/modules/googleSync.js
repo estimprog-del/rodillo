@@ -3,7 +3,9 @@ import { showToast } from "./toast.js";
 import { DbManager } from "../db.js";
 import { loadProfilesGrid, selectUser } from "../core/userProfile.js";
 
-const CLIENT_ID = (import.meta.env?.VITE_GOOGLE_CLIENT_ID || "").trim();
+// Client ID por defecto (público, restringido por origen en Google Cloud Console).
+// Se puede sobreescribir con VITE_GOOGLE_CLIENT_ID en tiempo de build.
+const CLIENT_ID = (import.meta.env?.VITE_GOOGLE_CLIENT_ID || "745504557715-mspvncfrqj1pvbod06rjq1806epuq52i.apps.googleusercontent.com").trim();
 const BACKUP_FILE_NAME = "rodilloint-backup.json";
 
 // Scopes separados: login básico (siempre) y permisos de Drive (solo cuando se necesita)
