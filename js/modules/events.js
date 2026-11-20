@@ -154,7 +154,7 @@ export function bindEvents(handlers) {
 
   document.body.addEventListener("click", (e) => {
     const target = e.target.closest(
-      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-erg, #mode-erg-workout, #mode-traditional, #btn-workouts-back, #btn-import-workout, #btn-workout-bias-minus, #btn-workout-bias-plus, #btn-workout-bias-reset, #btn-workout-pause, #btn-workout-stop, #btn-workout-fullscreen, #btn-cycle-layout, #btn-compact-panels, #btn-close-compact-panels, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, #btn-export-csv, #btn-export-fit, [id^='btn-export-csv-'], [id^='btn-export-fit-'], [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-history-back-top, #btn-stats-back-top, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-settings-help, #btn-open-help, #btn-help-back, #btn-toggle-3d, #btn-toggle-manual-mode, #btn-session-safety-confirm, #btn-session-safety-cancel",
+      "button, .glass-card, #btn-show-add-user, #btn-show-import-user, #btn-summary-close, #mode-route, #mode-manual, #mode-erg, #mode-erg-workout, #mode-traditional, #btn-workouts-back, #btn-import-workout, #btn-workout-bias-minus, #btn-workout-bias-plus, #btn-workout-bias-reset, #btn-workout-pause, #btn-workout-stop, #btn-workout-fullscreen, #btn-cycle-layout, #btn-compact-panels, #btn-close-compact-panels, .panel-toggle, #btn-slope-minus, #btn-slope-plus, #btn-gear-down, #btn-gear-up, #btn-open-remote-room, #btn-close-remote-room, #btn-export-gpx, #btn-export-csv, #btn-export-fit, [id^='btn-export-csv-'], [id^='btn-export-fit-'], [id^='btn-connect-'], #btn-toggle-sim, #btn-connections-continue, #btn-modal-cancel, #btn-modal-confirm, #btn-stats-back, #btn-history-back-top, #btn-stats-back-top, #btn-dashboard-settings, #btn-toggle-fullscreen, #btn-open-user-profile-trigger, #btn-close-settings, #btn-save-settings, #btn-settings-help, #btn-open-help, #btn-open-info-start, #btn-help-back, #btn-toggle-3d, #btn-toggle-manual-mode, #btn-session-safety-confirm, #btn-session-safety-cancel",
     );
 
     if (!target) return;
@@ -274,9 +274,14 @@ export function bindEvents(handlers) {
       }
       if (id === "btn-open-help" || id === "btn-settings-help") {
         if (id === "btn-settings-help") hideModal("settings");
-        navigateTo("help");
-      }
-      if (id === "btn-save-settings") {
+         state.helpReturnScreen = "dashboard";
+         navigateTo("help");
+       }
+       if (id === "btn-open-info-start") {
+         state.helpReturnScreen = "user-select";
+         navigateTo("help");
+       }
+       if (id === "btn-save-settings") {
         const enablingAutoBackup =
           !state.autoBackupOnSessionEnd &&
           document.getElementById("setting-auto-backup").checked;
@@ -395,7 +400,7 @@ export function bindEvents(handlers) {
       if (target.dataset.calendarDate) {
         selectTrainingCalendarDate(target.dataset.calendarDate);
       }
-      if (id === "btn-help-back") navigateTo("dashboard");
+      if (id === "btn-help-back") navigateTo(state.helpReturnScreen || "dashboard");
       if (id === "btn-routes-back") navigateTo("dashboard");
       if (id === "btn-workouts-back") navigateTo("dashboard");
       if (id === "btn-open-saved-routes") navigateTo("routes");

@@ -36,6 +36,24 @@ export function setElText(id, text) {
   if (el) el.textContent = text;
 }
 
+export function isMobileViewport() {
+  return window.matchMedia("(max-width: 768px)").matches;
+}
+
+export function isTouchDevice() {
+  return (navigator.maxTouchPoints || 0) > 0 || "ontouchstart" in window;
+}
+
+export function isMobilePortrait() {
+  return (
+    isMobileViewport() && window.matchMedia("(orientation: portrait)").matches
+  );
+}
+
+export function isSmallMobile() {
+  return window.matchMedia("(max-width: 480px)").matches;
+}
+
 // Throttled HUD update
 const UI_UPDATE_RATE = 250;
 let lastUiUpdate = 0;

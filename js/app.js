@@ -9,6 +9,7 @@ import {
   setElDisplay,
   setElText,
   safeSetText,
+  isMobilePortrait,
 } from "./modules/ui.js";
 import {
   state,
@@ -197,15 +198,16 @@ function applyWorkoutLayout() {
   const layouts = ["horizontal-1", "horizontal-2", "vertical-1", "vertical-2"];
   const selectedLayout = state.workoutLayout;
   const isVertical = window.matchMedia("(orientation: portrait)").matches;
+  const mobilePortrait = isMobilePortrait();
   const layout = layouts.includes(selectedLayout)
     ? selectedLayout
     : isVertical
-      ? (window.innerWidth < 700 ? "vertical-2" : "vertical-1")
+      ? (mobilePortrait ? "vertical-2" : (window.innerWidth < 700 ? "vertical-2" : "vertical-1"))
       : (window.innerWidth < 1100 ? "horizontal-2" : "horizontal-1");
 
   viewport.classList.remove(...layouts.map((name) => `layout-${name}`));
   viewport.classList.add(`layout-${layout}`);
-
+  viewport.classList.toggle("workout-compact", mobilePortrait);
   requestAnimationFrame(() => {
     if (!state.map) return;
     if (typeof state.map.resize === "function") state.map.resize();
@@ -299,13 +301,38 @@ function cycleWorkoutLayout() {
   applyWorkoutLayout();
 }
 
-window.cycleWorkoutLayout = cycleWorkoutLayout;
+function toggleCompactWorkoutPanels(force) {
+  const viewport = document.querySelector(".workout-viewport");
+  const drawer = document.getElementById("workout-compact-drawer");
+  const button = document.getElementById("btn-compact-panels");
+  if (!viewport || !drawer) return;
 
+  const currentlyOpen = viewport.classList.contains("compact-panels-open");
+  const shouldOpen =
+    typeof force === "boolean" ? force : !currentlyOpen;
+
+  viewport.classList.toggle("compact-panels-open", shouldOpen);
+  if (shouldOpen) {
+    drawer.removeAttribute("hidden");
+    drawer.setAttribute("aria-hidden", "false");
+  } else {
+    drawer.setAttribute("hidden", "");
+    drawer.setAttribute("aria-hidden", "true");
+  }
+  if (button) {
+    button.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+    button.textContent = shouldOpen ? "Menos datos" : "Más datos";
+  }
+}
+
+window.cycleWorkoutLayout = cycleWorkoutLayout;
+window.toggleCompactWorkoutPanels = toggleCompactWorkoutPanels;
 window.addEventListener("resize", () => {
+  const viewport = document.querySelector(".workout-viewport");
+  if (viewport) viewport.classList.toggle("workout-compact", isMobilePortrait());
   if (state.workoutLayout === "auto") applyWorkoutLayout();
   else positionMapNavigationControls();
 });
-
 
 function formatWorkoutTimer(totalSeconds) {
   const safeSeconds = Math.max(0, Math.round(Number(totalSeconds) || 0));
@@ -452,6 +479,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Initialize Navigation
   const navigationCallbacks = {
+    "user-select": () => {
+      const infoLine = document.getElementById("start-info-line");
+      if (infoLine) infoLine.style.display = state.currentUser ? "none" : "block";
+    },
     dashboard: () => {
       loadDashboardHeader(state);
       sensorConnections.syncDashboardSensorStatus();
@@ -470,6 +501,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
 
   navigateTo = initNavigation(UI, state, navigationCallbacks);
+  const initialInfoLine = document.getElementById("start-info-line");
+  if (initialInfoLine) initialInfoLine.style.display = state.currentUser ? "none" : "block";
   initUserView({ navigateTo });
 
   // Exponer bridges para que los módulos core/ puedan acceder a funciones de app.js

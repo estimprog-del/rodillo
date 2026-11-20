@@ -11,6 +11,7 @@ export const state = {
   lastSavedSessionId: null,
   summaryReturnScreen: "dashboard",
   connectionsReturnScreen: "dashboard",
+  helpReturnScreen: "dashboard",
   currentMode: "ROUTE", // 'ROUTE' | 'MANUAL' | 'TRADITIONAL' | 'WORKOUT'
   currentWorkout: null,
   isMapFollowingRoute: false,
@@ -250,12 +251,28 @@ export function loadWorkoutLayoutForUser(user) {
     ? Math.max(12, Math.min(24, savedFpvZoom))
     : 20;
   state.workoutLayout = (userKey && state.workoutLayouts[userKey]) || "auto";
+  const isMobilePortrait = window.matchMedia(
+    "(max-width: 768px) and (orientation: portrait)",
+  ).matches;
+  const defaultPanels = isMobilePortrait
+    ? {
+        virtual: true,
+        progress: true,
+        elevation: false,
+        upcoming: false,
+        remote: true,
+        routeOverview: true,
+      }
+    : {
+        virtual: true,
+        progress: true,
+        elevation: true,
+        upcoming: true,
+        remote: true,
+        routeOverview: true,
+      };
   state.workoutPanels = {
-    virtual: true,
-    progress: true,
-    elevation: true,
-    upcoming: true,
-    remote: true,
+    ...defaultPanels,
     ...((userKey && state.workoutPanelsByUser[userKey]) || {}),
   };
   state.fullscreenPreference = (userKey && state.fullscreenByUser[userKey]) === true;
