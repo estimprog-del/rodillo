@@ -802,6 +802,26 @@ export async function loadProgressStats() {
     calendarSessions = sessions;
     renderTrainingCalendar();
 
+    // --- Calcular año ascent (Desnivel positivo) ---
+    const currentYear = new Date().getFullYear();
+    const yearSessions = sessions.filter(
+      (s) => new Date(Number(s.startTime)).getFullYear() === currentYear
+    );
+    let yearAscent = 0;
+    yearSessions.forEach((session) => {
+      const sessionAscent =
+        Number(session.routeTotalAscent) > 0
+          ? Number(session.routeTotalAscent)
+          : Math.max(0, Number(session.totalAscent) || 0);
+      yearAscent += sessionAscent;
+    });
+
+    // Actualizar UI del año
+    const yearDisplay = document.querySelector(".year-display");
+    if (yearDisplay) yearDisplay.textContent = currentYear;
+    const yearAscentEl = document.querySelector(".training-year-summary h2");
+    if (yearAscentEl) yearAscentEl.textContent = `${Math.round(yearAscent)} m`;
+
     let totalDist = 0.0;
     let totalMillis = 0;
     let maxPowerVal = 0;
