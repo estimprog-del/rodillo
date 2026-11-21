@@ -26,7 +26,7 @@
         <style>.app-icon{vertical-align:middle;display:inline-block}.app-icon-start{width:48px;height:48px;margin-right:12px}.app-icon-dashboard{width:42px;height:42px;margin-right:10px}</style>
         <!-- Google Identity Services (Google Drive sync) -->
         <script src="https://accounts.google.com/gsi/client" async defer></script>
-      <script type="module" crossorigin src="/rodillo/assets/index-DSsjCUsM.js"></script>
+      <script type="module" crossorigin src="/rodillo/assets/index-Bi-PwIbg.js"></script>
       <link rel="stylesheet" crossorigin href="/rodillo/assets/index-0YheCkQM.css">
     </head>
     <body>
@@ -1766,37 +1766,47 @@
                 Analíticas consolidadas de rendimiento del usuario.
             </p>
 
-            <!-- Resumen anual con Desnivel Positivo -->
-            <div class="training-year-summary" style="
+            <!-- Resumen anual: Desnivel + y Potencia Media -->
+            <div class="year-summary-container" style="
                 background: var(--card-background);
                 border: 1px solid var(--border-color);
                 border-radius: 12px;
-                padding: 16px 20px;
-                margin-bottom: 24px;
+                padding: 12px 16px;
+                margin-bottom: 20px;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
             ">
-                <div style="
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    flex-wrap: wrap;
-                    gap: 12px;
-                ">
-                    <button class="btn btn-training-calendar prev-year" aria-label="Año anterior" style="flex: 0 0 40px;">
-                        ←
-                    </button>
-                    <span class="year-display" style="font-size: 16px; font-weight: 600;">2026</span>
-                    <button class="btn btn-training-calendar next-year" aria-label="Siguiente año" style="flex: 0 0 40px;">
-                        →
-                    </button>
+                <!-- Tarjeta Desnivel + -->
+                <div class="glass-card" style="text-align: center; padding: 8px;">
+                    <span style="
+                        font-size: 10px;
+                        color: var(--text-secondary);
+                        text-transform: uppercase;
+                    ">Desnivel +</span>
+                    <h2 style="font-size: 32px; color: white; margin: 4px 0;">0 m</h2>
                 </div>
-                <div style="
-                    text-align: center;
-                    padding-top: 8px;
-                    border-top: 1px solid var(--border-color);
-                    margin-top: 8px;
-                ">
-                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase;">Desnivel +</div>
-                    <h2 style="font-size: 24px; color: white; margin: 4px 0;">0 m</h2>
+                <!-- Tarjeta Año -->
+                <div class="glass-card" style="text-align: center; padding: 8px;">
+                    <span style="
+                        font-size: 10px;
+                        color: var(--text-secondary);
+                        text-transform: uppercase;
+                    ">Año</span>
+                    <h2 style="font-size: 32px; color: white; margin: 4px 0;">2026</h2>
+                    <div style="margin-top: 4px;">
+                        <button class="btn btn-link btn-small" style="padding: 2px 6px; font-size: 11px;" aria-label="Año anterior">←</button>
+                        <button class="btn btn-link btn-small" style="padding: 2px 6px; font-size: 11px;" aria-label="Siguiente año">→</button>
+                    </div>
+                </div>
+                <!-- Tarjeta Potencia Media -->
+                <div class="glass-card" style="text-align: center; padding: 8px;">
+                    <span style="
+                        font-size: 10px;
+                        color: var(--text-secondary);
+                        text-transform: uppercase;
+                    ">Potencia Media</span>
+                    <h2 style="font-size: 32px; color: var(--accent-blue); margin: 4px 0;">0 W</h2>
                 </div>
             </div>
 
