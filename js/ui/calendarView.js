@@ -189,8 +189,10 @@ export function renderTrainingCalendar() {
     month: "long",
     year: "numeric",
   });
-  monthLabel.textContent =
-    rawMonthName.charAt(0).toLocaleUpperCase("es-ES") + rawMonthName.slice(1);
+  // Formatear para que sea "Octubre de 2026" (con "de" minúscula)
+  const formattedMonth = rawMonthName.charAt(0).toUpperCase() + rawMonthName.slice(1);
+  // Asegurar que "de" vaya en minúscula
+  monthLabel.textContent = formattedMonth.replace(" De ", " de ");
 
   // Resumen del mes mostrado
   const monthSessions = completedSessions.filter((s) => {
