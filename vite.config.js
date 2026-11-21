@@ -189,6 +189,7 @@ module.exports = defineConfig(({ mode, command }) => {
     base: '/rodillo/',
     envPrefix: ['VITE_ABLY_AUTH_URL', 'VITE_MAPTILER_API_KEY', 'VITE_GOOGLE_CLIENT_ID'],
     server: { host: true },
+    minify: 'terser',
     esbuild: { drop: ['console', 'debugger'] },
     plugins: command === 'serve'
       ? [localAblyAuthPlugin(env.ABLY_API_KEY)]
