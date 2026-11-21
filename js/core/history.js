@@ -802,63 +802,68 @@ export async function loadProgressStats() {
     calendarSessions = sessions;
     renderTrainingCalendar();
 
-    // --- Calcular métricas del año ---
+    // --- Calcular todas las métricas ---
+    let totalDist = 0.0;
+    let totalMillis = 0;
+    let maxPowerVal = 0; // máximo histórico
+    let yearAscent = 0;
+    let yearTotalPower = 0;
+    let yearPowerCount = 0;
+    let yearMaxPower = 0; // potencia máxima del año
+
     const currentYear = new Date().getFullYear();
     const yearSessions = sessions.filter(
       (s) => new Date(Number(s.startTime)).getFullYear() === currentYear
     );
 
-    // Year ascent (Desnivel positivo)
-    let yearAscent = 0;
-    yearSessions.forEach((session) => {
-      const sessionAscent =
-        Number(session.routeTotalAscent) > 0
-          ? Number(session.routeTotalAscent)
-          : Math.max(0, Number(session.totalAscent) || 0);
-      yearAscent += sessionAscent;
-    });
-
-    // Year average power
-    let yearTotalPower = 0;
-    let yearPowerCount = 0;
-    yearSessions.forEach((session) => {
-      const power = Number(session.averagePower) || 0;
-      if (power > 0) {
-        yearTotalPower += power;
-        yearPowerCount++;
-      }
-    });
-    const yearAvgPower = yearPowerCount > 0 ? Math.round(yearTotalPower / yearPowerCount) : 0;
-
-    // Actualizar UI del año - formato de fichas (cards)
-    const yearCards = document.querySelectorAll(".year-summary-container .glass-card h2");
-    if (yearCards && yearCards.length >= 3) {
-      yearCards[0].textContent = `${Math.round(yearAscent)} m`; // Desnivel +
-      yearCards[1].textContent = `${currentYear}`; // Año
-      yearCards[2].textContent = `${yearAvgPower} W`; // Potencia media
-    }
-
-    let totalDist = 0.0;
-    let totalMillis = 0;
-    let maxPowerVal = 0;
-
     for (const s of sessions) {
-      totalDist += s.totalDistance;
-      if (s.endTime) totalMillis += s.endTime - s.startTime;
+      totalDist += Number(s.totalDistance) || 0;
+      if (s.endTime) totalMillis += Number(s.endTime) - Number(s.startTime);
+
+      // Poder máximo histórico
       const data = await DbManager.getSensorDataForSession(s.id);
       const powers = data.map((d) => d.power || 0);
       if (powers.length > 0) {
         const localMax = Math.max(...powers);
         if (localMax > maxPowerVal) maxPowerVal = localMax;
       }
+
+      // Métricas del año
+      const sessionAscent =
+        Number(s.routeTotalAscent) > 0
+          ? Number(s.routeTotalAscent)
+          : Math.max(0, Number(s.totalAscent) || 0);
+      yearAscent += sessionAscent;
+
+      const power = Number(s.averagePower) || 0;
+      if (power > 0) {
+        yearTotalPower += power;
+        yearPowerCount++;
+      }
+      // Potencia máxima del año (de los datos de sensor o averagePower)
+      const sessionMaxPower = data.length > 0 ? Math.max(...powers) : power;
+      if (sessionMaxPower > yearMaxPower) yearMaxPower = sessionMaxPower;
     }
 
     const totalHours = Math.floor(totalMillis / 3600000);
     const totalMinutes = Math.floor((totalMillis % 3600000) / 60000);
-    document.getElementById('stats-total-sessions').textContent = sessions.length;
-    document.getElementById('stats-total-distance').textContent = `${totalDist.toFixed(1)} km`;
-    document.getElementById('stats-total-time').textContent = `${totalHours}h ${totalMinutes}m`;
-    document.getElementById('stats-max-power').textContent = `${maxPowerVal} W`;
+    const yearAvgPower = yearPowerCount > 0 ? Math.round(yearTotalPower / yearPowerCount) : 0;
+
+    // Actualizar UI - fichas de estadísticas
+    const sCountEl = document.getElementById("stats-total-sessions");
+    if (sCountEl) sCountEl.textContent = sessions.length;
+    const sDistEl = document.getElementById("stats-total-distance");
+    if (sDistEl) sDistEl.textContent = `${totalDist.toFixed(1)} km`;
+    const sTimeEl = document.getElementById("stats-total-time");
+    if (sTimeEl) sTimeEl.textContent = `${totalHours}h ${totalMinutes}m`;
+    const sAvgPowerEl = document.getElementById("stats-avg-power");
+    if (sAvgPowerEl) sAvgPowerEl.textContent = `${yearAvgPower} W`;
+    const sMaxPowerYearEl = document.getElementById("stats-max-power-year");
+    if (sMaxPowerYearEl) sMaxPowerYearEl.textContent = `${yearMaxPower} W`;
+    const sYearAscentEl = document.getElementById("stats-year-ascent");
+    if (sYearAscentEl) sYearAscentEl.textContent = `${Math.round(yearAscent)} m`;
+    const sMaxPowerHistEl = document.getElementById("stats-max-power");
+    if (sMaxPowerHistEl) sMaxPowerHistEl.textContent = `${maxPowerVal} W`;
   } catch (e) {
     console.error(e);
   }
