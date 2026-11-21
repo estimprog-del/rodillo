@@ -269,7 +269,6 @@ export function renderTrainingCalendar() {
   }
 
   // Botones de navegación de año
-  const yearNavContainer = document.getElementById("training-year-nav");
   if (yearNavContainer) {
     yearNavContainer.innerHTML = `
       <button class="btn btn-training-calendar prev-year" aria-label="Año anterior">
