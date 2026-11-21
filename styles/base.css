@@ -1583,7 +1583,7 @@ h4 {
     min-width: 130px;
     color: var(--text-primary);
     text-align: center;
-    text-transform: capitalize;
+    text-transform: none;
 }
 
 .training-period-summaries {
@@ -1704,7 +1704,7 @@ h4 {
 .training-selected-day h4 {
     margin-bottom: 10px;
     font-size: 15px;
-    text-transform: capitalize;
+    text-transform: none;
 }
 
 .training-calendar-empty {
