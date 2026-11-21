@@ -802,11 +802,13 @@ export async function loadProgressStats() {
     calendarSessions = sessions;
     renderTrainingCalendar();
 
-    // --- Calcular año ascent (Desnivel positivo) ---
+    // --- Calcular métricas del año ---
     const currentYear = new Date().getFullYear();
     const yearSessions = sessions.filter(
       (s) => new Date(Number(s.startTime)).getFullYear() === currentYear
     );
+
+    // Year ascent (Desnivel positivo)
     let yearAscent = 0;
     yearSessions.forEach((session) => {
       const sessionAscent =
@@ -816,11 +818,25 @@ export async function loadProgressStats() {
       yearAscent += sessionAscent;
     });
 
-    // Actualizar UI del año
-    const yearDisplay = document.querySelector(".year-display");
-    if (yearDisplay) yearDisplay.textContent = currentYear;
-    const yearAscentEl = document.querySelector(".training-year-summary h2");
-    if (yearAscentEl) yearAscentEl.textContent = `${Math.round(yearAscent)} m`;
+    // Year average power
+    let yearTotalPower = 0;
+    let yearPowerCount = 0;
+    yearSessions.forEach((session) => {
+      const power = Number(session.averagePower) || 0;
+      if (power > 0) {
+        yearTotalPower += power;
+        yearPowerCount++;
+      }
+    });
+    const yearAvgPower = yearPowerCount > 0 ? Math.round(yearTotalPower / yearPowerCount) : 0;
+
+    // Actualizar UI del año - formato de fichas (cards)
+    const yearCards = document.querySelectorAll(".year-summary-container .glass-card h2");
+    if (yearCards && yearCards.length >= 3) {
+      yearCards[0].textContent = `${Math.round(yearAscent)} m`; // Desnivel +
+      yearCards[1].textContent = `${currentYear}`; // Año
+      yearCards[2].textContent = `${yearAvgPower} W`; // Potencia media
+    }
 
     let totalDist = 0.0;
     let totalMillis = 0;
