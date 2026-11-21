@@ -37,8 +37,14 @@ function aggregateSessionMetrics(sessions) {
     (acc, session) => {
       acc.sessions += 1;
       acc.distance += Math.max(0, Number(session.totalDistance) || 0);
+      // Usa routeTotalAscent si está disponible (modo Ruta con GPX),
+      // sino caeBack a totalAscent (modos Manual/ERG/Tradicional)
+      const sessionAscent =
+        Number(session.routeTotalAscent) > 0
+          ? Number(session.routeTotalAscent)
+          : Math.max(0, Number(session.totalAscent) || 0);
+      acc.ascent += sessionAscent;
       acc.duration += getSessionDurationSeconds(session);
-      acc.ascent += Math.max(0, Number(session.totalAscent) || 0);
       return acc;
     },
     { sessions: 0, distance: 0, duration: 0, ascent: 0 }
