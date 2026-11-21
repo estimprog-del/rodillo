@@ -810,6 +810,70 @@ export function goToTrainingCalendarToday() {
   selectTrainingCalendarDate(formatDateKey(new Date()));
 }
 
+async function updateStatsForYear(year, sessions) {
+  const yearSessions = sessions.filter(
+    (s) => new Date(Number(s.startTime)).getFullYear() === year
+  );
+
+  let totalDist = 0.0;
+  let totalMillis = 0;
+  let maxPowerVal = 0;
+  let yearAscent = 0;
+  let yearTotalPower = 0;
+  let yearPowerCount = 0;
+  let yearMaxPower = 0;
+
+  for (const s of yearSessions) {
+    totalDist += Number(s.totalDistance) || 0;
+    if (s.endTime) totalMillis += Number(s.endTime) - Number(s.startTime);
+
+    const data = await DbManager.getSensorDataForSession(s.id);
+    const powers = data.map((d) => d.power || 0);
+    if (powers.length > 0) {
+      const localMax = Math.max(...powers);
+      if (localMax > yearMaxPower) yearMaxPower = localMax;
+    }
+
+    const sessionAscent = Number(s.routeTotalAscent) > 0 ? Number(s.routeTotalAscent) : Math.max(0, Number(s.totalAscent) || 0);
+    yearAscent += sessionAscent;
+
+    const power = Number(s.averagePower) || 0;
+    if (power > 0) { yearTotalPower += power; yearPowerCount++; }
+
+    const sessionMaxPower = data.length > 0 ? Math.max(...powers) : power;
+    if (sessionMaxPower > yearMaxPower) yearMaxPower = sessionMaxPower;
+  }
+
+  // Máximo histórico global (todos los años)
+  for (const s of sessions) {
+    const data = await DbManager.getSensorDataForSession(s.id);
+    const powers = data.map((d) => d.power || 0);
+    if (powers.length > 0) {
+      const localMax = Math.max(...powers);
+      if (localMax > maxPowerVal) maxPowerVal = localMax;
+    }
+  }
+
+  const totalHours = Math.floor(totalMillis / 3600000);
+  const totalMinutes = Math.floor((totalMillis % 3600000) / 60000);
+  const yearAvgPower = yearPowerCount > 0 ? Math.round(yearTotalPower / yearPowerCount) : 0;
+
+  const sCountEl = document.getElementById("stats-total-sessions");
+  if (sCountEl) sCountEl.textContent = yearSessions.length;
+  const sDistEl = document.getElementById("stats-total-distance");
+  if (sDistEl) sDistEl.textContent = `${totalDist.toFixed(1)} km`;
+  const sTimeEl = document.getElementById("stats-total-time");
+  if (sTimeEl) sTimeEl.textContent = `${totalHours}h ${totalMinutes}m`;
+  const sAvgPowerEl = document.getElementById("stats-avg-power");
+  if (sAvgPowerEl) sAvgPowerEl.textContent = `${yearAvgPower} W`;
+  const sMaxPowerYearEl = document.getElementById("stats-max-power-year");
+  if (sMaxPowerYearEl) sMaxPowerYearEl.textContent = `${yearMaxPower} W`;
+  const sYearAscentEl = document.getElementById("stats-year-ascent");
+  if (sYearAscentEl) sYearAscentEl.textContent = `${Math.round(yearAscent)} m`;
+  const sMaxPowerHistEl = document.getElementById("stats-max-power");
+  if (sMaxPowerHistEl) sMaxPowerHistEl.textContent = `${maxPowerVal} W`;
+}
+
 export async function loadProgressStats() {
   if (!state.currentUser) return;
   try {
@@ -817,68 +881,8 @@ export async function loadProgressStats() {
     calendarSessions = sessions;
     renderTrainingCalendar();
 
-    // --- Calcular todas las métricas ---
-    let totalDist = 0.0;
-    let totalMillis = 0;
-    let maxPowerVal = 0; // máximo histórico
-    let yearAscent = 0;
-    let yearTotalPower = 0;
-    let yearPowerCount = 0;
-    let yearMaxPower = 0; // potencia máxima del año
-
     let currentYear = new Date().getFullYear();
-    const yearSessions = sessions.filter(
-      (s) => new Date(Number(s.startTime)).getFullYear() === currentYear
-    );
-
-    for (const s of yearSessions) {
-      totalDist += Number(s.totalDistance) || 0;
-      if (s.endTime) totalMillis += Number(s.endTime) - Number(s.startTime);
-
-      // Poder máximo histórico
-      const data = await DbManager.getSensorDataForSession(s.id);
-      const powers = data.map((d) => d.power || 0);
-      if (powers.length > 0) {
-        const localMax = Math.max(...powers);
-        if (localMax > maxPowerVal) maxPowerVal = localMax;
-      }
-
-      // Métricas del año
-      const sessionAscent =
-        Number(s.routeTotalAscent) > 0
-          ? Number(s.routeTotalAscent)
-          : Math.max(0, Number(s.totalAscent) || 0);
-      yearAscent += sessionAscent;
-
-      const power = Number(s.averagePower) || 0;
-      if (power > 0) {
-        yearTotalPower += power;
-        yearPowerCount++;
-      }
-      // Potencia máxima del año (de los datos de sensor o averagePower)
-      const sessionMaxPower = data.length > 0 ? Math.max(...powers) : power;
-      if (sessionMaxPower > yearMaxPower) yearMaxPower = sessionMaxPower;
-    }
-
-    const totalHours = Math.floor(totalMillis / 3600000);
-    const totalMinutes = Math.floor((totalMillis % 3600000) / 60000);
-    const yearAvgPower = yearPowerCount > 0 ? Math.round(yearTotalPower / yearPowerCount) : 0;
-
-    // Actualizar UI - fichas de estadísticas
-    const sCountEl = document.getElementById("stats-total-sessions");
-    if (sCountEl) sCountEl.textContent = yearSessions.length;
-    const sDistEl = document.getElementById("stats-total-distance");
-    if (sDistEl) sDistEl.textContent = `${totalDist.toFixed(1)} km`;
-    const sTimeEl = document.getElementById("stats-total-time");
-    if (sTimeEl) sTimeEl.textContent = `${totalHours}h ${totalMinutes}m`;
-    const sAvgPowerEl = document.getElementById("stats-avg-power");
-    if (sAvgPowerEl) sAvgPowerEl.textContent = `${yearAvgPower} W`;
-    const sMaxPowerYearEl = document.getElementById("stats-max-power-year");
-    if (sMaxPowerYearEl) sMaxPowerYearEl.textContent = `${yearMaxPower} W`;
-    const sYearAscentEl = document.getElementById("stats-year-ascent");
-    if (sYearAscentEl) sYearAscentEl.textContent = `${Math.round(yearAscent)} m`;
-    const sMaxPowerHistEl = document.getElementById("stats-max-power");
-    if (sMaxPowerHistEl) sMaxPowerHistEl.textContent = `${maxPowerVal} W`;
+    await updateStatsForYear(currentYear, sessions);
 
     // --- Year navigation event listeners ---
     const prevYearBtn = document.querySelector('.btn-link[aria-label="Año anterior"]');
@@ -887,107 +891,26 @@ export async function loadProgressStats() {
 
     if (prevYearBtn && yearDisplay) {
       prevYearBtn.addEventListener('click', async () => {
+        prevYearBtn.disabled = currentYear <= 2015;
         currentYear = currentYear > 2015 ? currentYear - 1 : currentYear;
         yearDisplay.textContent = currentYear;
-        const newYearSessions = sessions.filter(
-          (s) => new Date(Number(s.startTime)).getFullYear() === currentYear
-        );
-        let newTotalDist = 0.0;
-        let newTotalMillis = 0;
-        let newMaxPower = 0;
-        let newYearAscent = 0;
-        let newYearTotalPower = 0;
-        let newYearPowerCount = 0;
-        let newYearMaxPower = 0;
-        for (const s of newYearSessions) {
-          newTotalDist += Number(s.totalDistance) || 0;
-          if (s.endTime) newTotalMillis += Number(s.endTime) - Number(s.startTime);
-          const data = await DbManager.getSensorDataForSession(s.id);
-          const powers = data.map((d) => d.power || 0);
-          if (powers.length > 0) {
-            const localMax = Math.max(...powers);
-            if (localMax > newMaxPower) newMaxPower = localMax;
-          }
-          const sessionAscent = Number(s.routeTotalAscent) > 0 ? Number(s.routeTotalAscent) : Math.max(0, Number(s.totalAscent) || 0);
-          newYearAscent += sessionAscent;
-          const power = Number(s.averagePower) || 0;
-          if (power > 0) { newYearTotalPower += power; newYearPowerCount++; }
-          const sessionMaxPower = data.length > 0 ? Math.max(...powers) : power;
-          if (sessionMaxPower > newYearMaxPower) newYearMaxPower = sessionMaxPower;
-        }
-        const newTotalHours = Math.floor(newTotalMillis / 3600000);
-        const newTotalMinutes = Math.floor((newTotalMillis % 3600000) / 60000);
-        const newYearAvgPower = newYearPowerCount > 0 ? Math.round(newYearTotalPower / newYearPowerCount) : 0;
-        const sCountEl = document.getElementById("stats-total-sessions");
-        if (sCountEl) sCountEl.textContent = newYearSessions.length;
-        const sDistEl = document.getElementById("stats-total-distance");
-        if (sDistEl) sDistEl.textContent = `${newTotalDist.toFixed(1)} km`;
-        const sTimeEl = document.getElementById("stats-total-time");
-        if (sTimeEl) sTimeEl.textContent = `${newTotalHours}h ${newTotalMinutes}m`;
-        const sAvgPowerEl = document.getElementById("stats-avg-power");
-        if (sAvgPowerEl) sAvgPowerEl.textContent = `${newYearAvgPower} W`;
-        const sMaxPowerYearEl = document.getElementById("stats-max-power-year");
-        if (sMaxPowerYearEl) sMaxPowerYearEl.textContent = `${newYearMaxPower} W`;
-        const sYearAscentEl = document.getElementById("stats-year-ascent");
-        if (sYearAscentEl) sYearAscentEl.textContent = `${Math.round(newYearAscent)} m`;
-        const sMaxPowerHistEl = document.getElementById("stats-max-power");
-        if (sMaxPowerHistEl) sMaxPowerHistEl.textContent = `${newYearMaxPower} W`;
+        await updateStatsForYear(currentYear, sessions);
         setTrainingCalendarYear(currentYear);
       });
     }
 
     if (nextYearBtn && yearDisplay) {
       nextYearBtn.addEventListener('click', async () => {
+        nextYearBtn.disabled = currentYear >= 2100;
         currentYear = currentYear < 2100 ? currentYear + 1 : currentYear;
         yearDisplay.textContent = currentYear;
-        const newYearSessions = sessions.filter(
-          (s) => new Date(Number(s.startTime)).getFullYear() === currentYear
-        );
-        let newTotalDist = 0.0;
-        let newTotalMillis = 0;
-        let newMaxPower = 0;
-        let newYearAscent = 0;
-        let newYearTotalPower = 0;
-        let newYearPowerCount = 0;
-        let newYearMaxPower = 0;
-        for (const s of newYearSessions) {
-          newTotalDist += Number(s.totalDistance) || 0;
-          if (s.endTime) newTotalMillis += Number(s.endTime) - Number(s.startTime);
-          const data = await DbManager.getSensorDataForSession(s.id);
-          const powers = data.map((d) => d.power || 0);
-          if (powers.length > 0) {
-            const localMax = Math.max(...powers);
-            if (localMax > newMaxPower) newMaxPower = localMax;
-          }
-          const sessionAscent = Number(s.routeTotalAscent) > 0 ? Number(s.routeTotalAscent) : Math.max(0, Number(s.totalAscent) || 0);
-          newYearAscent += sessionAscent;
-          const power = Number(s.averagePower) || 0;
-          if (power > 0) { newYearTotalPower += power; newYearPowerCount++; }
-          const sessionMaxPower = data.length > 0 ? Math.max(...powers) : power;
-          if (sessionMaxPower > newYearMaxPower) newYearMaxPower = sessionMaxPower;
-        }
-        const newTotalHours = Math.floor(newTotalMillis / 3600000);
-        const newTotalMinutes = Math.floor((newTotalMillis % 3600000) / 60000);
-        const newYearAvgPower = newYearPowerCount > 0 ? Math.round(newYearTotalPower / newYearPowerCount) : 0;
-        const sCountEl = document.getElementById("stats-total-sessions");
-        if (sCountEl) sCountEl.textContent = newYearSessions.length;
-        const sDistEl = document.getElementById("stats-total-distance");
-        if (sDistEl) sDistEl.textContent = `${newTotalDist.toFixed(1)} km`;
-        const sTimeEl = document.getElementById("stats-total-time");
-        if (sTimeEl) sTimeEl.textContent = `${newTotalHours}h ${newTotalMinutes}m`;
-        const sAvgPowerEl = document.getElementById("stats-avg-power");
-        if (sAvgPowerEl) sAvgPowerEl.textContent = `${newYearAvgPower} W`;
-        const sMaxPowerYearEl = document.getElementById("stats-max-power-year");
-        if (sMaxPowerYearEl) sMaxPowerYearEl.textContent = `${newYearMaxPower} W`;
-        const sYearAscentEl = document.getElementById("stats-year-ascent");
-        if (sYearAscentEl) sYearAscentEl.textContent = `${Math.round(newYearAscent)} m`;
-        const sMaxPowerHistEl = document.getElementById("stats-max-power");
-        if (sMaxPowerHistEl) sMaxPowerHistEl.textContent = `${newYearMaxPower} W`;
+        await updateStatsForYear(currentYear, sessions);
         setTrainingCalendarYear(currentYear);
       });
     }
   } catch (e) {
     console.error(e);
+    showToast("Error al cargar las estadísticas del año.", "error");
   }
 }
 

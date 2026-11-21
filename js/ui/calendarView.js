@@ -268,45 +268,6 @@ export function renderTrainingCalendar() {
     );
   }
 
-  // Botones de navegación de año
-  if (yearNavContainer) {
-    yearNavContainer.innerHTML = `
-      <button class="btn btn-training-calendar prev-year" aria-label="Año anterior">
-        ←
-      </button>
-      <span class="year-display">${currentYear}</span>
-      <button class="btn btn-training-calendar next-year" aria-label="Siguiente año">
-        →
-      </button>
-    `;
-    // Año anterior
-    const prevYearBtn = yearNavContainer.querySelector(".prev-year");
-    if (prevYearBtn) {
-      prevYearBtn.addEventListener("click", () => {
-        calendarCurrentMonth = new Date(
-          calendarCurrentMonth.getFullYear() - 1,
-          calendarCurrentMonth.getMonth(),
-          1
-        );
-        selectedCalendarDate = formatDateKey(new Date());
-        renderTrainingCalendar();
-      });
-    }
-    // Siguiente año
-    const nextYearBtn = yearNavContainer.querySelector(".next-year");
-    if (nextYearBtn) {
-      nextYearBtn.addEventListener("click", () => {
-        calendarCurrentMonth = new Date(
-          calendarCurrentMonth.getFullYear() + 1,
-          calendarCurrentMonth.getMonth(),
-          1
-        );
-        selectedCalendarDate = formatDateKey(new Date());
-        renderTrainingCalendar();
-      });
-    }
-  }
-
   // Cuadrícula de días
   grid.replaceChildren();
   ["L", "M", "X", "J", "V", "S", "D"].forEach((weekday) => {
@@ -401,52 +362,4 @@ export function selectTrainingCalendarDate(dateKey) {
 
 export function goToTrainingCalendarToday() {
   selectTrainingCalendarDate(formatDateKey(new Date()));
-}
-
-export async function loadProgressStats() {
-  if (!state.currentUser) return;
-
-  try {
-    const sessions = await DbManager.getAllSessions(state.currentUser.id);
-    calendarSessions = sessions;
-    renderTrainingCalendar();
-
-    let totalSessions = sessions.length;
-    let totalDist = 0.0;
-    let totalMillis = 0;
-    let maxPowerVal = 0;
-
-    for (const s of sessions) {
-      totalDist += Number(s.totalDistance) || 0;
-      if (s.endTime) {
-        totalMillis += s.endTime - s.startTime;
-      }
-
-      // Query sensor max power
-      const data = await DbManager.getSensorDataForSession(s.id);
-      const powers = data.map((d) => d.power || 0);
-      if (powers.length > 0) {
-        let localMax = 0;
-        for (let i = 0; i < powers.length; i++) {
-          if (powers[i] > localMax) localMax = powers[i];
-        }
-        if (localMax > maxPowerVal) maxPowerVal = localMax;
-      }
-    }
-
-    // Format times
-    const totalHours = Math.floor(totalMillis / 3600000);
-    const totalMinutes = Math.floor((totalMillis % 3600000) / 60000);
-
-    const sCountEl = document.getElementById("stats-total-sessions");
-    if (sCountEl) sCountEl.textContent = totalSessions;
-    const sDistEl = document.getElementById("stats-total-distance");
-    if (sDistEl) sDistEl.textContent = `${totalDist.toFixed(1)} km`;
-    const sTimeEl = document.getElementById("stats-total-time");
-    if (sTimeEl) sTimeEl.textContent = `${totalHours}h ${totalMinutes}m`;
-    const sPowerEl = document.getElementById("stats-max-power");
-    if (sPowerEl) sPowerEl.textContent = `${maxPowerVal} W`;
-  } catch (e) {
-    console.error("Error cargando estadísticas de progreso:", e);
-  }
 }
