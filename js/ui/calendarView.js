@@ -36,8 +36,14 @@ export function aggregateSessionMetrics(sessions) {
     (acc, session) => {
       acc.sessions += 1;
       acc.distance += Math.max(0, Number(session.totalDistance) || 0);
+      // Usa routeTotalAscent si está disponible (modo Ruta con GPX),
+      // sino caeBack a totalAscent (modos Manual/ERG/Tradicional)
+      const sessionAscent =
+        Number(session.routeTotalAscent) > 0
+          ? Number(session.routeTotalAscent)
+          : Math.max(0, Number(session.totalAscent) || 0);
+      acc.ascent += sessionAscent;
       acc.duration += getSessionDurationSeconds(session);
-      acc.ascent += Math.max(0, Number(session.totalAscent) || 0);
       return acc;
     },
     { sessions: 0, distance: 0, duration: 0, ascent: 0 }
@@ -223,6 +229,79 @@ export function renderTrainingCalendar() {
     document.getElementById("training-week-summary"),
     weekSessions
   );
+
+  // --- Resumen del año actual ---
+  const currentYear = calendarCurrentMonth.getFullYear();
+  const yearSessions = completedSessions.filter(
+    (s) => new Date(Number(s.startTime)).getFullYear() === currentYear
+  );
+  const yearAscent = yearSessions.reduce(
+    (acc, session) => {
+      const sessionAscent =
+        Number(session.routeTotalAscent) > 0
+          ? Number(session.routeTotalAscent)
+          : Math.max(0, Number(session.totalAscent) || 0);
+      acc.ascent += sessionAscent;
+      return acc;
+    },
+    { ascent: 0 }
+  );
+  const yearSummaryContainer = document.getElementById("training-year-summary");
+  if (yearSummaryContainer) {
+    yearSummaryContainer.replaceChildren();
+    [["Desnivel +", `${Math.round(yearAscent.ascent)} m`]].forEach(
+      ([label, value]) => {
+        const item = document.createElement("div");
+        item.className = "training-period-summary";
+        const strong = document.createElement("strong");
+        strong.textContent = value;
+        const span = document.createElement("span");
+        span.textContent = label;
+        item.append(strong, span);
+        yearSummaryContainer.append(item);
+      }
+    );
+  }
+
+  // Botones de navegación de año
+  const yearNavContainer = document.getElementById("training-year-nav");
+  if (yearNavContainer) {
+    yearNavContainer.innerHTML = `
+      <button class="btn btn-training-calendar prev-year" aria-label="Año anterior">
+        ←
+      </button>
+      <span class="year-display">${currentYear}</span>
+      <button class="btn btn-training-calendar next-year" aria-label="Siguiente año">
+        →
+      </button>
+    `;
+    // Año anterior
+    const prevYearBtn = yearNavContainer.querySelector(".prev-year");
+    if (prevYearBtn) {
+      prevYearBtn.addEventListener("click", () => {
+        calendarCurrentMonth = new Date(
+          calendarCurrentMonth.getFullYear() - 1,
+          calendarCurrentMonth.getMonth(),
+          1
+        );
+        selectedCalendarDate = formatDateKey(new Date());
+        renderTrainingCalendar();
+      });
+    }
+    // Siguiente año
+    const nextYearBtn = yearNavContainer.querySelector(".next-year");
+    if (nextYearBtn) {
+      nextYearBtn.addEventListener("click", () => {
+        calendarCurrentMonth = new Date(
+          calendarCurrentMonth.getFullYear() + 1,
+          calendarCurrentMonth.getMonth(),
+          1
+        );
+        selectedCalendarDate = formatDateKey(new Date());
+        renderTrainingCalendar();
+      });
+    }
+  }
 
   // Cuadrícula de días
   grid.replaceChildren();
