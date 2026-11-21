@@ -811,7 +811,7 @@ export async function loadProgressStats() {
     let yearPowerCount = 0;
     let yearMaxPower = 0; // potencia máxima del año
 
-    const currentYear = new Date().getFullYear();
+    let currentYear = new Date().getFullYear();
     const yearSessions = sessions.filter(
       (s) => new Date(Number(s.startTime)).getFullYear() === currentYear
     );
@@ -864,6 +864,85 @@ export async function loadProgressStats() {
     if (sYearAscentEl) sYearAscentEl.textContent = `${Math.round(yearAscent)} m`;
     const sMaxPowerHistEl = document.getElementById("stats-max-power");
     if (sMaxPowerHistEl) sMaxPowerHistEl.textContent = `${maxPowerVal} W`;
+
+    // --- Year navigation event listeners ---
+    const prevYearBtn = document.querySelector('.btn-link[aria-label="Año anterior"]');
+    const nextYearBtn = document.querySelector('.btn-link[aria-label="Siguiente año"]');
+    const yearDisplay = document.querySelector('.year-display');
+
+    if (prevYearBtn && yearDisplay) {
+      prevYearBtn.addEventListener('click', () => {
+        currentYear = currentYear > 2015 ? currentYear - 1 : currentYear;
+        yearDisplay.textContent = currentYear;
+        // Filtrar sesiones del nuevo año y actualizar métricas
+        const yearSessions = sessions.filter(
+          (s) => new Date(Number(s.startTime)).getFullYear() === currentYear
+        );
+        // Recalcular year ascent
+        yearAscent = 0;
+        yearSessions.forEach((session) => {
+          const sessionAscent =
+            Number(session.routeTotalAscent) > 0
+              ? Number(session.routeTotalAscent)
+              : Math.max(0, Number(session.totalAscent) || 0);
+          yearAscent += sessionAscent;
+        });
+        // Recalcular year avg power
+        yearTotalPower = 0;
+        yearPowerCount = 0;
+        yearSessions.forEach((session) => {
+          const power = Number(session.averagePower) || 0;
+          if (power > 0) {
+            yearTotalPower += power;
+            yearPowerCount++;
+          }
+        });
+        const yearAvgPower = yearPowerCount > 0 ? Math.round(yearTotalPower / yearPowerCount) : 0;
+        // Actualizar UI de fichas
+        const sAvgPowerEl = document.getElementById("stats-avg-power");
+        if (sAvgPowerEl) sAvgPowerEl.textContent = `${yearAvgPower} W`;
+        const sYearAscentEl = document.getElementById("stats-year-ascent");
+        if (sYearAscentEl) sYearAscentEl.textContent = `${Math.round(yearAscent)} m`;
+        renderTrainingCalendar();
+      });
+    }
+
+    if (nextYearBtn && yearDisplay) {
+      nextYearBtn.addEventListener('click', () => {
+        currentYear = currentYear < 2100 ? currentYear + 1 : currentYear;
+        yearDisplay.textContent = currentYear;
+        // Filtrar sesiones del nuevo año y actualizar métricas
+        const yearSessions = sessions.filter(
+          (s) => new Date(Number(s.startTime)).getFullYear() === currentYear
+        );
+        // Recalcular year ascent
+        yearAscent = 0;
+        yearSessions.forEach((session) => {
+          const sessionAscent =
+            Number(session.routeTotalAscent) > 0
+              ? Number(session.routeTotalAscent)
+              : Math.max(0, Number(session.totalAscent) || 0);
+          yearAscent += sessionAscent;
+        });
+        // Recalcular year avg power
+        yearTotalPower = 0;
+        yearPowerCount = 0;
+        yearSessions.forEach((session) => {
+          const power = Number(session.averagePower) || 0;
+          if (power > 0) {
+            yearTotalPower += power;
+            yearPowerCount++;
+          }
+        });
+        const yearAvgPower = yearPowerCount > 0 ? Math.round(yearTotalPower / yearPowerCount) : 0;
+        // Actualizar UI de fichas
+        const sAvgPowerEl = document.getElementById("stats-avg-power");
+        if (sAvgPowerEl) sAvgPowerEl.textContent = `${yearAvgPower} W`;
+        const sYearAscentEl = document.getElementById("stats-year-ascent");
+        if (sYearAscentEl) sYearAscentEl.textContent = `${Math.round(yearAscent)} m`;
+        renderTrainingCalendar();
+      });
+    }
   } catch (e) {
     console.error(e);
   }
