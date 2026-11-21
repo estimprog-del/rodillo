@@ -190,9 +190,12 @@ export function renderTrainingCalendar() {
     year: "numeric",
   });
   // Formatear para que sea "Octubre de 2026" (con "de" minúscula)
-  const formattedMonth = rawMonthName.charAt(0).toUpperCase() + rawMonthName.slice(1);
-  // Asegurar que "de" vaya en minúscula
-  monthLabel.textContent = formattedMonth.replace(" De ", " de ");
+  // Dividir por espacios y capitalizar solo la primera palabra del mes
+  const parts = rawMonthName.split(" ");
+  // La primera parte es el mes, el año es la última
+  const mesConMayuscula = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+  // Unimos con " de " (minúscula) entre el mes y el año
+  monthLabel.textContent = `${mesConMayuscula} de ${parts[parts.length - 1]}`;
 
   // Resumen del mes mostrado
   const monthSessions = completedSessions.filter((s) => {
