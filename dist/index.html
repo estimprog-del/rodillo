@@ -8,7 +8,7 @@
         />
         <meta
             http-equiv="Content-Security-Policy"
-            content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' https://www.googletagmanager.com https://accounts.google.com https://*.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://www.googleapis.com https://accounts.google.com https://*.googleapis.com https://*.google.com https://*.google-analytics.com wss:; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'"
+            content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' https://www.googletagmanager.com https://accounts.google.com https://*.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com https://api.maptiler.com https://*.maptiler.com; connect-src 'self' https://www.googleapis.com https://accounts.google.com https://*.googleapis.com https://*.google.com https://*.google-analytics.com https://api.maptiler.com https://*.maptiler.com wss:; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'"
         />
         <title>RodilloInt - Training Lab</title>
 
@@ -26,8 +26,8 @@
         <style>.app-icon{vertical-align:middle;display:inline-block}.app-icon-start{width:48px;height:48px;margin-right:12px}.app-icon-dashboard{width:42px;height:42px;margin-right:10px}</style>
         <!-- Google Identity Services (Google Drive sync) -->
         <script src="https://accounts.google.com/gsi/client" async defer></script>
-      <script type="module" crossorigin src="/rodillo/assets/index-Ce9wXgBF.js"></script>
-      <link rel="stylesheet" crossorigin href="/rodillo/assets/index-0YheCkQM.css">
+      <script type="module" crossorigin src="/rodillo/assets/index-DgX7BYpk.js"></script>
+      <link rel="stylesheet" crossorigin href="/rodillo/assets/index-BUJHHCYF.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -36,7 +36,9 @@
                 <img src="icons/icon-192.png" alt="RodilloInt" class="app-icon app-icon-start" />
                 <h1 class="logo-title">RODILLO INTERACTIVO CICLISMO</h1>
                 <p class="logo-subtitle">TRAINING LAB</p>
-
+                <p id="start-info-line" class="start-info-line" style="display:none; color: var(--text-secondary); text-align: center; max-width: 520px; margin: 8px auto 0; font-size: 14px; line-height: 1.4;">
+                    Simula rutas reales, entrena por potencia y guarda tu progreso. Crea un perfil para empezar.
+                </p>
                 <div class="users-grid" id="users-grid-container" style="grid-template-columns: repeat(3, 1fr); grid-auto-rows: 150px; gap: 12px;">
                     <!-- populated dynamically via app.js -->
                     <div
@@ -62,6 +64,9 @@
                     </button>
                     <button class="btn btn-dark" id="btn-google-user-sync">
                         Acceder con Google
+                    </button>
+                    <button class="btn btn-dark" id="btn-open-info-start">
+                        ℹ️ Información
                     </button>
                 </div>
                 <input type="file" id="backup-file-input" style="display:none" accept=".json">
@@ -108,7 +113,7 @@
                         id="btn-open-help"
                         style="padding: 10px 14px"
                     >
-                        ❓ Ayuda
+                        ℹ️ Información
                     </button>
                     
                     <button
@@ -360,7 +365,7 @@
         <!-- 3. SCREEN: HELP -->
         <div id="screen-help" class="screen">
             <div class="page-heading-row">
-                <h2>Ayuda y guía de uso</h2>
+                <h2>Información y guía de uso</h2>
                 <button class="btn btn-dark page-heading-back" id="btn-help-back">← Volver</button>
             </div>
             <p class="help-intro">
@@ -392,16 +397,6 @@
                     </ol>
                 </article>
                 <article class="glass-card help-card">
-                    <h3>Comprobación rápida después de actualizar</h3>
-                    <ul>
-                        <li>Sin sensores: activa el Rodillo Virtual, inicia una sesión y confirma que cambian las métricas.</li>
-                        <li>Con sensores: conecta el rodillo o los sensores, inicia una sesión y comprueba que los indicadores muestran conexión y señal reciente.</li>
-                        <li>Prueba pausa y reanudación; en una ruta, comprueba también la pausa automática al dejar de pedalear y la reanudación al volver a moverte.</li>
-                        <li>En ERG: inicia un entrenamiento, comprueba el bloque y la potencia objetivo, y finaliza para revisar el resumen.</li>
-                        <li>Abre el historial, compara dos sesiones y verifica que sus métricas se muestran correctamente.</li>
-                    </ul>
-                </article>
-                <article class="glass-card help-card">
                     <h3>Entrenamientos ERG</h3>
                     <p>En <strong>Entrenamientos ERG</strong> puedes elegir un entrenamiento predefinido, importar archivos <strong>.zwo</strong> (Zwift) o <strong>.erg/.mrc</strong> (Computrainer), o crear uno propio.</p>
                     <p>El editor permite añadir bloques y grupos repetidos, definir duración, potencia en <strong>% FTP o vatios</strong> y consultar el perfil antes de guardarlo.</p>
@@ -431,7 +426,7 @@
                 <article class="glass-card help-card">
                     <h3>Mando remoto</h3>
                     <p>Abre el mando desde el botón 📱 de la sesión y escanea el código QR con otro dispositivo conectado a la misma red local. Permite subir o bajar marcha, pausar, reanudar y finalizar.</p>
-                    <p>En desarrollo, el servidor local emite tokens Ably de corta duración y limita cada token a su sala. En GitHub Pages hace falta configurar un servidor de autenticación seguro; sin él, los controles quedan desactivados. El mando también necesita Internet para comunicarse mediante Ably y debe mantenerse abierta la pantalla de la sesión.</p>
+                    <p>El mando necesita Internet para comunicarse mediante Ably y la pantalla de la sesión debe mantenerse abierta mientras lo uses. Si los controles no responden, abre una sala nueva y recarga ambos dispositivos.</p>
                 </article>
                 <article class="glass-card help-card">
                     <h3>Si algo no funciona</h3>
@@ -1771,6 +1766,40 @@
                 Analíticas consolidadas de rendimiento del usuario.
             </p>
 
+            <!-- Year navigation at top -->
+            <div style="
+                background: transparent;
+                border: none;
+                padding: 10px 14px;
+                margin-bottom: 16px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 24px;
+            ">
+                <button class="btn btn-link" style="
+                    padding: 4px 8px; 
+                    font-size: 40px; 
+                    color: white;
+                    line-height: 1;
+                    text-align: right;
+                    background: transparent;
+                    border: none;
+                "
+                aria-label="Año anterior">←</button>
+                <span class="year-display" style="font-size: 36px; font-weight: 600; text-align: center;">2026</span>
+                <button class="btn btn-link" style="
+                    padding: 4px 8px; 
+                    font-size: 40px; 
+                    color: white;
+                    line-height: 1;
+                    text-align: left;
+                    background: transparent;
+                    border: none;"
+                aria-label="Siguiente año">→</button>
+            </div>
+
+            <!-- Tarjetas de estadísticas reorganizadas -->
             <div
                 style="
                     display: grid;
@@ -1779,23 +1808,31 @@
                     margin-bottom: 24px;
                 "
             >
-                <div class="glass-card" style="text-align: center">
+                <!-- Tarjeta Tiempo Acumulado -->
+                <div class="glass-card" style="text-align: center; padding: 12px;">
                     <span
                         style="
                             font-size: 11px;
                             color: var(--text-secondary);
                             text-transform: uppercase;
                         "
-                        >Sesiones Totales</span
+                        >Tiempo Acumulado</span
                     >
                     <h1
-                        style="font-size: 36px; color: white; margin-top: 6px"
-                        id="stats-total-sessions"
+                        style="
+                            font-size: 36px;
+                            color: white;
+                            margin-top: 6px;
+                            font-weight: 600;
+                        "
+                        id="stats-total-time"
                     >
-                        0
+                        0h 0m
                     </h1>
                 </div>
-                <div class="glass-card" style="text-align: center">
+
+                <!-- Tarjeta Distancia Acumulada -->
+                <div class="glass-card" style="text-align: center; padding: 12px;">
                     <span
                         style="
                             font-size: 11px;
@@ -1809,44 +1846,101 @@
                             font-size: 36px;
                             color: var(--accent-blue);
                             margin-top: 6px;
+                            font-weight: 600;
                         "
                         id="stats-total-distance"
                     >
                         0.0 km
                     </h1>
                 </div>
-                <div class="glass-card" style="text-align: center">
+
+                <!-- Tarjeta Sesiones Totales -->
+                <div class="glass-card" style="text-align: center; padding: 12px;">
                     <span
                         style="
                             font-size: 11px;
                             color: var(--text-secondary);
                             text-transform: uppercase;
                         "
-                        >Tiempo Acumulado</span
+                        >Sesiones Totales</span
                     >
                     <h1
-                        style="font-size: 30px; color: white; margin-top: 6px"
-                        id="stats-total-time"
+                        style="
+                            font-size: 36px;
+                            color: white;
+                            margin-top: 6px;
+                            font-weight: 600;
+                        "
+                        id="stats-total-sessions"
                     >
-                        0h 0m
+                        0
                     </h1>
                 </div>
-                <div class="glass-card" style="text-align: center">
+
+                <!-- Tarjeta Desnivel + (año) -->
+                <div class="glass-card" style="text-align: center; padding: 12px;">
                     <span
                         style="
                             font-size: 11px;
                             color: var(--text-secondary);
                             text-transform: uppercase;
                         "
-                        >Potencia Máxima Histórica</span
+                        >Desnivel +</span
+                    >
+                    <h1
+                        style="
+                            font-size: 30px;
+                            color: white;
+                            margin-top: 6px;
+                            font-weight: 600;
+                        "
+                        id="stats-year-ascent"
+                    >
+                        0 m
+                    </h1>
+                </div>
+
+                <!-- Tarjeta Potencia Media -->
+                <div class="glass-card" style="text-align: center; padding: 12px;">
+                    <span
+                        style="
+                            font-size: 11px;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                        "
+                        >Potencia Media</span
+                    >
+                    <h1
+                        style="
+                            font-size: 30px;
+                            color: var(--accent-blue);
+                            margin-top: 6px;
+                            font-weight: 600;
+                        "
+                        id="stats-avg-power"
+                    >
+                        0 W
+                    </h1>
+                </div>
+
+                <!-- Tarjeta Potencia Máxima del Año -->
+                <div class="glass-card" style="text-align: center; padding: 12px;">
+                    <span
+                        style="
+                            font-size: 11px;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                        "
+                        >Pot. Máx Año</span
                     >
                     <h1
                         style="
                             font-size: 30px;
                             color: var(--accent-green);
                             margin-top: 6px;
+                            font-weight: 600;
                         "
-                        id="stats-max-power"
+                        id="stats-max-power-year"
                     >
                         0 W
                     </h1>
@@ -1876,6 +1970,16 @@
                         <h4 id="training-week-heading">Semana seleccionada</h4>
                         <div id="training-week-summary" class="training-summary-metrics"></div>
                     </article>
+                    <article class="training-period-summary">
+                        <h4>Este año</h4>
+                        <div id="training-year-summary" class="training-summary-metrics"></div>
+                    </article>
+                </div>
+
+                <div class="training-year-nav" id="training-year-nav">
+                    <button class="btn btn-training-calendar prev-year" aria-label="Año anterior">←</button>
+                    <span class="year-display"></span>
+                    <button class="btn btn-training-calendar next-year" aria-label="Siguiente año">→</button>
                 </div>
 
                 <div class="training-calendar-grid" id="training-calendar-grid" role="group" aria-label="Calendario mensual de sesiones"></div>
@@ -2417,7 +2521,7 @@
             </section>
           </div>
           <div class="modal-footer" style="margin-top: 24px; display: flex; justify-content: flex-end;">
-            <button id="btn-settings-help" class="btn btn-dark" style="margin-right: auto; padding: 10px 16px; border-radius: 8px;">❓ Ayuda</button>
+            <button id="btn-settings-help" class="btn btn-dark" style="margin-right: auto; padding: 10px 16px; border-radius: 8px;">ℹ️ Información</button>
             <button id="btn-settings-privacy" class="btn btn-dark" style="padding: 10px 16px; border-radius: 8px;">🔒 Privacidad</button>
             <button id="btn-save-settings" class="btn btn-primary" style="padding: 10px 24px; border-radius: 8px; background: #10b981; border: none; color: white; font-weight: 600; cursor: pointer;">Guardar Cambios</button>
           </div>
@@ -2461,7 +2565,7 @@
               <span>Permitir Google Analytics opcional para medir el uso de la aplicación.</span>
             </label>
             <p class="privacy-footnote">
-              Puedes cambiar esta elección en cualquier momento desde <strong>Ayuda o Ajustes → Privacidad</strong>. La app necesita almacenamiento local para guardar perfiles y sesiones; si retiras el consentimiento analítico, se detienen futuras mediciones, aunque el navegador puede conservar cookies ya creadas por terceros. Para consultas sobre privacidad: <a href="mailto:estimprog@gmail.com">estimprog@gmail.com</a>. Antes del uso público, conviene completar una política de privacidad con los datos del responsable, conservación y derechos aplicables.
+              Puedes cambiar esta elección en cualquier momento desde <strong>Información o Ajustes → Privacidad</strong>. La app necesita almacenamiento local para guardar perfiles y sesiones; si retiras el consentimiento analítico, se detienen futuras mediciones, aunque el navegador puede conservar cookies ya creadas por terceros. Para consultas sobre privacidad: <a href="mailto:estimprog@gmail.com">estimprog@gmail.com</a>. Antes del uso público, conviene completar una política de privacidad con los datos del responsable, conservación y derechos aplicables.
             </p>
           </div>
           <footer class="privacy-actions">

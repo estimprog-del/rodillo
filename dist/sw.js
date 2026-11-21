@@ -3,7 +3,7 @@
  * Soporte offline para despliegue en GitHub Pages (/rodillo/) y local.
  */
 
-const CACHE_NAME = "rodilloint-v3";
+const CACHE_NAME = "rodilloint-v6";
 
 // Resuelve una ruta relativa con el scope del service worker (ej. '/rodillo/' en GitHub Pages)
 const getScopedUrl = (relPath) => new URL(relPath, self.registration.scope).pathname;

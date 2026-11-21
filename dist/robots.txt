@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://estimprog-del.github.io/rodillo/sitemap.xml
