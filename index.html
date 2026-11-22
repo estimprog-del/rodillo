@@ -8,7 +8,7 @@
         />
         <meta
             http-equiv="Content-Security-Policy"
-            content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' https://www.googletagmanager.com https://accounts.google.com https://*.googleapis.com https://pagead2.googlesyndication.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com https://api.maptiler.com https://*.maptiler.com; connect-src 'self' https://www.googleapis.com https://accounts.google.com https://*.googleapis.com https://*.google.com https://*.google-analytics.com https://api.maptiler.com https://*.maptiler.com wss:; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'"
+            content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' https://www.googletagmanager.com https://accounts.google.com https://*.googleapis.com https://pagead2.googlesyndication.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com https://api.maptiler.com https://*.maptiler.com; connect-src 'self' https://www.googleapis.com https://accounts.google.com https://*.googleapis.com https://*.google.com https://*.google-analytics.com https://api.maptiler.com https://*.maptiler.com https://api.allorigins.win https://de1.api.radio-browser.info https://at1.api.radio-browser.info https://rss2json.com https: wss:; media-src 'self' https: data: blob:; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'"
         />
         <title>RodilloInt - Training Lab</title>
 
@@ -49,17 +49,7 @@
             src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=%VITE_AD_CLIENT%"
             crossorigin="anonymous"
         ></script>
-        <script>
-            window.adsbygoogle = window.adsbygoogle || [];
-            function initAd() {
-                if (window.adsbygoogle) {
-                    window.adsbygoogle.push({});
-                }
-            }
-            document.addEventListener("DOMContentLoaded", initAd);
-            // Nota: para producción en UE/España se debe integrar un CMP
-            // (Consent Management Platform) y el consentimiento antes de cargar ads.
-        </script>
+        <script type="module" src="js/modules/adsenseInit.js"></script>
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -1413,7 +1403,46 @@
             </div>
 
             <!-- Modal de carga de ruta -->
-            <div class="route-modal-overlay" id="route-modal">
+                <!-- Audio player: mini widget flotante -->
+            <div id="audio-player-widget" class="audio-widget" style="display: flex;" role="region" aria-label="Reproductor de audio">
+                <button id="audio-widget-toggle" class="audio-widget-toggle" type="button" aria-label="Ocultar reproductor">×</button>
+                <div class="audio-widget-body">
+                    <span id="audio-widget-title" class="audio-widget-title"></span>
+                    <button id="audio-widget-prev" class="audio-widget-btn" type="button" aria-label="Reproductor anterior">⏮</button>
+                    <button id="audio-widget-play" class="audio-widget-btn audio-widget-play" type="button" aria-label="Reproducir/Pausar">▶</button>
+                    <button id="audio-widget-next" class="audio-widget-btn" type="button" aria-label="Reproductor siguiente">⏭</button>
+                    <input id="audio-widget-volume" class="audio-widget-volume" type="range" min="0" max="100" value="100" aria-label="Volumen del reproductor" />
+                    <button id="audio-widget-explorer" class="audio-widget-btn" type="button" aria-label="Explorar emisoras y podcasts">📻</button>
+                    <button id="audio-widget-pip" class="audio-widget-btn" type="button" aria-label="Desacoplar en ventana flotante" style="display: none;">⧉</button>
+                </div>
+                <div id="audio-widget-error" class="audio-widget-error" hidden></div>
+            </div>
+
+            <!-- Audio player: explorador modal -->
+            <div class="modal-overlay" id="modal-audio-explorer" style="display: none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Explorar emisoras y podcasts</h3>
+                        <button class="modal-close" id="btn-audio-explorer-close" type="button" aria-label="Cerrar">×</button>
+                    </div>
+                    <div class="audio-explorer-tabs">
+                        <button type="button" id="audio-tab-radio" class="audio-explorer-tab active" data-audio-tab="radio">Radio</button>
+                        <button type="button" id="audio-tab-podcasts" class="audio-explorer-tab" data-audio-tab="podcasts">Podcasts</button>
+                    </div>
+                    <div class="audio-explorer-filterbar">
+                        <button type="button" id="audio-explorer-fav-filter" class="audio-explorer-fav-filter">⭐ Solo favoritos</button>
+                    </div>
+                    <div class="audio-explorer-search">
+                        <input id="audio-explorer-search-input" type="search" placeholder="Buscar..." aria-label="Buscar emisoras o podcasts" />
+                        <button id="audio-explorer-search-btn" type="button" class="audio-explorer-search-btn">Buscar</button>
+                    </div>
+                    <div id="audio-explorer-content" class="audio-explorer-body">
+                        <p>Explorador de emisoras y podcasts (implementación en Fase 4).</p>
+                    </div>
+                </div>
+            </div>
+
+        <div class="route-modal-overlay" id="route-modal">
                 <div class="route-modal-content">
                     <div class="route-modal-title">Configurar Nueva Sesión</div>
                     <div class="route-modal-section">
@@ -1862,54 +1891,7 @@
                     margin-bottom: 24px;
                 "
             >
-                <!-- Tarjeta Tiempo Acumulado -->
-                <div class="glass-card" style="text-align: center; padding: 12px;">
-                    <span
-                        style="
-                            font-size: 11px;
-                            color: var(--text-secondary);
-                            text-transform: uppercase;
-                        "
-                        >Tiempo Acumulado</span
-                    >
-                    <h1
-                        style="
-                            font-size: 36px;
-                            color: white;
-                            margin-top: 6px;
-                            font-weight: 600;
-                        "
-                        id="stats-total-time"
-                    >
-                        0h 0m
-                    </h1>
-                </div>
-
-                <!-- Tarjeta Distancia Acumulada -->
-                <div class="glass-card" style="text-align: center; padding: 12px;">
-                    <span
-                        style="
-                            font-size: 11px;
-                            color: var(--text-secondary);
-                            text-transform: uppercase;
-                        "
-                        >Distancia Acumulada</span
-                    >
-                    <h1
-                        style="
-                            font-size: 36px;
-                            color: var(--accent-blue);
-                            margin-top: 6px;
-                            font-weight: 600;
-                        "
-                        id="stats-total-distance"
-                    >
-                        0.0 km
-                    </h1>
-                </div>
-
-                <!-- Tarjeta Sesiones Totales -->
-                <div class="glass-card" style="text-align: center; padding: 12px;">
+<div class="glass-card" style="text-align: center; padding: 12px;">
                     <span
                         style="
                             font-size: 11px;
@@ -1931,8 +1913,73 @@
                     </h1>
                 </div>
 
-                <!-- Tarjeta Desnivel + (año) -->
-                <div class="glass-card" style="text-align: center; padding: 12px;">
+<div class="glass-card" style="text-align: center; padding: 12px;">
+                    <span
+                        style="
+                            font-size: 11px;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                        "
+                        >Distancia Acumulada</span
+                    >
+                    <h1
+                        style="
+                            font-size: 36px;
+                            color: var(--accent-blue);
+                            margin-top: 6px;
+                            font-weight: 600;
+                        "
+                        id="stats-total-distance"
+                    >
+                        0.0 km
+                    </h1>
+                </div>
+
+<div class="glass-card" style="text-align: center; padding: 12px;">
+                    <span
+                        style="
+                            font-size: 11px;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                        "
+                        >Tiempo Acumulado</span
+                    >
+                    <h1
+                        style="
+                            font-size: 36px;
+                            color: white;
+                            margin-top: 6px;
+                            font-weight: 600;
+                        "
+                        id="stats-total-time"
+                    >
+                        0h 0m
+                    </h1>
+                </div>
+
+<div class="glass-card" style="text-align: center; padding: 12px;">
+                    <span
+                        style="
+                            font-size: 11px;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                        "
+                        >Velocidad Media</span
+                    >
+                    <h1
+                        style="
+                            font-size: 30px;
+                            color: var(--accent-blue);
+                            margin-top: 6px;
+                            font-weight: 600;
+                        "
+                        id="stats-avg-speed"
+                    >
+                        0.0 km/h
+                    </h1>
+                </div>
+
+<div class="glass-card" style="text-align: center; padding: 12px;">
                     <span
                         style="
                             font-size: 11px;
@@ -1954,8 +2001,7 @@
                     </h1>
                 </div>
 
-                <!-- Tarjeta Potencia Media -->
-                <div class="glass-card" style="text-align: center; padding: 12px;">
+<div class="glass-card" style="text-align: center; padding: 12px;">
                     <span
                         style="
                             font-size: 11px;
@@ -1977,8 +2023,7 @@
                     </h1>
                 </div>
 
-                <!-- Tarjeta Potencia Máxima del Año -->
-                <div class="glass-card" style="text-align: center; padding: 12px;">
+<div class="glass-card" style="text-align: center; padding: 12px;">
                     <span
                         style="
                             font-size: 11px;
@@ -1995,6 +2040,28 @@
                             font-weight: 600;
                         "
                         id="stats-max-power-year"
+                    >
+                        0 W
+                    </h1>
+                </div>
+
+<div class="glass-card" style="text-align: center; padding: 12px;">
+                    <span
+                        style="
+                            font-size: 11px;
+                            color: var(--text-secondary);
+                            text-transform: uppercase;
+                        "
+                        >Pot. M�x Hist.</span
+                    >
+                    <h1
+                        style="
+                            font-size: 30px;
+                            color: var(--accent-orange, #ff9f43);
+                            margin-top: 6px;
+                            font-weight: 600;
+                        "
+                        id="stats-max-power"
                     >
                         0 W
                     </h1>
@@ -2411,6 +2478,8 @@
         <script type="module" src="js/bluetooth.js"></script>
         <script type="module" src="js/charts.js"></script>
         <script type="module" src="js/modules/toast.js"></script>
+        <script type="module" src="js/modules/consent.js"></script>
+        <script type="module" src="js/modules/audioPlayer.js"></script>
         <script type="module" src="js/app.js"></script>
       <!-- Modal Ajustes Generales -->
       <div id="modal-settings" class="modal-overlay" style="display: none;">
@@ -2614,14 +2683,18 @@
               <input id="privacy-analytics-consent" type="checkbox">
               <span>Permitir Google Analytics opcional para medir el uso de la aplicación.</span>
             </label>
+            <label class="privacy-analytics-choice" for="privacy-ads-consent">
+              <input id="privacy-ads-consent" type="checkbox">
+              <span>Permitir anuncios personalizados (Google AdSense).</span>
+            </label>
             <p class="privacy-footnote">
               Puedes cambiar esta elección en cualquier momento desde <strong>Información o Ajustes → Privacidad</strong>. La app necesita almacenamiento local para guardar perfiles y sesiones; si retiras el consentimiento analítico, se detienen futuras mediciones, aunque el navegador puede conservar cookies ya creadas por terceros. Para consultas sobre privacidad: <a href="mailto:estimprog@gmail.com">estimprog@gmail.com</a>. Antes del uso público, conviene completar una política de privacidad con los datos del responsable, conservación y derechos aplicables.
             </p>
           </div>
           <footer class="privacy-actions">
-            <button id="btn-privacy-essential" class="btn btn-primary" type="button">Solo esenciales</button>
+            <button id="btn-privacy-reject" class="btn btn-primary" type="button">Rechazar todo</button>
             <button id="btn-privacy-save" class="btn btn-secondary" type="button">Guardar elección</button>
-            <button id="btn-privacy-accept" class="btn btn-primary" type="button">Aceptar analítica</button>
+            <button id="btn-privacy-accept" class="btn btn-primary" type="button">Aceptar todo</button>
           </footer>
         </section>
       </div>

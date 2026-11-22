@@ -1425,6 +1425,15 @@
     display: none !important;
 }
 
+/* Minimizar fichas en modo no compacto (layout horizontal/vertical) */
+.workout-viewport .hud-elevation-footer.workout-panel-collapsed,
+.workout-viewport .upcoming-profile-chart.workout-panel-collapsed {
+    height: auto !important;
+    min-height: 0 !important;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
 .workout-panel-collapsed {
     height: auto !important;
     min-height: 0 !important;

@@ -74,6 +74,7 @@ export function applyWorkoutPanels() {
     progress: document.getElementById("hud-progress"),
     elevation: document.getElementById("hud-elevation-footer"),
     upcoming: document.getElementById("upcoming-profile-chart"),
+    routeOverview: document.getElementById("route-overview-card"),
   };
   Object.entries(panels).forEach(([name, panel]) => {
     if (!panel) return;

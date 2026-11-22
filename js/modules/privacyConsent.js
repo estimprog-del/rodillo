@@ -1,3 +1,4 @@
+import { setConsent, getConsent, getConsentDetail } from "./consent.js";
 const CONSENT_KEY = "rodilloint_privacy_consent";
 const CONSENT_VERSION = 1;
 const ANALYTICS_ID = "G-C0JZXF45DE";
@@ -79,7 +80,7 @@ function closePrivacyModal() {
   modal.style.display = "none";
 }
 
-function openPrivacyModal(isFirstVisit = false) {
+export function openPrivacyModal(isFirstVisit = false) {
   const modal = document.getElementById("modal-privacy");
   const checkbox = document.getElementById("privacy-analytics-consent");
   const closeButton = document.getElementById("btn-privacy-close");
@@ -89,6 +90,8 @@ function openPrivacyModal(isFirstVisit = false) {
 
   const consent = readConsent();
   checkbox.checked = consent?.analytics === true;
+  const adsCheckbox = document.getElementById("privacy-ads-consent");
+  if (adsCheckbox) adsCheckbox.checked = getConsent() === "granted" || getConsent() === "custom" && (getConsentDetail()?.ad === true);
   closeButton.hidden = isFirstVisit;
   title.textContent = isFirstVisit
     ? "Bienvenido a RodilloInt"
@@ -96,7 +99,7 @@ function openPrivacyModal(isFirstVisit = false) {
   eyebrow.textContent = isFirstVisit ? "BIENVENIDA" : "PRIVACIDAD";
   modal.style.display = "flex";
   modal.classList.add("active");
-  document.getElementById("btn-privacy-essential")?.focus();
+  document.getElementById("btn-privacy-reject")?.focus();
 }
 
 export function initPrivacyConsent() {
@@ -106,6 +109,9 @@ export function initPrivacyConsent() {
   const consent = readConsent();
   if (consent?.analytics) enableAnalytics();
   if (!consent) openPrivacyModal(true);
+  // Sincronizar consentimiento de anuncios con el de privacidad (GA)
+  if (consent?.analytics === true) setConsent("granted", { ad: true, analytics: true });
+  else if (consent?.analytics === false) setConsent("denied", { ad: false, analytics: false });
 
   document.getElementById("btn-open-privacy")?.addEventListener("click", () => {
     openPrivacyModal();
@@ -119,15 +125,27 @@ export function initPrivacyConsent() {
     openPrivacyModal();
   });
   document.getElementById("btn-privacy-close")?.addEventListener("click", closePrivacyModal);
-  document.getElementById("btn-privacy-essential")?.addEventListener("click", () => {
-    if (setAnalyticsConsent(false)) closePrivacyModal();
+  document.getElementById("btn-privacy-reject")?.addEventListener("click", () => {
+    if (setAnalyticsConsent(false)) {
+      setConsent("denied", { ad: false, analytics: false });
+      closePrivacyModal();
+    }
   });
   document.getElementById("btn-privacy-accept")?.addEventListener("click", () => {
-    if (setAnalyticsConsent(true)) closePrivacyModal();
+    if (setAnalyticsConsent(true)) {
+      setConsent("granted", { ad: true, analytics: true });
+      closePrivacyModal();
+    }
   });
   document.getElementById("btn-privacy-save")?.addEventListener("click", () => {
     const checkbox = document.getElementById("privacy-analytics-consent");
-    if (setAnalyticsConsent(checkbox?.checked === true)) closePrivacyModal();
+    const adsCheckbox = document.getElementById("privacy-ads-consent");
+    const allowed = checkbox?.checked === true;
+    const adsAllowed = adsCheckbox?.checked === true;
+    if (setAnalyticsConsent(allowed)) {
+      setConsent(allowed || adsAllowed ? "custom" : "denied", { ad: adsAllowed, analytics: allowed });
+      closePrivacyModal();
+    }
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape" || !modal.classList.contains("active")) return;
@@ -135,3 +153,5 @@ export function initPrivacyConsent() {
     closePrivacyModal();
   });
 }
+
+window.openPrivacyModal = openPrivacyModal;

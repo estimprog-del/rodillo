@@ -30,6 +30,7 @@ import { bindEvents } from "./modules/events.js";
 import { initPrivacyConsent } from "./modules/privacyConsent.js";
 import { initGoogleSync, autoPushIfConnected } from "./modules/googleSync.js";
 import { showToast, showConfirm } from "./modules/toast.js";
+import { audioPlayer } from "./modules/audioPlayer.js";
 import {
   RemoteRoomClient,
   buildQrUrl,
@@ -553,7 +554,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadProfilesGrid();
     await checkPendingSessions();
 
-    setInterval(() => {
+    state.telemetryBackupInterval = setInterval(() => {
       if (state.isSessionActive && state.currentSessionId) {
         localStorage.setItem("rodilloint_active_session", JSON.stringify({
           sessionId: state.currentSessionId,
@@ -567,6 +568,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     window.addEventListener("beforeunload", async (e) => {
       void releaseWorkoutWakeLock();
+      if (state.telemetryBackupInterval) {
+        clearInterval(state.telemetryBackupInterval);
+        state.telemetryBackupInterval = null;
+      }
       if (state.isSessionActive && typeof flushTelemetryBuffer === 'function') {
         await flushTelemetryBuffer();
       }
@@ -1141,7 +1146,12 @@ function startCountdown(onComplete, duration) {
   // Audio context se inicializa una vez
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
+  let _beepDuckTimer = null;
   const playBeep = (freq = 880) => {
+    // Audio Ducking: bajar el volumen del reproductor online durante el pitido
+    const player = audioPlayer;
+    const prevVolume = player.getState().volume;
+    player.setVolume(0.2);
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.connect(gain);
@@ -1152,6 +1162,10 @@ function startCountdown(onComplete, duration) {
     gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.1);
     osc.start();
     osc.stop(audioCtx.currentTime + 0.1);
+    if (_beepDuckTimer) clearTimeout(_beepDuckTimer);
+    _beepDuckTimer = setTimeout(() => {
+      try { audioPlayer.setVolume(prevVolume); } catch (e) { /* noop */ }
+    }, 1200);
   };
 
   // Intervalo solo para actualizar la UI

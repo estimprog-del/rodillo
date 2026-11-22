@@ -857,6 +857,7 @@ async function updateStatsForYear(year, sessions) {
   const totalHours = Math.floor(totalMillis / 3600000);
   const totalMinutes = Math.floor((totalMillis % 3600000) / 60000);
   const yearAvgPower = yearPowerCount > 0 ? Math.round(yearTotalPower / yearPowerCount) : 0;
+  const avgSpeed = totalMillis > 0 ? (totalDist / (totalMillis / 3600000)) : 0;
 
   const sCountEl = document.getElementById("stats-total-sessions");
   if (sCountEl) sCountEl.textContent = yearSessions.length;
@@ -864,6 +865,8 @@ async function updateStatsForYear(year, sessions) {
   if (sDistEl) sDistEl.textContent = `${totalDist.toFixed(1)} km`;
   const sTimeEl = document.getElementById("stats-total-time");
   if (sTimeEl) sTimeEl.textContent = `${totalHours}h ${totalMinutes}m`;
+  const sAvgSpeedEl = document.getElementById("stats-avg-speed");
+  if (sAvgSpeedEl) sAvgSpeedEl.textContent = `${avgSpeed.toFixed(1)} km/h`;
   const sAvgPowerEl = document.getElementById("stats-avg-power");
   if (sAvgPowerEl) sAvgPowerEl.textContent = `${yearAvgPower} W`;
   const sMaxPowerYearEl = document.getElementById("stats-max-power-year");
@@ -874,38 +877,50 @@ async function updateStatsForYear(year, sessions) {
   if (sMaxPowerHistEl) sMaxPowerHistEl.textContent = `${maxPowerVal} W`;
 }
 
+// --- Year navigation state (hoisted to module scope to avoid listener accumulation) ---
+let _yearNavCurrentYear = new Date().getFullYear();
+let _yearNavSessions = [];
+let _yearNavBound = false;
+
 export async function loadProgressStats() {
   if (!state.currentUser) return;
   try {
     const sessions = await DbManager.getAllSessions(state.currentUser.id);
     calendarSessions = sessions;
+    _yearNavSessions = sessions;
     renderTrainingCalendar();
 
-    let currentYear = new Date().getFullYear();
-    await updateStatsForYear(currentYear, sessions);
+    _yearNavCurrentYear = new Date().getFullYear();
+    await updateStatsForYear(_yearNavCurrentYear, sessions);
 
-    // --- Year navigation event listeners ---
     const prevYearBtn = document.querySelector('.btn-link[aria-label="Año anterior"]');
     const nextYearBtn = document.querySelector('.btn-link[aria-label="Siguiente año"]');
     const yearDisplay = document.querySelector('.year-display');
 
-    if (prevYearBtn && yearDisplay) {
-      prevYearBtn.addEventListener('click', async () => {
-        prevYearBtn.disabled = currentYear <= 2015;
-        currentYear = currentYear > 2015 ? currentYear - 1 : currentYear;
-        yearDisplay.textContent = currentYear;
-        await updateStatsForYear(currentYear, sessions);
-        setTrainingCalendarYear(currentYear);
-      });
-    }
+    if (yearDisplay) yearDisplay.textContent = _yearNavCurrentYear;
+    if (prevYearBtn) prevYearBtn.disabled = _yearNavCurrentYear <= 2015;
+    if (nextYearBtn) nextYearBtn.disabled = _yearNavCurrentYear >= 2100;
 
-    if (nextYearBtn && yearDisplay) {
+    // Bind year navigation listeners only once to avoid accumulation
+    if (!_yearNavBound && prevYearBtn && nextYearBtn && yearDisplay) {
+      _yearNavBound = true;
+      prevYearBtn.addEventListener('click', async () => {
+        if (_yearNavCurrentYear <= 2015) return;
+        _yearNavCurrentYear -= 1;
+        yearDisplay.textContent = _yearNavCurrentYear;
+        prevYearBtn.disabled = _yearNavCurrentYear <= 2015;
+        nextYearBtn.disabled = _yearNavCurrentYear >= 2100;
+        await updateStatsForYear(_yearNavCurrentYear, _yearNavSessions);
+        setTrainingCalendarYear(_yearNavCurrentYear);
+      });
       nextYearBtn.addEventListener('click', async () => {
-        nextYearBtn.disabled = currentYear >= 2100;
-        currentYear = currentYear < 2100 ? currentYear + 1 : currentYear;
-        yearDisplay.textContent = currentYear;
-        await updateStatsForYear(currentYear, sessions);
-        setTrainingCalendarYear(currentYear);
+        if (_yearNavCurrentYear >= 2100) return;
+        _yearNavCurrentYear += 1;
+        yearDisplay.textContent = _yearNavCurrentYear;
+        prevYearBtn.disabled = _yearNavCurrentYear <= 2015;
+        nextYearBtn.disabled = _yearNavCurrentYear >= 2100;
+        await updateStatsForYear(_yearNavCurrentYear, _yearNavSessions);
+        setTrainingCalendarYear(_yearNavCurrentYear);
       });
     }
   } catch (e) {
