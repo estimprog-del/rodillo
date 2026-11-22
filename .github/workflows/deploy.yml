@@ -32,6 +32,9 @@ jobs:
           VITE_MAPTILER_API_KEY: ${{ secrets.VITE_MAPTILER_API_KEY }}
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_ABLY_AUTH_URL: ${{ vars.VITE_ABLY_AUTH_URL }}
+          VITE_AD_CLIENT: ${{ secrets.VITE_AD_CLIENT }}
+          VITE_AD_SLOT_DASHBOARD: ${{ secrets.VITE_AD_SLOT_DASHBOARD }}
+          VITE_AD_SLOT_HISTORY: ${{ secrets.VITE_AD_SLOT_HISTORY }}
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3

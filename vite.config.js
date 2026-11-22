@@ -183,11 +183,21 @@ module.exports = defineConfig(({ mode, command }) => {
       : (process.env.VITE_ABLY_AUTH_URL || ''),
     VITE_MAPTILER_API_KEY: env.VITE_MAPTILER_API_KEY || '',
     VITE_GOOGLE_CLIENT_ID: env.VITE_GOOGLE_CLIENT_ID || '',
+    VITE_AD_CLIENT: env.VITE_AD_CLIENT || '',
+    VITE_AD_SLOT_DASHBOARD: env.VITE_AD_SLOT_DASHBOARD || '',
+    VITE_AD_SLOT_HISTORY: env.VITE_AD_SLOT_HISTORY || '',
   };
 
   return {
     base: '/rodillo/',
-    envPrefix: ['VITE_ABLY_AUTH_URL', 'VITE_MAPTILER_API_KEY', 'VITE_GOOGLE_CLIENT_ID'],
+    envPrefix: [
+      'VITE_ABLY_AUTH_URL',
+      'VITE_MAPTILER_API_KEY',
+      'VITE_GOOGLE_CLIENT_ID',
+      'VITE_AD_CLIENT',
+      'VITE_AD_SLOT_DASHBOARD',
+      'VITE_AD_SLOT_HISTORY',
+    ],
     server: { host: true },
     minify: 'terser',
     esbuild: { drop: ['console', 'debugger'] },
@@ -198,6 +208,9 @@ module.exports = defineConfig(({ mode, command }) => {
       'import.meta.env.VITE_ABLY_AUTH_URL': JSON.stringify(publicEnv.VITE_ABLY_AUTH_URL),
       'import.meta.env.VITE_MAPTILER_API_KEY': JSON.stringify(publicEnv.VITE_MAPTILER_API_KEY),
       'import.meta.env.VITE_GOOGLE_CLIENT_ID': JSON.stringify(publicEnv.VITE_GOOGLE_CLIENT_ID),
+      'import.meta.env.VITE_AD_CLIENT': JSON.stringify(publicEnv.VITE_AD_CLIENT),
+      'import.meta.env.VITE_AD_SLOT_DASHBOARD': JSON.stringify(publicEnv.VITE_AD_SLOT_DASHBOARD),
+      'import.meta.env.VITE_AD_SLOT_HISTORY': JSON.stringify(publicEnv.VITE_AD_SLOT_HISTORY),
     },
   };
 });
