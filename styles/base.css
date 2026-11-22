@@ -2493,3 +2493,15 @@ h4 {
     background: rgba(255, 255, 255, 0.08);
     color: var(--text-primary, #f5f5f5);
 }
+.audio-explorer-item-duration {
+    font-size: 11px;
+    color: var(--text-secondary, #999);
+    margin-top: 2px;
+    display: inline-block;
+}
+.audio-explorer-item-image {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+}

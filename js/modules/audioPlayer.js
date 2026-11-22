@@ -517,6 +517,8 @@ export async function loadPodcastsExplorer(query = "ciclismo") {
         btn.className = "audio-explorer-item";
         btn.setAttribute("data-audio-type", "podcast");
         btn.setAttribute("data-audio-idx", String(_podcastEpisodes.indexOf(ep)));
+        const imageCol = document.createElement("div");
+        imageCol.className = "audio-explorer-item-image";
         if (ep.art) {
           const img = document.createElement("img");
           img.src = ep.art;
@@ -524,13 +526,21 @@ export async function loadPodcastsExplorer(query = "ciclismo") {
           img.className = "audio-explorer-item-img";
           img.loading = "lazy";
           img.onerror = () => { img.style.display = "none"; };
-          btn.appendChild(img);
+          imageCol.appendChild(img);
         }
         const info = document.createElement("div");
         info.className = "audio-explorer-item-info";
-        const t = document.createElement("span"); t.className = "audio-explorer-item-title"; t.textContent = `${ep.podcast} — ${ep.episode}`;
+        const t = document.createElement("span"); t.className = "audio-explorer-item-title"; t.textContent = `${ep.podcast} - ${ep.episode}`;
         const sub = document.createElement("span"); sub.className = "audio-explorer-item-sub"; sub.textContent = "";
         info.append(t, sub);
+        const dur = formatDuration(ep.duration);
+        if (dur) {
+          const durEl = document.createElement("span");
+          durEl.className = "audio-explorer-item-duration";
+          durEl.textContent = dur;
+          imageCol.appendChild(durEl);
+        }
+        btn.appendChild(imageCol);
         const fav = document.createElement("button");
         fav.type = "button";
         fav.className = "audio-explorer-fav" + (_podcastFavs.some((f) => f.id === ep.id) ? " active" : "");
@@ -773,15 +783,27 @@ export async function searchPodcasts(query = "fitness", limit = 20) {
   for (const r of results) {
     // iTunes devuelve episodeUrl (URL directa del MP3) para podcastEpisode
     const audioUrl = (typeof r.episodeUrl === "string" && r.episodeUrl.startsWith("https://")) ? r.episodeUrl : null;
+    const ms = typeof r.trackTimeMillis === "number" ? r.trackTimeMillis : 0;
     out.push({
       id: r.trackId ?? r.collectionId ?? null,
       podcast: r.collectionName || r.artistName || "Podcast",
       episode: r.trackName || "Episodio",
       art: r.artworkUrl100 || r.artworkUrl600 || null,
       audioUrl,
+      duration: ms > 0 ? ms : null,
     });
   }
   return out;
+}
+
+function formatDuration(ms) {
+  if (!ms || ms <= 0) return "";
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 export async function playPodcastEpisode(episode) {
