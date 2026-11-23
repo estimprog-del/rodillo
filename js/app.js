@@ -28,6 +28,7 @@ import {
 } from "./ui/mapEngine.js";
 import { bindEvents } from "./modules/events.js";
 import { initPrivacyConsent } from "./modules/privacyConsent.js";
+import { initAudioSettings } from "./modules/settingsAudio.js";
 import { initGoogleSync, autoPushIfConnected } from "./modules/googleSync.js";
 import { showToast, showConfirm } from "./modules/toast.js";
 import { audioPlayer } from "./modules/audioPlayer.js";
@@ -545,6 +546,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   workoutEditor.bindEvents();
   loadWorkoutsScreen();
   initPrivacyConsent();
+  initAudioSettings();
   initGoogleSync();
 
   // Init Database and listeners
@@ -1020,6 +1022,7 @@ function onPowerReceived(power) {
   if (state.isSessionActive && !state.isPaused) {
     state.timeInPowerZones[activeZoneIndex]++;
     state.powerHistory.push(power);
+    recordHunter.update(power);
     updateSessionAverages();
   }
 
@@ -1687,8 +1690,10 @@ function togglePause() {
   }
 }
 
+import { recordHunter } from "./modules/recordHunter.js";
 async function startSession() {
   if (!state.currentUser) return;
+  recordHunter.startSession(state.currentUser.id);
   if (!sessionSafetyAcknowledged && state.sessionSafetyNoticeEnabled) {
     const acknowledgement = document.getElementById(
       "session-safety-acknowledgement",
@@ -2020,6 +2025,7 @@ function resumeTimer() {
 }
 
 async function stopSessionFlow() {
+  recordHunter.stopSession();
   cancelCountdown();
   setElDisplay("workout-warmup-banner", "none");
   state.routeWarmupActive = false;

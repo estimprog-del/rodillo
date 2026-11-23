@@ -33,7 +33,7 @@
             src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client="
             crossorigin="anonymous"
         ></script>
-      <script type="module" crossorigin src="/rodillo/assets/index-xX7t8jpZ.js"></script>
+      <script type="module" crossorigin src="/rodillo/assets/index-CrOGmykY.js"></script>
       <link rel="stylesheet" crossorigin href="/rodillo/assets/index-BW0v_hpB.css">
     </head>
     <body>
@@ -942,6 +942,7 @@
                         hidden
                     ></div>
                     <div class="hud-top-bar" id="hud-top-bar">
+                        <button class="btn-pinganillo" id="btn-pinganillo" type="button" aria-label="Pinganillo (guía por voz)" title="Activar/desactivar Pinganillo">🎙️</button>
                         <div class="hud-left-group">
                             <div
                                 class="clock-session clock-horizontal"
@@ -1422,7 +1423,7 @@
                         <button id="audio-explorer-search-btn" type="button" class="audio-explorer-search-btn">Buscar</button>
                     </div>
                     <div id="audio-explorer-content" class="audio-explorer-body">
-                        <p>Explorador de emisoras y podcasts (implementación en Fase 4).</p>
+                        <p>Busqueda de emisoras y podcasts... <b>Próximamente</b></p>
                     </div>
                 </div>
             </div>
@@ -2037,7 +2038,7 @@
                             color: var(--text-secondary);
                             text-transform: uppercase;
                         "
-                        >Pot. M�x Hist.</span
+                        >Pot. Máx Hist.</span
                     >
                     <h1
                         style="
@@ -2466,6 +2467,28 @@
             <button id="btn-close-settings" style="background: var(--bg-secondary); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 5px 15px; border-radius: 8px; cursor: pointer; font-size: 0.9rem;">Cerrar</button>
           </div>
           <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+            <!-- Radio/Podcasts habilitado -->
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: 8px;">
+              <div>
+                <div style="font-size: 12px; color: white;">Radio & Podcasts</div>
+                <div style="font-size: 11px; color: #8b949e; margin-top: 2px;">Interfice de broadcasting online.</div>
+              </div>
+              <input id="sett-audio-enabled" type="checkbox" checked />
+            </div>
+            <!-- Tarjeta: Pinganillo activado/desactivado + Selector de voz de Pinganillo -->
+            <div style="display: flex; align-items: center; gap: 16px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px; flex: 0 0 auto; min-width: 140px;">
+                <input id="sett-pinganillo-checkbox" type="checkbox" checked />
+                <label style="font-size: 12px; color: white;">Pinganillo</label>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0;">
+                <label style="font-size: 12px; color: white;">Voz de Pinganillo</label>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <select id="sett-pinganillo-voice" style="flex: 1; width: 100%; padding: 8px; border-radius: 6px; background: #1f2937; border: 1px solid #374151; color: white;"></select>
+                  <button id="sett-pinganillo-play" type="button" aria-label="Probar voz" title="Reproducir una prueba de voz" style="min-width: 40px; padding: 6px; display: flex; align-items: center; justify-content: center;">▶</button>
+                </div>
+              </div>
+            </div>
             <div style="display: flex; gap: 10px;">
               <div style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
                 <label style="font-size: 0.9rem; opacity: 0.8;">Mapa por defecto:</label>

@@ -5,6 +5,8 @@
  */
 
 import { getZoneFromPowerRatio, ZONE_COLORS } from './workoutLibrary.js';
+import { speak, isPinganilloActive } from '../modules/raceDirector.js';
+import { state } from '../modules/state.js';
 
 let _activeWorkout = null;
 let _userFtp = 200;
@@ -13,6 +15,12 @@ let _currentStepIndex = 0;
 let _stepElapsedSeconds = 0;
 let _lastAppliedWatts = 0;
 let _lastBeepSecond = -1;
+let _lastAnnouncedStepIndex = -1;
+let _lastTrainerSlope = null;
+let _lastRampWarnTime = 0;
+let _lastCoronadoTime = 0;
+let _highSlopeStart = 0;
+let _highSlopeStartDistanceKm = 0;
 let _audioCtx = null;
 
 /**
@@ -130,6 +138,92 @@ function toAbsoluteWatts(powerVal, ftp) {
  * @param {number} sessionElapsedSeconds Tiempo total transcurrido en la sesión
  * @returns {object|null} Estado detallado del paso actual para el HUD
  */
+
+function announceNewBlock(step, watts) {
+  _lastAnnouncedStepIndex = _currentStepIndex;
+  if (typeof speak !== 'function' || !isPinganilloActive()) return;
+  const durMin = Math.floor(step.durationSeconds / 60);
+  const ftp = _userFtp || 200;
+  const isRecovery = watts < Math.max(50, Math.floor(ftp * 0.5));
+  const text = isRecovery
+    ? 'Recuperación, baja ritmo.'
+    : 'Nuevo bloque: ' + durMin + ' min a ' + watts + ' W.';
+  speak(text, { priority: true });
+}
+
+/**
+ * Devuelve la distancia cumulada en km al punto índice i de la ruta.
+ */
+function getRouteDistKmAt(index) {
+  const dists = state.routeDistances;
+  if (!dists || index < 0 || index >= dists.length) return null;
+  return dists[index];
+}
+
+/**
+ * Busca la primera rampa de pendiente >= 8% a partir de la posición actual.
+ * Devuelve { index, pct, distKm, toStartM } o null.
+ */
+function getUpcomingRamp() {
+  const dists = state.routeDistances;
+  const elevs = state.routeElevations;
+  if (!dists || !elevs || dists.length < 2 || dists.length !== elevs.length) return null;
+  const cur = Math.max(0, (state.totalDistance || 0) - (state.routeWarmupDistanceKm || 0));
+  for (let i = 0; i < dists.length - 1; i++) {
+    if (dists[i] < cur) continue;
+    const span = dists[i + 1] - dists[i];
+    if (span <= 0) continue;
+    const pct = ((elevs[i + 1] - elevs[i]) / span) * 100;
+    if (pct >= 8) {
+      const toStartM = Math.max(0, (dists[i] - cur) * 1000);
+      return { index: i, pct, distKm: dists[i], toStartM };
+    }
+  }
+  return null;
+}
+
+/**
+ * Fase 3 (Pinganillo): avisa con antelación si hay una rampa del 8% a ~200m.
+ */
+function detectUpcomingRamp() {
+  const ramp = getUpcomingRamp();
+  if (!ramp || ramp.toStartM <= 0) return;
+  const distM = Math.round(ramp.toStartM);
+  if (distM < 30 || distM > 200) return; // anticipa solo alrededor de la ventana
+  const now = Date.now();
+  if (now - _lastRampWarnTime < 30000) return;
+  _lastRampWarnTime = now;
+  const pctInt = Math.round(ramp.pct);
+  speak(`Atención, en ${distM}m rampa del ${pctInt}%, prepara desarrollo.`, { priority: true });
+}
+
+/**
+ * Fase 4 (Pinganillo): al coronar (subida >5% -> llano/bajada), avisa de recuperación.
+ * Usa la pendiente que se envía al rodillo (state.currentSlope).
+ */
+function detectCoronado() {
+  const trainerSlope = Math.max(0, state.currentSlope || 0);
+  if (trainerSlope > 5 && _highSlopeStart === 0) {
+    _highSlopeStart = Date.now();
+    _highSlopeStartDistanceKm = Math.max(0, (state.totalDistance || 0) - (state.routeWarmupDistanceKm || 0));
+  } else if (trainerSlope <= 5 && _highSlopeStart !== 0) {
+    // Coronado: salida del porrobs#5%? solo si duró segundos/minutos y had enough
+    const now = Date.now();
+    const highDurationMin = (now - _highSlopeStart) / 60000;
+    const highDistanceKm = Math.abs((Math.max(0, (state.totalDistance || 0) - (state.routeWarmupDistanceKm || 0))) - _highSlopeStartDistanceKm);
+    const qualifies = highDurationMin >= 10 || highDistanceKm >= 1;
+    if (qualifies && now - _lastCoronadoTime > 30000) {
+      _lastCoronadoTime = now;
+      speak('Has coronado, recupera piernas.', { priority: true });
+    }
+    _highSlopeStart = 0;
+  }
+  if (trainerSlope <= 5 && _highSlopeStart !== 0 && (Date.now() - _highSlopeStart) > 5 * 60 * 1000) {
+    _highSlopeStart = 0; // reset si se pasó el tiempo sin announce
+  }
+  _lastTrainerSlope = trainerSlope;
+}
+
 export function tickWorkout(sessionElapsedSeconds) {
   if (!_activeWorkout || !_activeWorkout.steps || _activeWorkout.steps.length === 0) {
     return null;
@@ -171,6 +265,17 @@ export function tickWorkout(sessionElapsedSeconds) {
   const zone = getZoneFromPowerRatio(currentRatio);
 
   const stepRemaining = Math.max(0, currentStep.durationSeconds - _stepElapsedSeconds);
+
+  // Pinganillo: anunciar inicio de nuevo bloque
+  if (targetIndex !== _lastAnnouncedStepIndex && _stepElapsedSeconds === 0) {
+    announceNewBlock(currentStep, finalTargetWatts);
+  }
+
+  // Pinganillo (Fase 3/4): rampas próximas y coronar en RUTA activa
+  if (state.currentMode === 'ROUTE' && state.isSessionActive) {
+    detectUpcomingRamp();
+    detectCoronado();
+  }
 
   // Avisos sonoros en los últimos 3 segundos del bloque
   if (stepRemaining <= 3 && stepRemaining >= 1) {

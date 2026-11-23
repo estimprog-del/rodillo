@@ -1,6 +1,6 @@
 /* db.js - IndexedDB Manager for RodilloInt Web */
 const DB_NAME = 'RodilloIntDB';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 let dbInstance = null;
 
@@ -54,6 +54,11 @@ function initDb() {
       if (!db.objectStoreNames.contains('saved_routes')) {
         const savedRouteStore = db.createObjectStore('saved_routes', { keyPath: 'id', autoIncrement: true });
         savedRouteStore.createIndex('userId', 'userId', { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains('records')) {
+        const recordsStore = db.createObjectStore('records', { keyPath: 'id', autoIncrement: true });
+        recordsStore.createIndex('userId', 'userId', { unique: false });
       }
 
       console.log('Database upgrade completed successfully');
@@ -415,7 +420,7 @@ async function insertSensorDataBulk(pointsArray) {
 }
 
 // --- EXPORT/IMPORT ---
-const BACKUP_STORES = ['users', 'sessions', 'sensor_data'];
+const BACKUP_STORES = ['users', 'sessions', 'sensor_data', 'records'];
 const ALL_BACKUP_STORES = [...BACKUP_STORES, 'saved_routes'];
 const BACKUP_STATUS_KEY = 'rodilloint_last_backup';
 
@@ -952,6 +957,29 @@ export async function mergeBackupData(data) {
 }
 
 // Export database functions globally
+// --- RECORD STORES (records) ---
+async function getBestRecords(userId) {
+  const db = await initDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['records'], 'readonly');
+    const store = transaction.objectStore('records');
+    const request = store.getAll();
+    request.onsuccess = () => resolve(request.result.filter((r) => r.userId === Number(userId)));
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveRecord(userId, type, value) {
+  const db = await initDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['records'], 'readwrite');
+    const store = transaction.objectStore('records');
+    const request = store.add({ userId: Number(userId), type, value: Number(value), date: Date.now() });
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 export const DbManager = {
   initDb,
   exportBackupJson,
@@ -977,6 +1005,8 @@ export const DbManager = {
   deleteDataForSession,
   exportAllData,
   exportAllDataCsv,
+  getBestRecords,
+  saveRecord,
   getBackupStatus,
   previewImportData,
   importAllData
