@@ -13,6 +13,14 @@ export function initializeRemoteController() {
   });
   document.getElementById("screen-remote")?.classList.add("active");
 
+  // En el mando solo se controla la radio del host; ocultar el reproductor local
+  // para evitar duplicar controles de radio en el mismo dispositivo.
+  const localAudioWidget = document.getElementById("audio-player-widget");
+  if (localAudioWidget) {
+    localAudioWidget.hidden = true;
+    localAudioWidget.style.display = "none";
+  }
+
   const roomId = getRemoteRoomId();
   const status = document.getElementById("remote-status");
   const label = document.getElementById("remote-room-label");
