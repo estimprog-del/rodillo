@@ -91,8 +91,11 @@ export function initializeRemoteController() {
         : "Enlace de sala no válido",
   );
 
+  const haptic = () => { try { navigator.vibrate?.(50); } catch (e) { /* noop */ } };
+
   const emitGearCommand = async (eventName) => {
     if (!client) return;
+    haptic();
     try {
       await client.emit(eventName, {});
       setRemoteStatus("Orden enviada a Ably");
@@ -103,6 +106,7 @@ export function initializeRemoteController() {
   };
   const emitGearChange = async (direction) => {
     if (!client) return;
+    haptic();
     try {
       await client.emit("CHANGE_GEAR", { direction });
       setRemoteStatus(`Orden enviada a Ably: ${direction === "up" ? "subir" : "bajar"}`);
@@ -231,6 +235,20 @@ export function initializeRemoteController() {
   `;
   document.body.appendChild(radioWidget);
 
+  // Restaurar posición guardada
+  try {
+    const raw = localStorage.getItem("rodilloint_remote_radio_pos");
+    if (raw) {
+      const pos = JSON.parse(raw);
+      if (pos && (pos.right || pos.bottom)) {
+        radioWidget.style.right = pos.right || "16px";
+        radioWidget.style.bottom = pos.bottom || "16px";
+        radioWidget.style.left = "auto";
+        radioWidget.style.top = "auto";
+      }
+    }
+  } catch (e) { /* noop */ }
+
   const radioToggle = document.getElementById("remote-radio-toggle");
   const radioPanel = document.getElementById("remote-radio-panel");
   const radioTitle = document.getElementById("remote-radio-title");
@@ -284,7 +302,10 @@ export function initializeRemoteController() {
       dragging = false;
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
-      if (moved) setTimeout(() => { radioToggle.dataset.dragged = "false"; }, 300);
+      if (moved) {
+        setTimeout(() => { radioToggle.dataset.dragged = "false"; }, 300);
+        try { localStorage.setItem("rodilloint_remote_radio_pos", JSON.stringify({ right: radioWidget.style.right, bottom: radioWidget.style.bottom })); } catch (e) { /* noop */ }
+      }
       moved = false;
     };
     document.addEventListener("pointermove", onMove);
@@ -294,6 +315,7 @@ export function initializeRemoteController() {
   // Enviar comandos
   const emitRadio = async (event, payload = {}) => {
     if (!client) return;
+    haptic();
     try { await client.emit(event, payload); } catch (e) { console.error("[Mando Radio] No se pudo enviar:", e); }
   };
 
