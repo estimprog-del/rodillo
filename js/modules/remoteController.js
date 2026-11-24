@@ -91,11 +91,8 @@ export function initializeRemoteController() {
         : "Enlace de sala no válido",
   );
 
-  const haptic = () => { try { navigator.vibrate?.(50); } catch (e) { /* noop */ } };
-
   const emitGearCommand = async (eventName) => {
     if (!client) return;
-    haptic();
     try {
       await client.emit(eventName, {});
       setRemoteStatus("Orden enviada a Ably");
@@ -106,7 +103,6 @@ export function initializeRemoteController() {
   };
   const emitGearChange = async (direction) => {
     if (!client) return;
-    haptic();
     try {
       await client.emit("CHANGE_GEAR", { direction });
       setRemoteStatus(`Orden enviada a Ably: ${direction === "up" ? "subir" : "bajar"}`);
@@ -213,6 +209,8 @@ export function initializeRemoteController() {
     .remote-radio-controls button:active, .remote-radio-volume button:active { background: #4b5563; }
     .remote-radio-volume { display: flex; align-items: center; gap: 8px; }
     .remote-radio-volume input { flex: 1; }
+    .remote-btn-pulse { animation: remoteBtnPulse 0.18s ease; }
+    @keyframes remoteBtnPulse { 0% { transform: scale(1); } 50% { transform: scale(0.9); } 100% { transform: scale(1); } }
   `;
   document.head.appendChild(radioStyle);
 
@@ -315,7 +313,6 @@ export function initializeRemoteController() {
   // Enviar comandos
   const emitRadio = async (event, payload = {}) => {
     if (!client) return;
-    haptic();
     try { await client.emit(event, payload); } catch (e) { console.error("[Mando Radio] No se pudo enviar:", e); }
   };
 
@@ -345,6 +342,18 @@ export function initializeRemoteController() {
   if (client) {
     client.on("RADIO_STATE", updateRadioUI);
   }
+
+  // Feedback háptico + visual en cualquier botón del mando
+  document.addEventListener("click", (e) => {
+    const btn = e.target && e.target.closest ? e.target.closest("button") : null;
+    if (!btn) return;
+    if (radioToggle && radioToggle.dataset.dragged === "true") return;
+    try { navigator.vibrate?.(100); } catch (err) { /* noop */ }
+    btn.classList.remove("remote-btn-pulse");
+    void btn.offsetWidth;
+    btn.classList.add("remote-btn-pulse");
+    setTimeout(() => btn.classList.remove("remote-btn-pulse"), 200);
+  }, { passive: true });
 
   if (client) {
     client.on("SESSION_SUMMARY", showRemoteSummary);
