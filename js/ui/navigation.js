@@ -25,6 +25,14 @@ export function initNavigation(UI, state, callbacks) {
     // Show target screen
     targetScreen.className = "screen active";
 
+    // Ocultar el pie "Ver todas las apps de estimprog" durante las sesiones
+    // (mapa, manual, ERG y rodillo tradicional comparten la pantalla "workout")
+    const devFooter = document.querySelector(".dev-footer");
+    if (devFooter) {
+      devFooter.style.display =
+        screenId === "workout" || screenId === "remote" ? "none" : "";
+    }
+
     // Scroll al inicio de la nueva pantalla
     window.scrollTo({ top: 0, behavior: "instant" });
 
