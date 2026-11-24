@@ -1,14 +1,18 @@
 /* db.js - IndexedDB Manager for RodilloInt Web */
+import { sanitizeName } from "./utils/sanitize.js";
+import { encryptBackupJson, DEFAULT_BACKUP_PASSWORD } from "./utils/backupCrypto.js";
+
 const DB_NAME = 'RodilloIntDB';
 const DB_VERSION = 4;
 
 let dbInstance = null;
 
 function validateUserName(name) {
-  if (typeof name !== 'string' || !name.trim() || name.trim().length > 80) {
+  const clean = sanitizeName(name, 80);
+  if (!clean || clean.length > 80) {
     throw new Error('El nombre del perfil debe tener entre 1 y 80 caracteres.');
   }
-  return name.trim();
+  return clean;
 }
 
 function initDb() {
@@ -168,8 +172,8 @@ async function saveRoute(route) {
     const transaction = db.transaction(['saved_routes'], 'readwrite');
     const request = transaction.objectStore('saved_routes').add({
       userId: Number(route.userId),
-      name: String(route.name),
-      fileName: String(route.fileName),
+      name: sanitizeName(route.name, 120),
+      fileName: sanitizeName(route.fileName, 120),
       gpxText: String(route.gpxText),
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -200,8 +204,10 @@ async function insertSession(session) {
       userId: Number(session.userId) || 0,
       startTime: session.startTime || Date.now(),
       endTime: null,
-      gpxPath: session.gpxPath || null,
-      routeName: session.routeName || session.gpxPath || null,
+      gpxPath: session.gpxPath ? sanitizeName(session.gpxPath, 120) : null,
+      routeName: session.routeName || session.gpxPath
+        ? sanitizeName(session.routeName || session.gpxPath, 120)
+        : null,
       totalDistance: 0.0,
       averageSpeed: 0.0,
       averagePower: 0,
@@ -613,7 +619,7 @@ export async function exportBackupJson({ scope = 'all', sessionId = null } = {})
   return JSON.stringify(exportData);
 }
 
-export async function exportAllData({ automatic = false, scope = 'all', sessionId = null } = {}) {
+export async function exportAllData({ automatic = false, scope = 'all', sessionId = null, password = undefined, unencrypted = false } = {}) {
   const db = await initDb();
   if (!['all', 'users', 'history', 'session'].includes(scope)) {
     throw new Error('Tipo de backup no válido.');
@@ -670,9 +676,22 @@ export async function exportAllData({ automatic = false, scope = 'all', sessionI
     savedRoutes: exportData.saved_routes?.length || 0,
   };
 
-  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
   const timestamp = new Date().toISOString().replace(/[.:]/g, '-').replace('T', '_').slice(0, 19);
-  const filename = `RodilloInt_Backup_${scope}_${timestamp}.json`;
+  const plain = JSON.stringify(exportData, null, 2);
+  const effectivePassword =
+    password === undefined
+      ? (unencrypted ? null : DEFAULT_BACKUP_PASSWORD)
+      : password;
+  let blob;
+  let filename;
+  if (effectivePassword) {
+    const encrypted = await encryptBackupJson(plain, effectivePassword);
+    blob = new Blob([JSON.stringify(encrypted)], { type: 'application/json' });
+    filename = `RodilloInt_Backup_${scope}_${timestamp}.enc.json`;
+  } else {
+    blob = new Blob([plain], { type: 'application/json' });
+    filename = `RodilloInt_Backup_${scope}_${timestamp}.json`;
+  }
   downloadBlob(blob, filename);
   const sessionsCount = exportData.sessions?.length || 0;
   return recordBackupStarted({
@@ -768,7 +787,28 @@ export async function previewImportData(file) {
 // Restaurar desde un archivo JSON de Backup
 export async function importAllData(file) {
   try {
-    const data = JSON.parse(await file.text());
+    if (!file || typeof file.size !== 'number' || file.size > 10 * 1024 * 1024) {
+      throw new Error('El archivo de backup es demasiado grande (>10 MB) o no es válido.');
+    }
+    let data;
+    try {
+      data = JSON.parse(await file.text());
+    } catch (e) {
+      throw new Error('El archivo no es un JSON válido.');
+    }
+    // Clon profundo para evitar prototype pollution (__proto__, constructor, etc.)
+    try {
+      data = JSON.parse(JSON.stringify(data));
+    } catch (e) {
+      throw new Error('El backup contiene datos no serializables.');
+    }
+    // Límites de seguridad para evitar DoS por archivos enormes
+    const MAX = { users: 10000, sessions: 100000, saved_routes: 10000, sensor_data: 1000000 };
+    for (const key of Object.keys(MAX)) {
+      if (data[key] != null && (!Array.isArray(data[key]) || data[key].length > MAX[key])) {
+        throw new Error(`Backup inválido: ${key} supera el límite permitido.`);
+      }
+    }
     if (!data || !ALL_BACKUP_STORES.some((storeName) => Array.isArray(data[storeName]))) {
       throw new Error('El archivo no contiene un backup válido de RodilloInt.');
     }

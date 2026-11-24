@@ -49,6 +49,7 @@ import {
   getVirtualGearRatio,
 } from "./modules/virtualGears.js";
 import { exportAllData, getBackupStatus } from "./db.js";
+import { sanitizeName } from "./utils/sanitize.js";
 import {
   calculateNormalizedPowerFromValues,
   calculateIntensityFactor,
@@ -1392,7 +1393,7 @@ async function handleGpxUpload(e) {
   }
 
   state.gpxFilename = file.name;
-  state.routeName = file.name.replace(/\.(gpx|tcx)$/i, "");
+  state.routeName = sanitizeName(file.name.replace(/\.(gpx|tcx)$/i, ""), 120);
   state.routeLoadedFromHistory = false;
   const label = document.getElementById("gpx-filename-label");
   const btnPick = document.getElementById("btn-trigger-gpx-pick");

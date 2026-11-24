@@ -493,7 +493,12 @@ export async function loadRadioExplorer(query = "") {
     }
     return stations;
   } catch (e) {
-    if (body) body.innerHTML = `<p class="audio-explorer-status">Error al cargar emisoras: ${e?.message || "desconocido"}</p>`;
+    if (body) {
+      const p = document.createElement("p");
+      p.className = "audio-explorer-status";
+      p.textContent = `Error al cargar emisoras: ${e?.message || "desconocido"}`;
+      body.replaceChildren(p);
+    }
   }
 }
 
@@ -566,7 +571,12 @@ export async function loadPodcastsExplorer(query = "ciclismo") {
     }
     return episodes;
   } catch (e) {
-    if (body) body.innerHTML = `<p class="audio-explorer-status">Error al cargar podcasts: ${e?.message || "desconocido"}</p>`;
+    if (body) {
+      const p = document.createElement("p");
+      p.className = "audio-explorer-status";
+      p.textContent = `Error al cargar podcasts: ${e?.message || "desconocido"}`;
+      body.replaceChildren(p);
+    }
   }
 }
 

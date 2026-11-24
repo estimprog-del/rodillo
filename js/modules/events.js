@@ -21,6 +21,7 @@ import {
   previewImportData,
 } from "../db.js";
 import { DEFAULT_VIRTUAL_GEAR, clampVirtualGear } from "./virtualGears.js";
+import { isEncryptedBackup, decryptBackupJson, DEFAULT_BACKUP_PASSWORD } from "../utils/backupCrypto.js";
 
 function formatBackupStatus(status) {
   const container = document.getElementById("backup-last-status");
@@ -70,7 +71,10 @@ async function populateBackupSessionPicker() {
 
 async function startBackupDownload(options = {}) {
   try {
-    const status = await exportAllData(options);
+    const unencrypted = window.confirm(
+      "¿Exportar el backup SIN cifrar?\n\nAceptar = sin cifrar (legible)\nCancelar = cifrado por defecto",
+    );
+    const status = await exportAllData({ ...options, unencrypted });
     formatBackupStatus(status);
     return status;
   } catch (error) {
@@ -784,7 +788,26 @@ export function bindEvents(handlers) {
         const file = e.target.files[0];
         void (async () => {
           try {
-            const preview = await previewImportData(file);
+            let workingFile = file;
+            const rawText = await file.text();
+            let parsed = null;
+            try { parsed = JSON.parse(rawText); } catch (err) { parsed = null; }
+            if (isEncryptedBackup(parsed)) {
+              let plain = null;
+              try {
+                plain = await decryptBackupJson(parsed, DEFAULT_BACKUP_PASSWORD);
+              } catch (e) {
+                const password = window.prompt(
+                  "No se pudo descifrar con la clave por defecto. Introduce la contraseña (si el backup se cifró manualmente):",
+                );
+                if (password === null) return;
+                plain = await decryptBackupJson(parsed, password);
+              }
+              workingFile = new File([plain], file.name.replace(/\\.enc\\.json$/i, ".json"), {
+                type: "application/json",
+              });
+            }
+            const preview = await previewImportData(workingFile);
             const previewLines = Object.entries(preview)
               .map(([storeName, counts]) =>
                 `${storeName}: ${counts.incoming} incluidos, ${counts.overwrites} se reemplazarán, ${counts.additions} se añadirán`)
@@ -796,7 +819,7 @@ export function bindEvents(handlers) {
             const confirmed = confirm(
               `Vista previa de restauración:\n${previewLines}\n\nLos registros con el mismo ID se reemplazarán; los nuevos se añadirán. Los registros que no estén en el archivo se conservarán. ¿Continuar?`,
             );
-            if (confirmed) await importAllData(file);
+            if (confirmed) await importAllData(workingFile);
           } catch (error) {
             console.error("No se pudo preparar la restauración del backup:", error);
             alert(`No se pudo preparar la restauración: ${error.message}`);

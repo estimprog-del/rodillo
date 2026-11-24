@@ -4,6 +4,7 @@
  */
 
 import { state } from '../modules/state.js';
+import { sanitizeName } from '../utils/sanitize.js';
 import { showToast, showConfirm } from '../modules/toast.js';
 import { promptResumeRoute } from '../ui/modals.js';
 import { sliceRouteSegment } from './routeLibrary.js';
@@ -355,7 +356,7 @@ async function renameHistoryRoute(id) {
     const currentName = session.routeName || session.gpxPath;
     const newName = prompt('Nombre de la ruta:', currentName);
     if (newName === null) return;
-    const routeName = newName.trim();
+    const routeName = sanitizeName(newName, 120);
     if (!routeName) { showToast('El nombre de la ruta no puede estar vacío.', 'warning'); return; }
     await DbManager.updateSession({ ...session, routeName });
     await loadHistoryList();

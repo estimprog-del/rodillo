@@ -1,6 +1,7 @@
 import { state, saveStateToLocalStorage } from "./state.js";
 import { showToast } from "./toast.js";
 import { DbManager } from "../db.js";
+import { encryptBackupJson, decryptBackupJson, isEncryptedBackup, DEFAULT_BACKUP_PASSWORD } from "../utils/backupCrypto.js";
 import { loadProfilesGrid, selectUser } from "../core/userProfile.js";
 
 // Client ID por defecto (público, restringido por origen en Google Cloud Console).
@@ -454,6 +455,10 @@ export async function pushToDrive({ silent = false } = {}) {
 
     if (!silent) showToast(`Subiendo backup de ${backupDescription} a Google Drive...`, "info");
 
+    // Cifrado por defecto (clave de la app) para proteger datos en Drive.
+    const encrypted = await encryptBackupJson(json, DEFAULT_BACKUP_PASSWORD);
+    json = JSON.stringify(encrypted);
+
     let file = await findBackupFile();
     if (!file) {
       const metaRes = await driveFetch("https://www.googleapis.com/drive/v3/files", {
@@ -501,12 +506,17 @@ export async function pullFromDrive() {
     const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`);
     const text = await res.text();
 
-    let data;
+    let parsed;
     try {
-      data = JSON.parse(text);
+      parsed = JSON.parse(text);
     } catch (e) {
       throw new Error("El backup de Google Drive no es JSON válido.");
     }
+    if (isEncryptedBackup(parsed)) {
+      const plain = await decryptBackupJson(parsed, DEFAULT_BACKUP_PASSWORD);
+      parsed = JSON.parse(plain);
+    }
+    const data = parsed;
 
     await DbManager.mergeBackupData(data);
     updateStatusUI();
@@ -678,12 +688,17 @@ export async function syncGoogleOnUserScreen(expectedEmail = null) {
         showToast("Descargando backup de Google Drive...", "info");
         const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`);
         const text = await res.text();
-        let data;
+        let parsed;
         try {
-          data = JSON.parse(text);
+          parsed = JSON.parse(text);
         } catch (e) {
           throw new Error("El backup de Google Drive no es JSON válido.");
         }
+        if (isEncryptedBackup(parsed)) {
+          const plain = await decryptBackupJson(parsed, DEFAULT_BACKUP_PASSWORD);
+          parsed = JSON.parse(plain);
+        }
+        const data = parsed;
         await DbManager.mergeBackupData(data);
         showToast("Datos sincronizados desde Google Drive.", "success");
         backupSynced = true;

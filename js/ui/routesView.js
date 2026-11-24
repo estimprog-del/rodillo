@@ -4,6 +4,7 @@
 
 import { state } from "../modules/state.js";
 import { showToast, showConfirm } from "../modules/toast.js";
+import { sanitizeName } from "../utils/sanitize.js";
 
 let _routeLibraryFilter = "all";
 let _navigateTo = null;
@@ -359,7 +360,7 @@ export async function saveUserRoute(file) {
       setStatus("El archivo no es valido o no contiene puntos de ruta.");
       return;
     }
-    const routeName = file.name.replace(/\.(gpx|tcx|xml)$/i, "");
+    const routeName = sanitizeName(file.name.replace(/\.(gpx|tcx|xml)$/i, ""), 120);
     await DbManager.saveRoute({
       userId: state.currentUser.id,
       name: routeName,
