@@ -401,6 +401,10 @@ export function initAudioPlayer() {
       playBtn.textContent = (s && s.playing) ? "⏸" : "▶";
       playBtn.setAttribute("aria-label", (s && s.playing) ? "Pausar" : "Reproducir");
     }
+    const vol = wEl("audio-widget-volume");
+    if (vol && s && typeof s.volume === "number") {
+      vol.value = Math.round(s.volume * 100);
+    }
   });
 
   return audioPlayer;
