@@ -54,7 +54,7 @@ function setState(patch) {
   _state.paused = !!patch.paused;
   _state.loading = !!patch.loading;
   _state.error = patch.error ?? null;
-  emit("state", { ..._state, sourceUrl: _sourceUrl.current, volume: _volume });
+  emit("state", { ..._state, sourceUrl: _sourceUrl.current, volume: _volume, title: _currentTitle });
 }
 
 function isHttpsUrl(url) {
@@ -175,7 +175,7 @@ function setVolume(volume) {
 }
 
 function getState() {
-  return { ..._state, sourceUrl: _sourceUrl.current, volume: _volume };
+  return { ..._state, sourceUrl: _sourceUrl.current, volume: _volume, title: _currentTitle };
 }
 
 function setWidgetTitle(title) {
@@ -204,7 +204,7 @@ function destroy() {
   _state.error = null;
 }
 
-export const audioPlayer = { play, pause, resume, setSource, setVolume, getState, on, destroy };
+export const audioPlayer = { play, pause, resume, setSource, setVolume, getState, on, destroy, stepCurrent, togglePlay };
 
 function makeDraggable(el) {
   if (!el) return;

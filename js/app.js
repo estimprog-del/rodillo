@@ -512,6 +512,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   window._renderSummaryMetrics = renderSummaryMetrics;
   window._renderSummaryRoute = renderSummaryRoute;
   window._loadDashboardHeader = loadDashboardHeader;
+  window.updateRouteProgressHud = updateRouteProgressHud;
+  window.refreshUpcomingPreview = refreshUpcomingPreview;
 
   // Bind UI Elements
   cacheUiElements();
@@ -1607,6 +1609,72 @@ async function initializeRemoteRoomPanel() {
         }
         void stopSessionFlow();
       });
+
+      // Controles de radio desde el mando
+      activeRemoteRoomClient?.on("RADIO_VOLUME", (payload, message) => {
+        if (!isAuthorized(payload, message)) return;
+        const v = Number(payload?.volume);
+        if (Number.isFinite(v)) {
+          audioPlayer.setVolume(Math.max(0, Math.min(1, v)));
+        }
+        toggleRemoteRoomPanel(false);
+      });
+      activeRemoteRoomClient?.on("RADIO_MUTE", (payload, message) => {
+        if (!isAuthorized(payload, message)) return;
+        const current = audioPlayer.getState().volume;
+        if (current > 0) {
+          window.__remoteMutedPrevVolume = current;
+          audioPlayer.setVolume(0);
+        } else {
+          const prev = Number(window.__remoteMutedPrevVolume);
+          audioPlayer.setVolume(Number.isFinite(prev) && prev > 0 ? prev : 0.8);
+        }
+        toggleRemoteRoomPanel(false);
+      });
+      activeRemoteRoomClient?.on("RADIO_NEXT", (payload, message) => {
+        if (!isAuthorized(payload, message)) return;
+        audioPlayer.stepCurrent(1);
+        toggleRemoteRoomPanel(false);
+      });
+      activeRemoteRoomClient?.on("RADIO_PREV", (payload, message) => {
+        if (!isAuthorized(payload, message)) return;
+        audioPlayer.stepCurrent(-1);
+        toggleRemoteRoomPanel(false);
+      });
+      activeRemoteRoomClient?.on("RADIO_PLAY_PAUSE", (payload, message) => {
+        if (!isAuthorized(payload, message)) return;
+        audioPlayer.togglePlay();
+        toggleRemoteRoomPanel(false);
+      });
+
+      // Sincronizar estado de radio hacia el mando
+      if (!window.__remoteRadioStateListenerRegistered) {
+        window.__remoteRadioStateListenerRegistered = true;
+        audioPlayer.on("state", (s) => {
+          if (!activeRemoteRoomClient) return;
+          void activeRemoteRoomClient.emit("RADIO_STATE", {
+            playing: !!s.playing,
+            paused: !!s.paused,
+            loading: !!s.loading,
+            error: s.error || null,
+            volume: typeof s.volume === "number" ? s.volume : audioPlayer.getState().volume,
+            title: s.title || "",
+            sourceUrl: s.sourceUrl || null,
+          }).catch(() => {});
+        });
+      }
+
+      // Enviar estado inicial de radio al mando
+      void activeRemoteRoomClient.emit("RADIO_STATE", {
+        playing: audioPlayer.getState().playing,
+        paused: audioPlayer.getState().paused,
+        loading: audioPlayer.getState().loading,
+        error: audioPlayer.getState().error || null,
+        volume: audioPlayer.getState().volume,
+        title: audioPlayer.getState().title || "",
+        sourceUrl: audioPlayer.getState().sourceUrl || null,
+      }).catch(() => {});
+
       status.textContent = "Ably: conectado; esperando mando";
     })
     .catch((error) => {

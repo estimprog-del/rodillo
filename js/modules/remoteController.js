@@ -195,6 +195,135 @@ export function initializeRemoteController() {
   });
   reconnectButton?.addEventListener("click", () => void connectRemote(true));
 
+  // --- Panel flotante de control de radio ---
+  const radioStyle = document.createElement("style");
+  radioStyle.textContent = `
+    .remote-radio-widget { position: fixed; right: 16px; bottom: 16px; z-index: 9999; touch-action: none; }
+    .remote-radio-toggle { width: 52px; height: 52px; border-radius: 50%; border: none; background: #1f2937; color: #fff; font-size: 24px; cursor: grab; box-shadow: 0 4px 12px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; }
+    .remote-radio-toggle:active { cursor: grabbing; }
+    .remote-radio-panel { position: absolute; right: 0; bottom: 60px; width: 240px; background: #111827; color: #fff; border-radius: 12px; padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 8px; }
+    .remote-radio-panel[hidden] { display: none; }
+    .remote-radio-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.9; }
+    .remote-radio-controls { display: flex; justify-content: space-between; gap: 8px; }
+    .remote-radio-controls button, .remote-radio-volume button { background: #374151; color: #fff; border: none; border-radius: 8px; padding: 8px 12px; font-size: 16px; cursor: pointer; }
+    .remote-radio-controls button:active, .remote-radio-volume button:active { background: #4b5563; }
+    .remote-radio-volume { display: flex; align-items: center; gap: 8px; }
+    .remote-radio-volume input { flex: 1; }
+  `;
+  document.head.appendChild(radioStyle);
+
+  const radioWidget = document.createElement("div");
+  radioWidget.className = "remote-radio-widget";
+  radioWidget.innerHTML = `
+    <button id="remote-radio-toggle" class="remote-radio-toggle" type="button" aria-label="Radio">📻</button>
+    <div id="remote-radio-panel" class="remote-radio-panel" hidden>
+      <div class="remote-radio-title" id="remote-radio-title">Radio</div>
+      <div class="remote-radio-controls">
+        <button id="remote-radio-prev" type="button" aria-label="Anterior">⏮</button>
+        <button id="remote-radio-play" type="button" aria-label="Play/Pausa">▶</button>
+        <button id="remote-radio-next" type="button" aria-label="Siguiente">⏭</button>
+      </div>
+      <div class="remote-radio-volume">
+        <button id="remote-radio-mute" type="button" aria-label="Silenciar">🔊</button>
+        <input id="remote-radio-volume" type="range" min="0" max="100" value="100" />
+      </div>
+    </div>
+  `;
+  document.body.appendChild(radioWidget);
+
+  const radioToggle = document.getElementById("remote-radio-toggle");
+  const radioPanel = document.getElementById("remote-radio-panel");
+  const radioTitle = document.getElementById("remote-radio-title");
+  const radioPlay = document.getElementById("remote-radio-play");
+  const radioPrev = document.getElementById("remote-radio-prev");
+  const radioNext = document.getElementById("remote-radio-next");
+  const radioMute = document.getElementById("remote-radio-mute");
+  const radioVolume = document.getElementById("remote-radio-volume");
+
+  // Minimizar/expandir
+  let radioExpanded = false;
+  const setRadioExpanded = (expanded) => {
+    radioExpanded = expanded;
+    radioPanel.hidden = !expanded;
+  };
+  radioToggle.addEventListener("click", (e) => {
+    if (radioToggle.dataset.dragged === "true") { radioToggle.dataset.dragged = "false"; return; }
+    setRadioExpanded(!radioExpanded);
+  });
+
+  // Draggable
+  let dragging = false, moved = false, startX = 0, startY = 0, startRight = 0, startBottom = 0;
+  radioToggle.style.touchAction = "none";
+  radioToggle.addEventListener("pointerdown", (e) => {
+    dragging = true; moved = false;
+    startX = e.clientX; startY = e.clientY;
+    const rect = radioWidget.getBoundingClientRect();
+    startRight = window.innerWidth - rect.right;
+    startBottom = window.innerHeight - rect.bottom;
+    const onMove = (ev) => {
+      if (!dragging) return;
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!moved && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) { moved = true; radioToggle.dataset.dragged = "true"; }
+      if (moved) {
+        let newRight = startRight - dx;
+        let newBottom = startBottom - dy;
+        const w = radioWidget.offsetWidth, h = radioWidget.offsetHeight;
+        const maxR = window.innerWidth - w, maxB = window.innerHeight - h;
+        if (newRight < 0) newRight = 0;
+        if (newBottom < 0) newBottom = 0;
+        if (newRight > maxR) newRight = maxR;
+        if (newBottom > maxB) newBottom = maxB;
+        radioWidget.style.right = newRight + "px";
+        radioWidget.style.bottom = newBottom + "px";
+        radioWidget.style.left = "auto";
+        radioWidget.style.top = "auto";
+      }
+    };
+    const onUp = () => {
+      dragging = false;
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      if (moved) setTimeout(() => { radioToggle.dataset.dragged = "false"; }, 300);
+      moved = false;
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  });
+
+  // Enviar comandos
+  const emitRadio = async (event, payload = {}) => {
+    if (!client) return;
+    try { await client.emit(event, payload); } catch (e) { console.error("[Mando Radio] No se pudo enviar:", e); }
+  };
+
+  radioPlay.addEventListener("click", () => emitRadio("RADIO_PLAY_PAUSE"));
+  radioPrev.addEventListener("click", () => emitRadio("RADIO_PREV"));
+  radioNext.addEventListener("click", () => emitRadio("RADIO_NEXT"));
+  radioMute.addEventListener("click", () => emitRadio("RADIO_MUTE"));
+
+  let volumeTimer = null;
+  radioVolume.addEventListener("input", () => {
+    if (volumeTimer) clearTimeout(volumeTimer);
+    volumeTimer = setTimeout(() => {
+      emitRadio("RADIO_VOLUME", { volume: Number(radioVolume.value) / 100 });
+    }, 150);
+  });
+
+  // Recibir estado
+  const updateRadioUI = (s) => {
+    if (!s) return;
+    if (radioTitle) radioTitle.textContent = s.title || (s.playing ? "Reproduciendo" : "Radio");
+    if (radioPlay) radioPlay.textContent = s.playing ? "⏸" : "▶";
+    if (typeof s.volume === "number") {
+      radioVolume.value = Math.round(s.volume * 100);
+      radioMute.textContent = s.volume <= 0 ? "🔇" : "🔊";
+    }
+  };
+  if (client) {
+    client.on("RADIO_STATE", updateRadioUI);
+  }
+
   if (client) {
     client.on("SESSION_SUMMARY", showRemoteSummary);
     client.on("REMOTE_ACCESS_DENIED", showRemoteAccessDenied);
