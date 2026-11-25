@@ -7,6 +7,7 @@ export function initNavigation(UI, state, callbacks) {
       console.warn(`[Navigation] Pantalla no encontrada: ${screenId}`);
       return;
     }
+    state.currentScreen = screenId;
 
     // Asegurarse de que el body puede hacer scroll al cambiar de pantalla
     document.body.style.overflow = '';
@@ -39,6 +40,11 @@ export function initNavigation(UI, state, callbacks) {
     // Screen entering callbacks
     if (callbacks[screenId]) {
       callbacks[screenId]();
+    }
+
+    // Permitir actualizaciones PWA diferidas cuando se vuelve a una pantalla segura
+    if (typeof window.checkPendingSwUpdate === "function") {
+      window.checkPendingSwUpdate();
     }
   };
 }

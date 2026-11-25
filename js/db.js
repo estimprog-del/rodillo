@@ -429,6 +429,9 @@ async function insertSensorDataBulk(pointsArray) {
 const BACKUP_STORES = ['users', 'sessions', 'sensor_data', 'records'];
 const ALL_BACKUP_STORES = [...BACKUP_STORES, 'saved_routes'];
 const BACKUP_STATUS_KEY = 'rodilloint_last_backup';
+// Límite de tamaño para archivos de backup restaurables (100 MB).
+// Se permite restaurar backups grandes generados tras mucho uso.
+const MAX_BACKUP_FILE_BYTES = 100 * 1024 * 1024;
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -757,6 +760,9 @@ export async function exportAllDataCsv() {
 }
 
 export async function previewImportData(file) {
+  if (!file || typeof file.size !== 'number' || file.size > MAX_BACKUP_FILE_BYTES) {
+    throw new Error(`El archivo de backup es demasiado grande (>${Math.round(MAX_BACKUP_FILE_BYTES / (1024 * 1024))} MB) o no es válido.`);
+  }
   const data = JSON.parse(await file.text());
   if (!data || !ALL_BACKUP_STORES.some((storeName) => Array.isArray(data[storeName]))) {
     throw new Error('El archivo no contiene un backup válido de RodilloInt.');
@@ -787,8 +793,8 @@ export async function previewImportData(file) {
 // Restaurar desde un archivo JSON de Backup
 export async function importAllData(file) {
   try {
-    if (!file || typeof file.size !== 'number' || file.size > 10 * 1024 * 1024) {
-      throw new Error('El archivo de backup es demasiado grande (>10 MB) o no es válido.');
+    if (!file || typeof file.size !== 'number' || file.size > MAX_BACKUP_FILE_BYTES) {
+      throw new Error(`El archivo de backup es demasiado grande (>${Math.round(MAX_BACKUP_FILE_BYTES / (1024 * 1024))} MB) o no es válido.`);
     }
     let data;
     try {

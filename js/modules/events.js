@@ -788,6 +788,9 @@ export function bindEvents(handlers) {
         const file = e.target.files[0];
         void (async () => {
           try {
+            if (!file || typeof file.size !== 'number' || file.size > 100 * 1024 * 1024) {
+              throw new Error('El archivo de backup es demasiado grande (>100 MB) o no es válido.');
+            }
             let workingFile = file;
             const rawText = await file.text();
             let parsed = null;

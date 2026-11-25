@@ -126,6 +126,43 @@ globalThis.L = L;
 globalThis.maplibregl = maplibregl;
 maplibregl.setWorkerUrl(mapLibreWorkerUrl);
 
+let swRegistrationRef = null;
+let swUpdatePending = false;
+let swRefreshing = false;
+
+function isSafeToUpdateApp() {
+  try {
+    if (state?.isSessionActive) return false;
+    const screen = state?.currentScreen;
+    // Solo actualizar en pantalla inicial/principal (dashboard) o selección de usuario
+    return screen === "dashboard" || screen === "user-select" || !screen;
+  } catch (e) {
+    return false;
+  }
+}
+
+function applySwUpdate() {
+  if (!swRegistrationRef || !swRegistrationRef.waiting) return;
+  swRegistrationRef.waiting.postMessage({ type: "SKIP_WAITING" });
+}
+
+function handleSwUpdateAvailable() {
+  if (isSafeToUpdateApp()) {
+    applySwUpdate();
+  } else {
+    swUpdatePending = true;
+  }
+}
+
+function checkPendingSwUpdate() {
+  if (swUpdatePending && isSafeToUpdateApp()) {
+    swUpdatePending = false;
+    swRefreshing = true;
+    window.location.reload();
+  }
+}
+window.checkPendingSwUpdate = checkPendingSwUpdate;
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     const serviceWorkerUrl = new URL(
@@ -133,9 +170,38 @@ if ("serviceWorker" in navigator) {
       window.location.origin,
     );
     navigator.serviceWorker.register(serviceWorkerUrl)
-      .then((registration) => console.log("[PWA] SW registrado:", registration.scope))
+      .then((registration) => {
+        console.log("[PWA] SW registrado:", registration.scope);
+        swRegistrationRef = registration;
+        if (registration.waiting) handleSwUpdateAvailable();
+        registration.addEventListener("updatefound", () => {
+          const newWorker = registration.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener("statechange", () => {
+            if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+              handleSwUpdateAvailable();
+            }
+          });
+        });
+      })
       .catch((error) => console.warn("[PWA] SW error:", error));
   }, { once: true });
+
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (swRefreshing) return;
+    if (isSafeToUpdateApp()) {
+      swRefreshing = true;
+      window.location.reload();
+    } else {
+      swUpdatePending = true;
+    }
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      checkPendingSwUpdate();
+    }
+  });
 }
 
 

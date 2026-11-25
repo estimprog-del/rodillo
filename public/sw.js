@@ -3,7 +3,7 @@
  * Soporte offline para despliegue en GitHub Pages (/rodillo/) y local.
  */
 
-const CACHE_NAME = "rodilloint-v6";
+const CACHE_NAME = "rodilloint-v7";
 
 // Resuelve una ruta relativa con el scope del service worker (ej. '/rodillo/' en GitHub Pages)
 const getScopedUrl = (relPath) => new URL(relPath, self.registration.scope).pathname;
@@ -17,7 +17,7 @@ const PRECACHE_ASSETS = [
   getScopedUrl("./icons/icon-512.png"),
 ];
 
-// Instalar: precachear assets base
+// Instalar: precachear assets base y activar cuando sea posible
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -28,8 +28,14 @@ self.addEventListener("install", (event) => {
           })
         )
       );
-    }).then(() => self.skipWaiting())
   );
+});
+
+// Permitir que el cliente active el nuevo SW cuando sea seguro
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 // Activar: limpiar cachés antiguas
