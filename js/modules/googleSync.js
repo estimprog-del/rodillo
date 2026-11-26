@@ -440,18 +440,18 @@ export async function pushToDrive({ silent = false } = {}) {
       if (!accessToken) return;
     }
 
-    // Determinar qué datos subir: solo el usuario vinculado a esta cuenta de Google
+    // Subir siempre solo los datos del usuario actualmente seleccionado.
+    // Los demás perfiles no se incluyen en este backup.
     let json;
     let backupDescription = "";
-    if (state.currentUser && state.currentUser.googleEmail === accountEmail) {
-      // Solo subimos los datos del usuario vinculado a esta cuenta de Google
-      json = await DbManager.exportBackupJsonForUser(state.currentUser.id);
-      backupDescription = `usuario "${state.currentUser.name}" (ID ${state.currentUser.id})`;
-    } else {
-      // No hay usuario vinculado o no coincide: subir todo (comportamiento legacy)
-      json = await DbManager.exportBackupJson({ scope: "all" });
-      backupDescription = "todos los usuarios";
+    if (!state.currentUser) {
+      if (!silent) showToast("Selecciona un perfil antes de subir el backup a Google Drive.", "warning");
+      if (statusEl) statusEl.textContent = "Sin perfil seleccionado";
+      if (indicator && !silent) indicator.textContent = "☁️";
+      return;
     }
+    json = await DbManager.exportBackupJsonForUser(state.currentUser.id);
+    backupDescription = `usuario "${state.currentUser.name}" (ID ${state.currentUser.id})`;
 
     if (!silent) showToast(`Subiendo backup de ${backupDescription} a Google Drive...`, "info");
 
