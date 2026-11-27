@@ -2169,6 +2169,33 @@ h4 {
     }
 }
 
+/* Moviles muy pequenos */
+@media (max-width: 360px) {
+    .glass-card {
+        padding: 16px;
+        border-radius: 14px;
+    }
+    .page-heading-row h2 {
+        font-size: 22px;
+    }
+    .dashboard-header-buttons {
+        gap: 8px;
+    }
+    .mode-card {
+        min-height: 150px;
+    }
+}
+
+/* Pantallas grandes (>=15") */
+@media (min-width: 1440px) {
+    .training-period-summaries {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .summary-route-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
 .fullscreen-recovery-content p {
     color: var(--text-secondary);
     margin: 12px 0 20px;

@@ -2792,3 +2792,10 @@
         transition: none;
     }
 }
+
+/* Pantallas grandes (>=15") */
+@media (min-width: 1440px) {
+    .help-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
