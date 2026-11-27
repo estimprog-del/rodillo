@@ -157,9 +157,9 @@ export async function requestDriveAccess() {
     }
     console.log("[GoogleSync] Solicitando permisos de Drive...");
     await requestAccessToken(SCOPES, "consent select_account");
-    // Verificar que el token incluye el scope de Drive
-    // (GIS no nos dice directamente qué scopes se concedieron, así que probamos una llamada a Drive)
-    drivePermissionsGranted = true;
+    // Verificar que el token realmente incluye el scope de Drive probando una llamada a Drive.
+    // (GIS no nos dice directamente qué scopes se concedieron.)
+    await driveFetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=1");
     saveGoogleSession();
     updateStatusUI();
     showToast(
@@ -226,7 +226,16 @@ async function findBackupFile() {
     `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${BACKUP_FILE_NAME}'&fields=files(id,name,modifiedTime,size)`
   );
   const data = await res.json();
-  return Array.isArray(data.files) && data.files.length ? data.files[0] : null;
+  if (!Array.isArray(data.files) || !data.files.length) return null;
+  // Verificar que el archivo realmente existe/accesible antes de devolverlo (evita 404 stale).
+  const candidate = data.files[0];
+  try {
+    await driveFetch(`https://www.googleapis.com/drive/v3/files/${candidate.id}?fields=id`);
+    return candidate;
+  } catch (e) {
+    if (String(e?.message || "").includes("404")) return null;
+    throw e;
+  }
 }
 
 export async function connectGoogle(forceSelectAccount = true) {
@@ -286,6 +295,7 @@ export async function connectGoogle(forceSelectAccount = true) {
 
       // Si llegamos aquí, el login fue exitoso
       await fetchAccountProfile();
+      drivePermissionsGranted = false;
       saveGoogleSession();
       updateStatusUI();
       showToast(`Conectado a Google: ${accountEmail}`, "success");
@@ -415,6 +425,26 @@ export async function pushToDrive({ silent = false } = {}) {
       if (!accessToken) return;
     }
 
+    // Asegurar permisos de Drive antes de intentar subir el backup.
+    // Verificar con una sonda si el flag pudiera estar desactualizado (token sin scope).
+    let hasDrive = drivePermissionsGranted;
+    if (hasDrive && !silent) {
+      try {
+        await driveFetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=1");
+      } catch (e) {
+        hasDrive = false;
+        drivePermissionsGranted = false;
+      }
+    }
+    if (!hasDrive) {
+      if (silent) {
+        // En auto-push silencioso no abrimos popup: se intentará más tarde.
+        return;
+      }
+      const ok = await requestDriveAccess();
+      if (!ok) return;
+    }
+
     // Subir siempre solo los datos del usuario actualmente seleccionado.
     // Los demás perfiles no se incluyen en este backup.
     let json;
@@ -444,11 +474,32 @@ export async function pushToDrive({ silent = false } = {}) {
       file = await metaRes.json();
     }
 
-    await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=media`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: json,
-    });
+    // Subir el contenido; si el archivo ya no existe (404), recrearlo y reintentar una vez.
+    try {
+      await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=media`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: json,
+      });
+    } catch (uploadErr) {
+      if (String(uploadErr?.message || "").includes("404")) {
+        // Archivo stale o inaccesible: crear uno nuevo y subir de nuevo.
+        try { await driveFetch(`https://www.googleapis.com/drive/v3/files/${file.id}`, { method: "DELETE" }); } catch (e) {}
+        const metaRes = await driveFetch("https://www.googleapis.com/drive/v3/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: BACKUP_FILE_NAME, parents: ["appDataFolder"] }),
+        });
+        file = await metaRes.json();
+        await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${file.id}?uploadType=media`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: json,
+        });
+      } else {
+        throw uploadErr;
+      }
+    }
 
     const now = new Date().toISOString();
     localStorage.setItem("rodilloint_last_google_sync", now);
@@ -534,7 +585,10 @@ export async function linkGoogleToProfile() {
     return;
   }
   try {
-    await connectGoogle();
+    // No clobber de un token con permisos de Drive ya concedidos: solo conectar si no hay sesion.
+    if (!accessToken || !accountEmail) {
+      await connectGoogle();
+    }
     if (!accountEmail) return;
 
     const users = await DbManager.getAllUsers();
