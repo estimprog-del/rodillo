@@ -2150,6 +2150,7 @@
 .help-card li {
     color: var(--text-secondary);
     line-height: 1.55;
+    margin-bottom: 4px;
 }
 
 .help-card p {
