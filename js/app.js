@@ -1,8 +1,7 @@
 import L from "leaflet";
-import * as maplibregl from "maplibre-gl";
 import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import "leaflet/dist/leaflet.css";
-import "maplibre-gl/dist/maplibre-gl.css";
+
 import {
   showModal,
   hideModal,
@@ -123,8 +122,25 @@ import { initUserView } from "./ui/userView.js";
 window.adjustWorkoutBias = adjustWorkoutBias;
 window.resetWorkoutBias = resetWorkoutBias;
 globalThis.L = L;
-globalThis.maplibregl = maplibregl;
-maplibregl.setWorkerUrl(mapLibreWorkerUrl);
+// MapLibre se inicializa de forma diferida (ver ensureMapLibre).
+
+// MapLibre GL se carga de forma diferida (lazy) solo cuando el usuario
+// cambia al motor de mapa 3D, para no bloquear la carga inicial.
+async function ensureMapLibre() {
+  if (globalThis.maplibregl) return globalThis.maplibregl;
+  const mod = await import("maplibre-gl");
+  const lib = mod?.default || mod;
+  globalThis.maplibregl = lib;
+  try {
+    await import("maplibre-gl/dist/maplibre-gl.css");
+  } catch (e) {
+    console.warn("[MapLibre] No se pudo cargar el CSS de forma diferida:", e);
+  }
+  if (typeof lib?.setWorkerUrl === "function") {
+    lib.setWorkerUrl(mapLibreWorkerUrl);
+  }
+  return lib;
+}
 
 let swRegistrationRef = null;
 let swUpdatePending = false;
@@ -2935,7 +2951,7 @@ function createOrientationToggleButton() {
     };
 }
 
-window.toggleMapEngine = function(btn) {
+window.toggleMapEngine = async function(btn) {
     console.log("¡Clic recibido en toggleMapEngine!");
     mapCamera.stopFpvCameraLoop();
     const container = document.getElementById("workout-map");
@@ -2985,6 +3001,7 @@ window.toggleMapEngine = function(btn) {
         container.style.width = "100%";
 
         try {
+            await ensureMapLibre();
             const mapSdk = getMapSdk();
             if (!mapSdk?.Map) {
                 throw new Error("El SDK 3D no está disponible.");
