@@ -480,6 +480,8 @@ h4 {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
     margin-bottom: 30px;
     width: 100%;
 }
@@ -492,7 +494,9 @@ h4 {
 
 .dashboard-header-buttons {
     display: flex;
+    flex-wrap: wrap;
     gap: 12px; /* Ajusta este valor para más o menos espacio */
+    justify-content: flex-end;
 }
 .active-profile-info {
     display: flex;
