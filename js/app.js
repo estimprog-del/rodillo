@@ -19,7 +19,7 @@ import {
 import { initNavigation } from "./ui/navigation.js";
 import { loadDashboardHeader } from "./ui/dashboard.js";
 import { updateClock, updatePauseButton } from "./ui/uiHelpers.js";
-import { applyWorkoutPanels } from "./ui/workoutHud.js";
+import { applyWorkoutPanels, applyWorkoutLayout } from "./ui/workoutHud.js";
 import {
   positionMapNavigationControls,
   initLeafletMap,
@@ -275,47 +275,6 @@ const mapCamera = createMapCameraController({
 const routeOverview = createRouteOverviewController(state);
 const routeSimulation = createRouteSimulationController(state);
 const sessionTimer = createSessionTimerController(state);
-
-function applyWorkoutLayout() {
-  const viewport = document.querySelector(".workout-viewport");
-  if (!viewport) return;
-
-  const layouts = ["horizontal-1", "horizontal-2", "vertical-1", "vertical-2"];
-  const selectedLayout = state.workoutLayout;
-  const isVertical = window.matchMedia("(orientation: portrait)").matches;
-  const mobilePortrait = isMobilePortrait();
-  const layout = layouts.includes(selectedLayout)
-    ? selectedLayout
-    : isVertical
-      ? (mobilePortrait ? "vertical-2" : (window.innerWidth < 700 ? "vertical-2" : "vertical-1"))
-      : (window.innerWidth < 1100 ? "horizontal-2" : "horizontal-1");
-
-  viewport.classList.remove(...layouts.map((name) => `layout-${name}`));
-  viewport.classList.add(`layout-${layout}`);
-  viewport.classList.toggle("workout-compact", mobilePortrait);
-  requestAnimationFrame(() => {
-    if (!state.map) return;
-    if (typeof state.map.resize === "function") state.map.resize();
-    if (typeof state.map.invalidateSize === "function") state.map.invalidateSize();
-    positionMapNavigationControls();
-  });
-
-  const layoutLabels = {
-    auto: `Auto (${layoutLabelsForResolvedLayout(layout)})`,
-    "horizontal-1": "H1",
-    "horizontal-2": "H2",
-    "vertical-1": "V1",
-    "vertical-2": "V2",
-  };
-  const layoutButton = document.getElementById("btn-cycle-layout");
-  if (layoutButton) {
-    layoutButton.textContent = `▣ Diseño: ${selectedLayout === "auto" ? layoutLabels.auto : layoutLabels[layout]}`;
-  }
-}
-
-function layoutLabelsForResolvedLayout(layout) {
-  return { "horizontal-1": "H1", "horizontal-2": "H2", "vertical-1": "V1", "vertical-2": "V2" }[layout];
-}
 
 window.applyWorkoutLayout = applyWorkoutLayout;
 

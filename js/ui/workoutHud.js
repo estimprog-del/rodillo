@@ -1,6 +1,6 @@
 // js/ui/workoutHud.js - Gestión de la interfaz del entrenamiento (HUD, diseño, paneles y pantalla completa)
 import { state, saveStateToLocalStorage } from "../modules/state.js";
-import { setElText, setElDisplay, showModal, hideModal } from "../modules/ui.js";
+import { setElText, setElDisplay, showModal, hideModal, isMobilePortrait } from "../modules/ui.js";
 import { showToast } from "../modules/toast.js";
 import { positionMapNavigationControls } from "./mapEngine.js";
 
@@ -24,18 +24,16 @@ export function applyWorkoutLayout() {
   const layouts = ["horizontal-1", "horizontal-2", "vertical-1", "vertical-2"];
   const selectedLayout = state.workoutLayout;
   const isVertical = window.matchMedia("(orientation: portrait)").matches;
+  const mobilePortrait = isMobilePortrait();
   const layout = layouts.includes(selectedLayout)
     ? selectedLayout
     : isVertical
-      ? window.innerWidth < 700
-        ? "vertical-2"
-        : "vertical-1"
-      : window.innerWidth < 1100
-        ? "horizontal-2"
-        : "horizontal-1";
+      ? (mobilePortrait ? "vertical-2" : (window.innerWidth < 700 ? "vertical-2" : "vertical-1"))
+      : (window.innerWidth < 1100 ? "horizontal-2" : "horizontal-1");
 
   viewport.classList.remove(...layouts.map((name) => `layout-${name}`));
   viewport.classList.add(`layout-${layout}`);
+  viewport.classList.toggle("workout-compact", mobilePortrait);
 
   requestAnimationFrame(() => {
     if (!state.map) return;
