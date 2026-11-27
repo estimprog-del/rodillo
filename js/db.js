@@ -104,7 +104,7 @@ async function insertUser(user) {
     
     // Add default values
     const newUser = {
-      uuid: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15),
+      uuid: user.uuid || (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15)),
       name,
       weight: Number(user.weight) || 75.0,
       ftp: Number(user.ftp) || 200,
@@ -202,6 +202,7 @@ async function insertSession(session) {
     
     const newSession = {
       userId: Number(session.userId) || 0,
+      userUuid: session.userUuid || null,
       startTime: session.startTime || Date.now(),
       endTime: null,
       gpxPath: session.gpxPath ? sanitizeName(session.gpxPath, 120) : null,

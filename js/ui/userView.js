@@ -175,8 +175,12 @@ export async function loadProfilesGrid() {
     const card = document.createElement("div");
     card.className = "glass-card user-card";
     card.onclick = () => {
+      // Si el perfil está vinculado a Google, autenticar antes de entrar
+      if (u.googleEmail && typeof window.syncGoogleOnUserScreen === "function") {
+        void window.syncGoogleOnUserScreen(u.googleEmail);
+        return;
+      }
       selectUser(u);
-      if (_navigateTo) _navigateTo("dashboard");
     };
 
     const initials = u.name
@@ -193,8 +197,14 @@ export async function loadProfilesGrid() {
       ? `<img src="${safeAvatarSrc}" alt="${safeName}" class="avatar-img" />`
       : initials;
 
+    const isGoogle = Boolean(u.googleEmail);
+    const badgeHtml = isGoogle
+      ? `<div class="user-card-badge" title="Sincronizado con Google Drive (${escapeHtml(u.googleEmail)})">🔗 Google</div>`
+      : `<div class="user-card-badge-local" title="Perfil local en este dispositivo">💾 Local</div>`;
+
     card.innerHTML = `
       <button class="user-card-delete" title="Eliminar Perfil">&times;</button>
+      ${badgeHtml}
       <div class="user-avatar">${avatarContent}</div>
       <div class="user-name">${safeName}</div>
       <div class="user-meta">${Number(u.weight) || 0} kg • FTP ${Number(u.ftp) || 0}W</div>
@@ -216,13 +226,21 @@ export async function loadProfilesGrid() {
  * Elimina un perfil desde la pantalla de selección
  */
 export async function deleteProfileFromSelectScreen(id, name) {
-  const confirmDel = await showConfirm(
-    `¿Estás seguro de que quieres eliminar el perfil de ${name}? Esto borrará sus datos permanentemente.`,
-  );
+  const user = await DbManager.getUserById(id);
+  const isLocal = !user?.googleEmail;
+  const lastBackup = localStorage.getItem("rodilloint_last_backup");
+
+  let warningMsg = `¿Estás seguro de que quieres eliminar el perfil de ${name}? Esto borrará sus datos permanentemente.`;
+  if (isLocal) {
+    warningMsg = `⚠️ ADVERTENCIA: El perfil "${name}" es puramente LOCAL (no está vinculado a Google Drive${lastBackup ? "" : " ni tiene backup exportado"}).\n\nSi lo eliminas, perderás su historial y entrenamientos para siempre.\n\n¿Deseas continuar y borrarlo permanentemente?`;
+  }
+
+  const confirmDel = await showConfirm(warningMsg, "Eliminar definitivamente", "danger");
   if (confirmDel) {
     try {
       await DbManager.deleteUser(id);
       await loadProfilesGrid();
+      showToast(`Perfil ${name} eliminado.`, "info");
     } catch (e) {
       console.error("Error al eliminar perfil:", e);
       showToast("Error al eliminar perfil.", "error");
@@ -231,23 +249,35 @@ export async function deleteProfileFromSelectScreen(id, name) {
 }
 
 /**
- * Selecciona un usuario activo
+ * Selecciona un usuario activo y navega al dashboard
  */
 export function selectUser(user) {
   state.currentUser = user;
   loadWorkoutLayoutForUser(user);
   localStorage.setItem("rodilloint_userId", user.id);
-  if (_navigateTo) {
-    _navigateTo("dashboard");
-  } else {
-    console.warn("navigateTo no está definido, no se puede navegar a dashboard.");
-  }
+  if (_navigateTo) _navigateTo("dashboard");
 }
 
 /**
- * Cierra la sesión del perfil actual
+ * Cierra la sesión del perfil actual (gestiona Google si está conectado)
  */
-export function handleLogout() {
+export async function handleLogout() {
+  const wasGoogleConnected =
+    typeof window.isGoogleConnected === "function" && window.isGoogleConnected();
+
+  if (wasGoogleConnected) {
+    const closeGoogle = await showConfirm(
+      "¿Cerrar también la sesión de Google en este navegador?",
+      "Cerrar Google",
+      "danger"
+    );
+    if (closeGoogle && typeof window.disconnectGoogle === "function") {
+      window.disconnectGoogle();
+    } else if (typeof window.clearGoogleToken === "function") {
+      window.clearGoogleToken();
+    }
+  }
+
   state.currentUser = null;
   localStorage.removeItem("rodilloint_userId");
   loadProfilesGrid();
@@ -377,9 +407,15 @@ export async function handleImportUserSubmit() {
  */
 export async function handleDeleteProfile() {
   if (!state.currentUser) return;
-  const confirmDel = await showConfirm(
-    `¿Estás seguro de que quieres eliminar el perfil de ${state.currentUser.name}? Esto borrará sus datos permanentemente.`,
-  );
+  const isLocal = !state.currentUser.googleEmail;
+  const lastBackup = localStorage.getItem("rodilloint_last_backup");
+
+  let warningMsg = `¿Estás seguro de que quieres eliminar el perfil de ${state.currentUser.name}? Esto borrará sus datos permanentemente.`;
+  if (isLocal) {
+    warningMsg = `⚠️ ADVERTENCIA: Este perfil es puramente LOCAL (sin cuenta Google vinculada${lastBackup ? "" : " ni copia en disco"}).\n\nSi lo borras ahora, se eliminarán todos sus entrenamientos, rutas e historial local sin posibilidad de recuperación.\n\n¿Deseas eliminarlo de todos modos?`;
+  }
+
+  const confirmDel = await showConfirm(warningMsg, "Eliminar definitivamente", "danger");
   if (confirmDel) {
     try {
       await DbManager.deleteUser(state.currentUser.id);
@@ -419,3 +455,4 @@ export function handleExportProfile() {
       try { navigator.clipboard.writeText(jsonStr); } catch (e) {}
     });
 }
+

@@ -1,8 +1,8 @@
 import { state, saveStateToLocalStorage } from "./state.js";
-import { showToast } from "./toast.js";
+import { showToast, showConfirm } from "./toast.js";
 import { DbManager } from "../db.js";
 import { encryptBackupJson, decryptBackupJson, isEncryptedBackup, DEFAULT_BACKUP_PASSWORD } from "../utils/backupCrypto.js";
-import { loadProfilesGrid, selectUser } from "../core/userProfile.js";
+import { loadProfilesGrid, selectUser } from "../ui/userView.js";
 
 // Client ID por defecto (público, restringido por origen en Google Cloud Console).
 // Se puede sobreescribir con VITE_GOOGLE_CLIENT_ID en tiempo de build.
@@ -24,6 +24,7 @@ let isConnecting = false;
 let pushTimer = null;
 // Indica si se han concedido permisos de Drive (drive.appdata)
 let drivePermissionsGranted = false;
+let hasPendingChanges = false;
 
 // Contador de reintentos persistente para cambio de cuenta
 let googleLoginRetryCount = 0;
@@ -309,46 +310,20 @@ export async function connectGoogle(forceSelectAccount = true) {
   } catch (error) {
     console.error("Error conectando con Google:", error);
     if (error.message === "GOOGLE_TIMEOUT" || error.message === "POPUP_TIMEOUT") {
-      // Incrementar contador de reintentos
       googleLoginRetryCount++;
-      
-      // Mensajes progresivos según número de intento
       let retryMsg;
       if (googleLoginRetryCount === 1) {
-        retryMsg = "El navegador bloqueó el popup de Google. Esto pasa comúnmente al cambiar de cuenta. Por favor, permite popups manualmente.";
+        retryMsg = "El navegador bloqueó el popup de Google. Si ves un icono 🔒 en la barra de direcciones, haz clic y selecciona 'Permitir popups'.";
       } else if (googleLoginRetryCount === 2) {
-        retryMsg = "Intento secundario fallido. Si ves un icono 🔒 en la barra de direcciones, haz clic y selecciona 'Permitir popups y redireccionamientos'.";
+        retryMsg = "Segundo intento fallido. Habilita popups para este sitio en la configuración de tu navegador.";
       } else {
-        retryMsg = "Se agotaron los intentos automáticos. Debes permitir popups para localhost:5173 en la configuración de tu navegador.";
+        retryMsg = "Se agotaron los intentos. Habilita popups en la configuración del navegador e inténtalo de nuevo.";
       }
-      
       showToast(retryMsg, "warning");
-      
-      // Delay largo para que el usuario pueda cambiar la configuración del navegador
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      
-      // Verificar si todavía tenemos sesion activa que interfiere
-      if (googleLoginRetryCount < MAX_GOOGLE_LOGIN_RETRIES) {
-        // Intentar de nuevo con forceSelectAccount = true para asegurar selector de cuentas
-        await connectGoogle(true);
-        return;
-      }
-      
-      // Se agotaron los reintentos definitivos
-      showToast(
-        "No se pudo conectar con Google automáticamente. " +
-        "Por favor, habilita popups para localhost:5173 en tu navegador e intenta de nuevo.", 
-        "error"
-      );
-      isConnecting = false;
-      clearTimeout(safetyTimer);
-      const syncBtn = document.getElementById("btn-google-user-sync");
-      const connectBtn = document.getElementById("btn-google-connect");
-      syncBtn?.removeAttribute("disabled");
-      connectBtn?.removeAttribute("disabled");
-      return;
+      // No recursión: el usuario debe pulsar de nuevo el botón
+    } else {
+      showToast(error?.message || "No se pudo conectar con Google.", "error");
     }
-    showToast(error?.message || "No se pudo conectar con Google.", "error");
   } finally {
     // CRUCIAL: Siempre resetear isConnecting y habilitar botones,
     // incluso si hubo error o el popup fue bloqueado.
@@ -477,6 +452,7 @@ export async function pushToDrive({ silent = false } = {}) {
 
     const now = new Date().toISOString();
     localStorage.setItem("rodilloint_last_google_sync", now);
+    hasPendingChanges = false;
     updateStatusUI();
     if (!silent) showToast("Backup subido a Google Drive correctamente.", "success");
   } catch (error) {
@@ -486,7 +462,7 @@ export async function pushToDrive({ silent = false } = {}) {
   }
 }
 
-export async function pullFromDrive() {
+export async function pullFromDrive({ silent = false } = {}) {
   googleLoginRetryCount = 0; // Resetear contador antes de intentar conexión
   const statusEl = document.getElementById("google-drive-status");
   const indicator = document.getElementById("google-sync-indicator");
@@ -498,7 +474,8 @@ export async function pullFromDrive() {
 
     const file = await findBackupFile();
     if (!file) {
-      showToast("No hay backup en Google Drive para esta cuenta.", "info");
+      if (!silent) showToast("No hay backup en Google Drive para esta cuenta.", "info");
+      updateStatusUI();
       return;
     }
 
@@ -516,9 +493,8 @@ export async function pullFromDrive() {
       const plain = await decryptBackupJson(parsed, DEFAULT_BACKUP_PASSWORD);
       parsed = JSON.parse(plain);
     }
-    const data = parsed;
 
-    await DbManager.mergeBackupData(data);
+    await DbManager.mergeBackupData(parsed);
     updateStatusUI();
     if (!silent) showToast("Backup fusionado desde Google Drive.", "success");
 
@@ -527,20 +503,29 @@ export async function pullFromDrive() {
   } catch (error) {
     console.error("Error descargando backup de Google Drive:", error);
     updateStatusUI();
-    showToast(error?.message || "No se pudo descargar el backup de Google Drive.", "error");
+    if (!silent) showToast(error?.message || "No se pudo descargar el backup de Google Drive.", "error");
   }
 }
 
 export function updateGoogleLinkStatus() {
   const statusEl = document.getElementById("google-link-status");
+  const linkBtn = document.getElementById("btn-link-google-profile");
+  const unlinkBtn = document.getElementById("btn-unlink-google-profile");
+
   if (!statusEl) return;
   if (!state.currentUser) {
     statusEl.textContent = "No hay perfil seleccionado.";
+    if (linkBtn) linkBtn.disabled = true;
+    if (unlinkBtn) unlinkBtn.disabled = true;
     return;
   }
-  statusEl.textContent = state.currentUser.googleEmail
-    ? `Vinculada: ${state.currentUser.googleEmail}`
-    : "No vinculada";
+  const isLinked = Boolean(state.currentUser.googleEmail);
+  statusEl.innerHTML = isLinked
+    ? `<span style="color: #8ab4f8; font-weight: 500;">🔗 ${state.currentUser.googleEmail}</span>`
+    : `<span style="color: var(--text-muted);">💾 Perfil local (sin vincular)</span>`;
+
+  if (linkBtn) linkBtn.textContent = isLinked ? "Cambiar cuenta Google" : "Vincular Google";
+  if (unlinkBtn) unlinkBtn.style.display = isLinked ? "inline-flex" : "none";
 }
 
 export async function linkGoogleToProfile() {
@@ -562,16 +547,18 @@ export async function linkGoogleToProfile() {
         showToast("Esta cuenta Google ya está vinculada a este perfil.", "info");
         return;
       }
-      // Si pertenece a otro usuario, bloquear el enlace definitivamente
-      showToast("Esta cuenta Google ya está vinculada a otro perfil y no puede asociarse a otro usuario.", "warning");
+      // Si pertenece a otro usuario, bloquear el enlace definitivamente con explicacion clara
+      showToast(`Esta cuenta Google (${accountEmail}) ya está vinculada al perfil "${existing.name}". Para proteger los datos en Drive, cada perfil debe tener su propia cuenta Google o mantenerse en modo Local.`, "warning", 6000);
       return;
     }
 
+    // Respetar foto personalizada previa
+    const currentAvatar = state.currentUser.avatarUrl || state.currentUser.imageUri;
     const updated = {
       ...state.currentUser,
       googleEmail: accountEmail,
-      avatarUrl: state.currentUser.avatarUrl || accountPicture,
-      imageUri: state.currentUser.imageUri || accountPicture,
+      avatarUrl: currentAvatar || accountPicture || null,
+      imageUri: currentAvatar || accountPicture || null,
       updatedAt: Date.now(),
     };
     await DbManager.updateUser(updated);
@@ -625,8 +612,13 @@ export function updateStatusUI() {
       if (indicator) { indicator.textContent = "⚠️"; indicator.title = "Conectado a Google, pero sin permisos de Drive. Los backups se guardarán en tu carpeta oculta de Google Drive. Pulsa 'Conceder permisos' para autorizar."; }
     } else {
       const last = localStorage.getItem("rodilloint_last_google_sync");
-      if (statusEl) statusEl.textContent = `Conectado: ${accountEmail}${last ? ` · Última sync: ${new Date(last).toLocaleString("es-ES")}` : ""}`;
-      if (indicator) { indicator.textContent = "✅"; indicator.title = `Conectado a Google Drive${last ? ` · Última sync: ${new Date(last).toLocaleString("es-ES")}` : ""}`; }
+      if (hasPendingChanges) {
+        if (statusEl) statusEl.textContent = `Conectado: ${accountEmail} (cambios pendientes de subir)`;
+        if (indicator) { indicator.textContent = "⏳"; indicator.title = `Cambios pendientes de subir a Drive. Se sincronizarán en breve o pulsa para sincronizar.`; }
+      } else {
+        if (statusEl) statusEl.textContent = `Conectado: ${accountEmail}${last ? ` · Última sync: ${new Date(last).toLocaleString("es-ES")}` : ""}`;
+        if (indicator) { indicator.textContent = "✅"; indicator.title = `Conectado a Google Drive${last ? ` · Última sync: ${new Date(last).toLocaleString("es-ES")}` : ""}`; }
+      }
     }
   } else {
     if (statusEl) statusEl.textContent = "No conectado a Google.";
@@ -640,6 +632,8 @@ function isGoogleAutoSyncEnabled() {
 
 export function scheduleAutoPush() {
   if (!accessToken || !accountEmail || !isGoogleAutoSyncEnabled()) return;
+  hasPendingChanges = true;
+  updateStatusUI();
   if (pushTimer) clearTimeout(pushTimer);
   pushTimer = setTimeout(() => {
     pushTimer = null;
@@ -680,7 +674,6 @@ export async function syncGoogleOnUserScreen(expectedEmail = null) {
     }
 
     // Intentar sincronizar backup de Drive (opcional: no bloquea si no hay permisos)
-    let backupSynced = false;
     try {
       const file = await findBackupFile();
       console.log("[GoogleSync] sync backup file:", file?.id, file?.name);
@@ -698,16 +691,12 @@ export async function syncGoogleOnUserScreen(expectedEmail = null) {
           const plain = await decryptBackupJson(parsed, DEFAULT_BACKUP_PASSWORD);
           parsed = JSON.parse(plain);
         }
-        const data = parsed;
-        await DbManager.mergeBackupData(data);
+        await DbManager.mergeBackupData(parsed);
         showToast("Datos sincronizados desde Google Drive.", "success");
-        backupSynced = true;
       } else {
-        showToast("No hay backup previo; se creará uno nuevo.", "info");
-        backupSynced = true;
+        showToast("No hay backup previo en Drive; se creará uno nuevo al guardar.", "info");
       }
     } catch (driveError) {
-      // Si falla por permisos de Drive, no bloquear el acceso al dashboard
       console.warn("[GoogleSync] No se pudo sincronizar backup de Drive:", driveError.message);
       if (!driveError.message.includes("insufficientPermissions") && !driveError.message.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT")) {
         showToast("No se pudo sincronizar el backup de Google Drive. Puedes conceder permisos desde Ajustes.", "warning");
@@ -718,24 +707,25 @@ export async function syncGoogleOnUserScreen(expectedEmail = null) {
     const users = await DbManager.getAllUsers();
     let user = users.find((u) => u.googleEmail === accountEmail);
 
-    // Si no existe, crear perfil automáticamente
     if (!user) {
-      const newId = await DbManager.insertUser({
-        name: accountName || accountEmail.split("@")[0],
-        googleEmail: accountEmail,
-        weight: 75,
-        ftp: 200,
-        maxHeartRate: 190,
-        age: 30,
-        height: 175,
-        avatarUrl: accountPicture,
-        imageUri: accountPicture,
-      });
-      user = await DbManager.getUserById(newId);
+      // No hay perfil vinculado → ofrecer vincular a existente o crear nuevo
+      user = await _askLinkOrCreate(users, accountEmail, accountName, accountPicture);
+      if (!user) {
+        // Usuario canceló
+        showToast("Acceso cancelado.", "info");
+        return;
+      }
     } else {
+      // Perfil encontrado: actualizar nombre/avatar si han cambiado en Google
       const updates = {};
-      if (accountName && user.name !== accountName) updates.name = accountName;
-      if (accountPicture && !user.avatarUrl && !user.imageUri) updates.avatarUrl = accountPicture;
+      // No pisar el nombre si el usuario lo cambio localmente (solo si estaba vacio)
+      if (accountName && (!user.name || user.name === user.googleEmail?.split("@")[0])) updates.name = accountName;
+      // Respetar foto local personalizada (data:); solo asignar foto de Google si no tiene ninguna
+      const hasLocalAvatar = Boolean(user.avatarUrl || user.imageUri);
+      if (accountPicture && !hasLocalAvatar) {
+        updates.avatarUrl = accountPicture;
+        updates.imageUri = accountPicture;
+      }
       if (Object.keys(updates).length > 0) {
         const updated = { ...user, ...updates, updatedAt: Date.now() };
         await DbManager.updateUser(updated);
@@ -764,20 +754,181 @@ export async function syncGoogleOnUserScreen(expectedEmail = null) {
         "Reintentar", "primary"
       );
       if (reintentar) {
-        // Diferir para que el finally se ejecute primero
         setTimeout(() => syncGoogleOnUserScreen(expectedEmail), 100);
         return;
       }
     }
-    // Si faltan permisos de Drive, no bloquear el acceso al dashboard
+
+    // Fallback Modo Offline: si esperábamos un email y hubo un error o popup cancelado
+    if (expectedEmail) {
+      try {
+        const users = await DbManager.getAllUsers();
+        const targetUser = users.find((u) => u.googleEmail === expectedEmail);
+        if (targetUser) {
+          const enterOffline = await showConfirm(
+            `No se pudo conectar con Google (${error?.message || "sin conexión"}).\n\n¿Deseas acceder en Modo Offline con los datos locales guardados en este dispositivo?`,
+            "Entrar en Modo Offline",
+            "primary"
+          );
+          if (enterOffline) {
+            selectUser(targetUser);
+            saveStateToLocalStorage();
+            showToast("Acceso en Modo Offline (sin sincronización con Drive).", "warning");
+            if (window._loadDashboardHeader) window._loadDashboardHeader(state);
+            if (window._navigateTo) {
+              window._navigateTo("dashboard");
+            } else {
+              await loadProfilesGrid();
+            }
+            return;
+          }
+        }
+      } catch (fallbackErr) {
+        console.error("Error en fallback offline:", fallbackErr);
+      }
+    }
+
     if (error.message === "DRIVE_PERMISSIONS_REQUIRED") {
       showToast("Conectado a Google. Para sincronizar backups, concede permisos de Drive desde el indicador del header o Ajustes.", "info");
-      // Seguir con el flujo normal de selección de usuario
     } else {
       showToast(error?.message || "No se pudo sincronizar con Google.", "error");
       try { await loadProfilesGrid(); } catch (e) {}
     }
   }
+}
+
+/**
+ * Muestra un diálogo para vincular la cuenta Google a un perfil local existente
+ * o crear uno nuevo. Devuelve el usuario seleccionado/creado, o null si se canceló.
+ */
+async function _askLinkOrCreate(allUsers, email, name, picture) {
+  // Perfiles locales que aún no tienen Google vinculado
+  const linkableUsers = allUsers.filter((u) => !u.googleEmail);
+
+  if (linkableUsers.length === 0) {
+    // No hay perfiles locales → crear directamente con confirmación
+    const create = await showConfirm(
+      `La cuenta Google (${email}) no está vinculada a ningún perfil.\n¿Quieres crear un perfil nuevo con esta cuenta?`,
+      "Crear perfil", "primary"
+    );
+    if (!create) return null;
+    return await _createGoogleUser(email, name, picture);
+  }
+
+  // Hay perfiles locales: preguntar si vincular o crear nuevo
+  const wantsLink = await showConfirm(
+    `La cuenta Google (${email}) no está vinculada a ningún perfil.\n\n¿Quieres vincularla a uno de tus perfiles existentes?\n\n• "Vincular" → elige un perfil local para asociarlo a esta cuenta.\n• "Cancelar" → se creará un perfil nuevo automáticamente.`,
+    "Vincular a perfil existente", "primary"
+  );
+
+  if (!wantsLink) {
+    // Crear perfil nuevo
+    return await _createGoogleUser(email, name, picture);
+  }
+
+  // Mostrar selector de perfiles para vincular
+  return await _showProfileLinkPicker(linkableUsers, email, name, picture);
+}
+
+/**
+ * Muestra un overlay con la lista de perfiles locales para elegir cuál vincular.
+ */
+function _showProfileLinkPicker(users, email, name, picture) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "toast-confirm-overlay";
+    overlay.style.cssText = "z-index: 9999;";
+
+    const avatarHtml = picture
+      ? `<img src="${picture}" alt="" style="width:36px;height:36px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px;">`
+      : "";
+
+    const userButtons = users.map((u) => {
+      const initials = (u.name || "?").split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
+      return `<button class="toast-btn toast-btn-confirm toast-btn-primary" data-id="${u.id}"
+        style="display:flex;align-items:center;gap:10px;width:100%;margin-bottom:8px;text-align:left;">
+        <span style="width:36px;height:36px;border-radius:50%;background:#444;display:inline-flex;align-items:center;justify-content:center;font-weight:bold;flex-shrink:0;">${initials}</span>
+        <span>
+          <strong>${escapeHtml(u.name)}</strong>
+          <span style="display:block;font-size:0.8em;opacity:0.7;">${Number(u.weight)||0} kg · FTP ${Number(u.ftp)||0}W</span>
+        </span>
+      </button>`;
+    }).join("");
+
+    overlay.innerHTML = `
+      <div class="toast-confirm-box" role="dialog" aria-modal="true" style="max-width:420px;width:90%;">
+        <p class="toast-confirm-message" style="margin-bottom:16px;">
+          ${avatarHtml}<strong>${escapeHtml(name || email)}</strong><br>
+          <span style="font-size:0.85em;opacity:0.75;">${escapeHtml(email)}</span><br><br>
+          Elige el perfil al que quieres vincular esta cuenta Google:
+        </p>
+        <div style="max-height:280px;overflow-y:auto;margin-bottom:12px;">
+          ${userButtons}
+        </div>
+        <div class="toast-confirm-actions">
+          <button class="toast-btn toast-btn-cancel">Cancelar (crear nuevo)</button>
+        </div>
+      </div>`;
+
+    function escapeHtml(str) {
+      return String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    async function close(userId) {
+      overlay.classList.add("toast-confirm-hiding");
+      overlay.addEventListener("transitionend", () => overlay.remove(), { once: true });
+      setTimeout(() => overlay.remove(), 350);
+
+      if (userId === null) {
+        // Crear nuevo en vez de vincular
+        resolve(await _createGoogleUser(email, name, picture));
+        return;
+      }
+
+      // Vincular al perfil elegido
+      const targetUser = users.find((u) => u.id === userId);
+      if (!targetUser) { resolve(null); return; }
+      const existingAvatar = targetUser.avatarUrl || targetUser.imageUri;
+      const updated = {
+        ...targetUser,
+        googleEmail: email,
+        avatarUrl: existingAvatar || picture || null,
+        imageUri: existingAvatar || picture || null,
+        updatedAt: Date.now(),
+      };
+      await DbManager.updateUser(updated);
+      showToast(`Perfil "${targetUser.name}" vinculado a ${email}.`, "success");
+      resolve(await DbManager.getUserById(targetUser.id));
+    }
+
+    overlay.querySelectorAll("[data-id]").forEach((btn) => {
+      btn.addEventListener("click", () => close(Number(btn.dataset.id)));
+    });
+    overlay.querySelector(".toast-btn-cancel").addEventListener("click", () => close(null));
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add("toast-confirm-visible")));
+  });
+}
+
+/**
+ * Crea un nuevo usuario local vinculado a la cuenta Google.
+ */
+async function _createGoogleUser(email, name, picture) {
+  const newId = await DbManager.insertUser({
+    name: name || email.split("@")[0],
+    googleEmail: email,
+    weight: 75,
+    ftp: 200,
+    maxHeartRate: 190,
+    age: 30,
+    height: 175,
+    avatarUrl: picture || null,
+    imageUri: picture || null,
+  });
+  showToast(`Perfil "${name || email.split("@")[0]}" creado y vinculado a Google.`, "success");
+  return await DbManager.getUserById(newId);
 }
 
 export async function initGoogleSync() {
@@ -875,20 +1026,13 @@ export async function initGoogleSync() {
         }
       );
       
-      // 6. Limpiar estado local
-      clearGoogleToken(true); // Borra sessionStorage y tokens, dejando al usuario como usuario local
-
-      // Cerrar sesión completa de Google Identity Services (GIS) en el navegador
-      // Esto es necesario porque GIS mantiene sesiones cached en el navegador
+      // 6. Revocar sesión de Google Identity Services ANTES de limpiar el token
       if (accessToken && window.google?.accounts?.oauth2?.revoke) {
         window.google.accounts.oauth2.revoke(accessToken, () => {});
       }
-      accessToken = null;
-      accountEmail = null;
-      accountName = null;
-      accountPicture = null;
-      tokenExpiresAt = null;
-      drivePermissionsGranted = false;
+      
+      // 7. Limpiar estado local
+      clearGoogleToken(true); // Borra sessionStorage y tokens
       
       localStorage.removeItem("rodilloint_last_google_sync");
       localStorage.removeItem("rodilloint_backup_encrypted");
@@ -912,7 +1056,7 @@ export async function initGoogleSync() {
     deleteBtn.addEventListener("click", () => void deleteDriveData());
   }
 
-  // Restaurar sesión de Google si existe en sessionStorage
+  // Restaurar sesión de Google si existe en sessionStorage (solo una vez)
   restoreGoogleSession();
 
   updateStatusUI();
@@ -972,11 +1116,25 @@ export async function initGoogleSync() {
     }
   });
 
-  // Sync periódica (solo push) cada 5 minutos si hay cuenta conectada
+  // Aviso o intento de salvado si el usuario intenta cerrar la ventana con cambios sin subir
+  window.addEventListener("beforeunload", (e) => {
+    if (hasPendingChanges && accessToken && accountEmail) {
+      // Intentar push antes de cerrar
+      void autoPushIfConnected();
+      e.preventDefault();
+      e.returnValue = "Hay datos pendientes de sincronizar con Google Drive.";
+    }
+  });
+
+  // Sync periódica (solo push) cada 5 minutos si hay cuenta conectada y token vigente
   if (!window._rodillointGoogleSyncInterval) {
     window._rodillointGoogleSyncInterval = setInterval(() => {
-      if (accessToken && accountEmail) {
+      const tokenExpired = tokenExpiresAt && Date.now() > tokenExpiresAt;
+      if (accessToken && accountEmail && !tokenExpired) {
         void autoPushIfConnected();
+      } else if (tokenExpired) {
+        // Token expirado: actualizar UI para que el usuario sepa que debe reconectar
+        updateStatusUI();
       }
     }, 5 * 60 * 1000);
   }

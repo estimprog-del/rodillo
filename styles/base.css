@@ -308,6 +308,41 @@ h4 {
     text-align: center;
     padding: 24px;
 }
+.user-card-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: rgba(66, 133, 244, 0.15);
+    border: 1px solid rgba(66, 133, 244, 0.4);
+    color: #8ab4f8;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 500;
+    pointer-events: none;
+    z-index: 5;
+}
+.user-card-badge-local {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 500;
+    pointer-events: none;
+    z-index: 5;
+}
+
 .user-card-delete {
     position: absolute;
     top: 8px;

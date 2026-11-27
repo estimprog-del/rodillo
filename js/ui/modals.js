@@ -38,6 +38,7 @@ export function renderEditUserPowerZones() {
 export function openEditUserModal() {
   prepareEditUserAvatar();
   showModal("edit-user");
+  if (window.updateGoogleLinkStatus) window.updateGoogleLinkStatus();
   renderEditUserPowerZones();
   const ftpInput = document.getElementById("edit-user-ftp");
   if (ftpInput && !ftpInput.dataset.zonesBound) {
@@ -552,3 +553,4 @@ export function openSettingsModal() {
 export function closeSettingsModal() {
   hideModal("settings");
 }
+

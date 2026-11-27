@@ -1850,6 +1850,7 @@ async function startSession() {
   try {
     const sessId = await DbManager.insertSession({
       userId: state.currentUser.id,
+      userUuid: state.currentUser.uuid || null,
       startTime: Date.now(),
       mode: state.currentMode,
       gpxPath: state.currentMode === "ROUTE" ? state.gpxFilename : null,
@@ -2306,6 +2307,36 @@ async function stopSessionFlow() {
 
     // Sincronizar con Google Drive si hay cuenta conectada (silencioso)
     void autoPushIfConnected();
+
+    // Si el usuario es LOCAL (sin Google Drive) y no tiene auto-backup a disco, comprobar sesiones sin respaldo
+    if (!state.currentUser?.googleEmail && !state.autoBackupOnSessionEnd) {
+      void (async () => {
+        try {
+          const userSessions = await DbManager.getAllSessions(state.currentUser?.id);
+          const lastBackup = localStorage.getItem("rodilloint_last_backup");
+          // Si acumula 3 o más sesiones y no hay backup reciente o nunca lo hubo
+          if (userSessions.length >= 3 && !lastBackup) {
+            setTimeout(async () => {
+              const wantBackup = await showConfirm(
+                "🛡️ SEGURIDAD DE DATOS: Llevas varias sesiones completadas en modo local y aún no tienes copia de seguridad en Google Drive ni en disco.\n\n¿Deseas descargar un backup en archivo .json ahora para no perder tu historial?",
+                "Descargar Backup ahora",
+                "primary"
+              );
+              if (wantBackup) {
+                try {
+                  await exportAllData({ automatic: false });
+                  showToast("Backup descargado con éxito.", "success");
+                } catch (e) {
+                  console.error("Error al exportar backup:", e);
+                }
+              }
+            }, 1200);
+          }
+        } catch (e) {
+          console.warn("No se pudo comprobar sesiones para aviso de backup:", e);
+        }
+      })();
+    }
 
     renderSummaryMetrics({
       duration,
