@@ -323,6 +323,11 @@ export function initAudioPlayer() {
   const widget = _widgetEl;
   if (widget) {
     makeDraggable(widget);
+    if (window.matchMedia("(max-width: 768px)").matches) {
+      widget.classList.add("collapsed");
+      const toggle = wEl("audio-widget-toggle");
+      if (toggle) toggle.textContent = "📻";
+    }
     widget.addEventListener("click", (e) => {
       if (_justDragged) { e.preventDefault(); e.stopPropagation(); return; }
       const btn = e.target.closest("button");

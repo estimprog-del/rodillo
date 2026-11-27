@@ -469,6 +469,7 @@ h4 {
 
 .user-action-buttons {
     display: flex;
+    flex-wrap: wrap;
     gap: 12px;
     width: 100%;
     max-width: 600px;
@@ -2180,6 +2181,25 @@ h4 {
     }
 }
 
+/* Movil: espacio para widget de audio y tarjetas mas compactas */
+@media (max-width: 768px) {
+    .screen {
+        padding-bottom: 80px;
+    }
+    .mode-card {
+        min-height: 150px;
+        padding: 16px;
+    }
+    .page-heading-row {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .page-heading-row h2 {
+        font-size: 22px;
+        line-height: 1.2;
+    }
+}
+
 /* Moviles muy pequenos */
 @media (max-width: 360px) {
     .glass-card {
@@ -2187,13 +2207,13 @@ h4 {
         border-radius: 14px;
     }
     .page-heading-row h2 {
-        font-size: 22px;
+        font-size: 20px;
     }
     .dashboard-header-buttons {
         gap: 8px;
     }
     .mode-card {
-        min-height: 150px;
+        min-height: 140px;
     }
 }
 
