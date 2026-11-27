@@ -2156,6 +2156,19 @@ h4 {
     z-index: 1000;
 }
 
+/* Evitar zoom automatico en iOS en campos de formulario */
+@media (max-width: 768px) {
+    input,
+    select,
+    textarea,
+    .input-field,
+    .modal-content input,
+    .modal-content select,
+    .modal-content textarea {
+        font-size: 16px;
+    }
+}
+
 .fullscreen-recovery-content p {
     color: var(--text-secondary);
     margin: 12px 0 20px;
