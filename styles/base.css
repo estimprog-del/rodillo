@@ -1420,7 +1420,7 @@ h4 {
 
 .history-stats-row {
     display: grid;
-    grid-template-columns: repeat(4, minmax(78px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     align-items: center;
     gap: 12px;
     min-width: 0;
