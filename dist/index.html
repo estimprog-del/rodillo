@@ -4,7 +4,7 @@
         <meta charset="UTF-8" />
         <meta
             name="viewport"
-            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+            content="width=device-width, initial-scale=1, viewport-fit=cover"
         />
         <meta
             http-equiv="Content-Security-Policy"
@@ -33,8 +33,8 @@
             src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client="
             crossorigin="anonymous"
         ></script>
-      <script type="module" crossorigin src="/rodillo/assets/index-BfyXA9bW.js"></script>
-      <link rel="stylesheet" crossorigin href="/rodillo/assets/index-BHrj9uSj.css">
+      <script type="module" crossorigin src="/rodillo/assets/index-B59PhB2c.js"></script>
+      <link rel="stylesheet" crossorigin href="/rodillo/assets/index-DpFfE7Mq.css">
     </head>
     <body>
         <!-- 1. SCREEN: USER SELECTION -->
@@ -46,7 +46,7 @@
                 <p id="start-info-line" class="start-info-line" style="display:none; color: var(--text-secondary); text-align: center; max-width: 520px; margin: 8px auto 0; font-size: 14px; line-height: 1.4;">
                     Simula rutas reales, entrena por potencia y guarda tu progreso. Crea un perfil para empezar.
                 </p>
-                <div class="users-grid" id="users-grid-container" style="grid-template-columns: repeat(3, 1fr); grid-auto-rows: 150px; gap: 12px;">
+                <div class="users-grid" id="users-grid-container" style="grid-auto-rows: 150px; gap: 12px;">
                     <!-- populated dynamically via app.js -->
                     <div
                         class="glass-card user-card"
@@ -141,7 +141,7 @@
                 <ins
                     class="adsbygoogle"
                     id="ad-dashboard-banner"
-                    style="display: block; width: 100%;"
+                    style="display: block; width: 100%; min-height: 90px;"
                     data-ad-client=""
                     data-ad-slot=""
                     data-ad-format="auto"
@@ -1227,7 +1227,7 @@
                 </div>
 
                 <!-- Contenedores de Gráficos Manuales -->
-                <div class="glass-card" style="width: 560px; height: 330px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between;">
+                <div class="glass-card" style="width: min(560px, 100%); height: 330px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between;">
                     <div id="manual-power-chart" style="flex: 1;"></div>
                     <div id="manual-hr-chart" style="flex: 1;"></div>
                 </div>
