@@ -1463,6 +1463,7 @@
     z-index: 950;
     background: rgba(10, 10, 15, 0.85);
     backdrop-filter: blur(10px);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     align-items: center;
     justify-content: center;
 }
@@ -2799,5 +2800,14 @@
 @media (min-width: 1440px) {
     .help-grid {
         grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+/* Backdrop blur fallback para movil / reduced motion */
+@media (prefers-reduced-motion: reduce), (max-width: 768px) {
+    .route-modal-overlay,
+    .glass-card {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
     }
 }
