@@ -2193,11 +2193,11 @@ h4 {
     .page-heading-row {
         flex-wrap: wrap;
         gap: 8px;
+        margin-bottom: 16px;
     }
-.page-heading-row h2 {
+    .page-heading-row h2 {
         font-size: 22px;
         line-height: 1.2;
-        margin-bottom: 8px;
     }
 }
 
