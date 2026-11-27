@@ -1018,7 +1018,7 @@
     bottom: 120px;
     z-index: 20;
     display: none;
-    width: 220px;
+    width: min(220px, calc(100vw - 24px));
     padding: 10px;
     text-align: center;
     pointer-events: auto;
@@ -1252,7 +1252,7 @@
 }
 
 .mini-profile-card {
-    width: 280px;
+    width: min(280px, 100%);
     background: rgba(0, 0, 0, 0.72);
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 12px;
@@ -1358,7 +1358,7 @@
     top: 65px;
     left: 24px;
     z-index: 9;
-    width: 280px;
+    width: min(280px, calc(100vw - 48px));
     padding: 16px;
 }
 
@@ -1845,6 +1845,8 @@
     .btn-control {
         padding: 10px 18px;
         font-size: 12px;
+        min-height: 44px;
+        min-width: 44px;
     }
 }
 
@@ -1863,7 +1865,7 @@
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 12px;
     padding: 10px 16px;
-    width: 210px;
+    width: min(210px, calc(50vw - 24px));
     height: 180px;
     backdrop-filter: blur(10px);
     pointer-events: auto;
@@ -1996,7 +1998,7 @@
     flex-direction: column;
     gap: 10px;
     pointer-events: auto;
-    width: 280px;
+    width: min(280px, calc(100vw - 40px));
     align-items: flex-end;
 }
 
@@ -2022,7 +2024,7 @@
     padding: 2px 12px 10px;
     height: 180px;
     width: fit-content;
-    min-width: 280px;
+    min-width: min(280px, 100%);
     max-width: min(460px, calc(100vw - 24px));
     box-sizing: border-box;
     overflow: hidden;
