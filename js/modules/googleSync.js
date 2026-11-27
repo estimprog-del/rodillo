@@ -1147,6 +1147,23 @@ export async function initGoogleSync() {
   syncIndicator?.addEventListener("click", (e) => {
     e.stopPropagation(); // Evitar que se propague al header (que va al perfil)
     console.log("[GoogleSync] clic en indicador Google Sync");
+    // Comportamiento contextual según el estado del indicador:
+    // - Sin conexión: conectar con Google.
+    // - Sin permisos de Drive: solicitarlos.
+    // - Cambios pendientes (reloj): subir backup a Drive y pasar a OK.
+    // - Sin cambios pendientes: solicitar permisos / reconectar.
+    if (!accessToken || !accountEmail) {
+      void connectGoogle();
+      return;
+    }
+    if (!drivePermissionsGranted) {
+      void requestDriveAccess();
+      return;
+    }
+    if (hasPendingChanges) {
+      void pushToDrive();
+      return;
+    }
     void requestDriveAccess();
   });
 
