@@ -1,10 +1,12 @@
 // js/ui/workoutHud.js - Gestión de la interfaz del entrenamiento (HUD, diseño, paneles y pantalla completa)
 import { state, saveStateToLocalStorage } from "../modules/state.js";
-import { setElText, setElDisplay, showModal, hideModal, isMobilePortrait } from "../modules/ui.js";
+import { setElText, setElDisplay, showModal, hideModal, isMobilePortrait, isPhoneLandscape } from "../modules/ui.js";
 import { showToast } from "../modules/toast.js";
 import { positionMapNavigationControls } from "./mapEngine.js";
 
 let workoutHudResizeObserver = null;
+// Recuerda si el usuario ha abierto/cerrado a mano la consola del Rodillo Virtual.
+let virtualPanelTouched = false;
 
 export function layoutLabelsForResolvedLayout(layout) {
   return (
@@ -34,6 +36,7 @@ export function applyWorkoutLayout() {
   viewport.classList.remove(...layouts.map((name) => `layout-${name}`));
   viewport.classList.add(`layout-${layout}`);
   viewport.classList.toggle("workout-compact", mobilePortrait);
+  viewport.classList.toggle("workout-phone-landscape", isPhoneLandscape());
 
   requestAnimationFrame(() => {
     if (!state.map) return;
@@ -56,6 +59,9 @@ export function applyWorkoutLayout() {
       selectedLayout === "auto" ? layoutLabels.auto : layoutLabels[layout]
     }`;
   }
+
+  // El panel del Rodillo Virtual se pliega solo en móvil horizontal.
+  applyWorkoutPanels();
 }
 
 export function cycleWorkoutLayout() {
@@ -74,20 +80,25 @@ export function applyWorkoutPanels() {
     upcoming: document.getElementById("upcoming-profile-chart"),
     routeOverview: document.getElementById("route-overview-card"),
   };
+  // En móvil horizontal la consola del Rodillo Virtual arranca plegada
+  // (es una herramienta de pruebas y tapaba medio mapa), pero el usuario
+  // puede desplegarla con su botón y se respeta su elección.
+  const phoneLandscape = isPhoneLandscape();
+  if (!phoneLandscape) virtualPanelTouched = false;
   Object.entries(panels).forEach(([name, panel]) => {
     if (!panel) return;
-    panel.classList.toggle(
-      "workout-panel-collapsed",
-      state.workoutPanels[name] === false,
-    );
+    const collapsed =
+      state.workoutPanels[name] === false ||
+      (phoneLandscape && name === "virtual" && !virtualPanelTouched);
+    panel.classList.toggle("workout-panel-collapsed", collapsed);
     const toggle = panel.querySelector(".panel-toggle");
-    if (toggle)
-      toggle.textContent = state.workoutPanels[name] === false ? "+" : "−";
+    if (toggle) toggle.textContent = collapsed ? "+" : "−";
   });
 }
 
 export function toggleWorkoutPanel(name) {
   if (!(name in state.workoutPanels)) return;
+  if (name === "virtual") virtualPanelTouched = true;
   state.workoutPanels[name] = !state.workoutPanels[name];
   saveStateToLocalStorage();
   applyWorkoutPanels();

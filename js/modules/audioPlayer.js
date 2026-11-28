@@ -323,7 +323,10 @@ export function initAudioPlayer() {
   const widget = _widgetEl;
   if (widget) {
     makeDraggable(widget);
-    if (window.matchMedia("(max-width: 768px)").matches) {
+    if (
+      window.matchMedia("(max-width: 768px)").matches ||
+      window.innerHeight <= 560
+    ) {
       widget.classList.add("collapsed");
       const toggle = wEl("audio-widget-toggle");
       if (toggle) toggle.textContent = "📻";

@@ -54,6 +54,17 @@ export function isSmallMobile() {
   return window.matchMedia("(max-width: 480px)").matches;
 }
 
+// Teléfono/tableta pequeña en horizontal: ventana baja y estrecha.
+// Coincide con el bloque @media (max-height: 560px) and (max-width: 1100px)
+// de styles/workout.css.
+export function isPhoneLandscape() {
+  return (
+    window.innerHeight <= 560 &&
+    window.innerWidth <= 1100 &&
+    window.innerWidth > window.innerHeight
+  );
+}
+
 // Throttled HUD update
 const UI_UPDATE_RATE = 250;
 let lastUiUpdate = 0;

@@ -2826,3 +2826,280 @@
         -webkit-backdrop-filter: none;
     }
 }
+
+/* =====================================================================
+   MÓVIL EN HORIZONTAL (teléfono girado / tablet pequeña)
+   Solo se aplica cuando la ventana es baja y estrecha, así que no
+   afecta a la vista de escritorio (>=15"): mapa a pantalla completa,
+   barra superior de métricas, columna derecha de datos y barra
+   inferior de controles, todo opaco y sin solapamientos.
+   ===================================================================== */
+@media (max-height: 560px) and (max-width: 1100px) {
+    /* El mapa ocupa toda la pantalla; los paneles van encima. */
+    .workout-viewport .workout-map-fullscreen {
+        inset: 0 !important;
+    }
+
+    /* ---------- Barra superior: una sola fila de métricas ---------- */
+    .workout-viewport .hud-top-bar {
+        top: 0 !important;
+        bottom: auto !important;
+        left: 0 !important;
+        right: 0 !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        height: auto !important;
+        padding: 5px 8px 5px 34px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: stretch !important;
+        flex-wrap: nowrap !important;
+        overflow: visible !important;
+        background: linear-gradient(
+            to bottom,
+            rgba(8, 10, 14, 0.97),
+            rgba(8, 10, 14, 0.9)
+        ) !important;
+        backdrop-filter: blur(8px) !important;
+        -webkit-backdrop-filter: blur(8px) !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .workout-viewport #btn-pinganillo {
+        position: absolute !important;
+        top: 5px !important;
+        left: 5px !important;
+        width: 22px !important;
+        height: 22px !important;
+        font-size: 11px !important;
+    }
+
+    .workout-viewport .hud-left-group {
+        display: none !important;
+    }
+
+    .workout-viewport .hud-right-group {
+        display: grid !important;
+        grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+        align-items: center !important;
+        justify-content: stretch !important;
+        gap: 2px !important;
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        flex-wrap: nowrap !important;
+    }
+
+    /* El selector de tamaño de texto no cabe: se oculta en el móvil. */
+    .workout-viewport .hud-right-group > .hud-font-selector {
+        display: none !important;
+    }
+
+    .workout-viewport .hud-right-group > .clock-session-time {
+        grid-column: auto !important;
+        justify-self: center !important;
+        padding: 1px 5px !important;
+        gap: 3px !important;
+    }
+
+    .workout-viewport .hud-right-group > .metric-group,
+    .workout-viewport .hud-right-group > .metric-main {
+        min-width: 0 !important;
+        justify-content: center !important;
+        gap: 2px !important;
+    }
+
+    .workout-viewport .hud-right-group .metric-value {
+        font-size: 17px !important;
+        line-height: 1.1 !important;
+    }
+
+    .workout-viewport .hud-right-group .metric-power-group .metric-value,
+    .workout-viewport .hud-right-group .metric-speed-group .metric-value {
+        font-size: 20px !important;
+    }
+
+    .workout-viewport .hud-right-group .metric-label,
+    .workout-viewport .hud-right-group .metric-avg {
+        font-size: 8px !important;
+        line-height: 1.1 !important;
+    }
+
+    /* ---------- Pendientes (RODILLO / RUTA REAL) ---------- */
+    .workout-viewport #metrics-slope {
+        top: 56px !important;
+        left: auto !important;
+        right: 252px !important;
+        transform: none !important;
+        gap: 4px !important;
+    }
+
+    .workout-viewport .slope-reading {
+        min-width: 76px !important;
+        padding: 3px 8px !important;
+    }
+
+    .workout-viewport .slope-reading-label {
+        font-size: 8px !important;
+    }
+
+    .workout-viewport .slope-reading strong {
+        font-size: 16px !important;
+        gap: 3px !important;
+    }
+
+    /* ---------- Consola del Rodillo Virtual (plegable) ---------- */
+    .workout-viewport .hud-sim-panel {
+        top: 56px !important;
+        left: 8px !important;
+        width: auto !important;
+        max-width: 42vw !important;
+        padding: 4px 8px !important;
+        background: rgba(10, 12, 18, 0.94) !important;
+        backdrop-filter: blur(8px) !important;
+        -webkit-backdrop-filter: blur(8px) !important;
+    }
+
+    .workout-viewport .hud-sim-panel .hud-sim-title {
+        margin: 0 !important;
+        font-size: 11px !important;
+        gap: 6px;
+    }
+
+    .workout-viewport .hud-sim-panel:not(.workout-panel-collapsed) .panel-content {
+        max-height: calc(100dvh - 150px);
+        overflow: auto;
+    }
+
+    /* ---------- Columna derecha: vista general + progreso ---------- */
+    .workout-viewport .hud-route-side-stack {
+        top: 56px !important;
+        right: 8px !important;
+        left: auto !important;
+        bottom: auto !important;
+        width: 236px !important;
+        gap: 6px !important;
+    }
+
+    .workout-viewport .hud-route-side-stack > .route-overview-card {
+        height: 128px !important;
+        padding: 6px 10px !important;
+    }
+
+    .workout-viewport .route-overview-content {
+        height: 92px !important;
+    }
+
+    .workout-viewport .hud-route-side-stack > .hud-bottom-left {
+        height: auto !important;
+        min-height: 0 !important;
+        flex: 0 1 auto !important;
+        padding: 6px 10px !important;
+    }
+
+    .workout-viewport .hud-bottom-left .progress-item {
+        font-size: 11px !important;
+        padding: 1px 0 !important;
+    }
+
+    .workout-viewport .hud-bottom-left .mini-profile-title,
+    .workout-viewport .route-overview-card .mini-profile-title {
+        font-size: 10px !important;
+        margin-bottom: 2px !important;
+    }
+
+    /* Paneles opacos: el mapa ya no se transparenta por debajo. */
+    .workout-viewport .glass-card {
+        background: rgba(10, 12, 18, 0.94) !important;
+        backdrop-filter: blur(8px) !important;
+        -webkit-backdrop-filter: blur(8px) !important;
+    }
+
+    /* ---------- Perfil de altitud (abajo a la izquierda) ---------- */
+    .workout-viewport .hud-elevation-footer {
+        top: auto !important;
+        bottom: 58px !important;
+        left: 8px !important;
+        right: 252px !important;
+        width: auto !important;
+        max-width: none !important;
+        height: 100px !important;
+        padding: 2px 12px 8px !important;
+        transform: none !important;
+        display: flex !important;
+    }
+
+    /* ---------- Barra inferior de controles ---------- */
+    .workout-viewport .hud-bottom-right-group {
+        position: absolute !important;
+        top: auto !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: auto !important;
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 6px !important;
+        padding: 4px 8px calc(4px + env(safe-area-inset-bottom, 0px)) !important;
+        background: rgba(8, 10, 14, 0.96) !important;
+        backdrop-filter: blur(8px) !important;
+        -webkit-backdrop-filter: blur(8px) !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        z-index: 18;
+    }
+
+    .workout-viewport .hud-bottom-right-group > [hidden] {
+        display: none !important;
+    }
+
+    /* El gráfico "Próx 500 m" no cabe en la barra: se oculta en móvil. */
+    .workout-viewport .hud-bottom-right-group > #upcoming-profile-chart {
+        display: none !important;
+    }
+
+    .workout-viewport .hud-bottom-right-group > #btn-orient-toggle,
+    .workout-viewport .hud-bottom-right-group > #btn-toggle-3d {
+        display: none !important;
+    }
+
+    .workout-viewport .hud-bottom-right-group > .btn-control {
+        width: auto !important;
+        min-height: 38px;
+        padding: 6px 10px !important;
+        font-size: 11px !important;
+        white-space: nowrap;
+    }
+
+    .workout-viewport .hud-bottom-right-group > #virtual-gear-control {
+        margin-left: auto;
+        width: auto !important;
+        max-width: none !important;
+        min-height: 38px;
+        padding: 2px 6px !important;
+    }
+
+    .workout-viewport #virtual-gear-control .virtual-gear-button {
+        min-height: 32px;
+        padding: 5px 8px !important;
+        font-size: 11px !important;
+    }
+
+    .workout-viewport #virtual-gear-control #btn-open-remote-room {
+        display: none !important;
+    }
+
+    .workout-viewport #metrics-gear {
+        font-size: 10px !important;
+        line-height: 1.15;
+        text-align: center;
+    }
+
+    /* El widget de audio se deja como burbuja pequeña en la esquina. */
+    .workout-viewport .audio-widget {
+        bottom: 58px !important;
+        max-width: 46px;
+    }
+}
