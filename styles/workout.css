@@ -135,12 +135,14 @@
 .workout-viewport.layout-horizontal-2 .hud-top-bar {
     left: 0;
     right: 0;
-    min-height: 64px;
+    min-height: 56px;
+    max-height: 80px;
     padding-left: calc(50% + 12px);
     padding-right: 12px;
     background: transparent;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    overflow: hidden;
 }
 
 .workout-viewport.layout-horizontal-2 .hud-left-group {
@@ -151,15 +153,15 @@
     width: min(100%, 620px);
     margin-left: auto;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     align-items: center;
     justify-content: stretch;
-    gap: 8px;
+    gap: 4px;
 }
 
 .workout-viewport.layout-horizontal-2 .hud-right-group > .hud-font-selector,
 .workout-viewport.layout-horizontal-2 .hud-right-group > .clock-session-time {
-    grid-column: 1 / -1;
+    grid-column: span 2;
     justify-self: center;
 }
 
@@ -167,6 +169,13 @@
 .workout-viewport.layout-horizontal-2 .hud-right-group > .metric-main {
     justify-content: center;
     min-width: 0;
+}
+.workout-viewport.layout-horizontal-2 .hud-right-group .metric-value {
+    font-size: 18px !important;
+}
+.workout-viewport.layout-horizontal-2 .hud-right-group .metric-label,
+.workout-viewport.layout-horizontal-2 .hud-right-group .metric-avg {
+    font-size: 9px !important;
 }
 
 .workout-viewport.layout-horizontal-2 .hud-bottom-left,
@@ -189,18 +198,23 @@
 .workout-viewport.layout-horizontal-2 .hud-elevation-footer {
     display: block !important;
     left: calc(50% + 20px);
-    right: 220px;
-    top: 300px;
-    bottom: auto;
+    right: 20px;
+    bottom: 90px;
+    top: auto;
     width: auto;
     max-width: none;
-    height: 110px;
+    height: 80px;
     transform: none;
 }
 
 .workout-viewport.layout-horizontal-2 .hud-bottom-right-group {
     top: auto;
     bottom: 20px;
+}
+.workout-viewport.layout-horizontal-2 .upcoming-profile-chart {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .workout-viewport.layout-vertical-2 .workout-map-fullscreen {
