@@ -3078,6 +3078,27 @@
         display: none !important;
     }
 
+    /* Botones de la barra inferior a la derecha, dejando espacio al de Norte a la izquierda */
+    .workout-viewport .hud-bottom-right-group > :not(#btn-orient-toggle):not(#btn-toggle-3d):not(#virtual-gear-control) {
+        position: absolute !important;
+        bottom: 6px !important;
+        right: 8px !important;
+        z-index: 18 !important;
+        width: auto !important;
+        min-height: 38px !important;
+        padding: 6px 12px !important;
+        font-size: 11px !important;
+        white-space: nowrap;
+        flex: 0 0 auto !important;
+    }
+
+    /* Ordenar los botones a la derecha en el orden visual: Pausa, Finalizar, Diseño */
+    .workout-viewport .hud-bottom-right-group > #btn-workout-pause,
+    .workout-viewport .hud-bottom-right-group > #btn-workout-stop,
+    .workout-viewport .hud-bottom-right-group > #btn-cycle-layout {
+        order: 1;
+    }
+
     .workout-viewport .hud-bottom-right-group > .btn-control {
         width: auto !important;
         min-height: 38px;
