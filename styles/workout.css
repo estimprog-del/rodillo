@@ -3062,6 +3062,19 @@
 
     .workout-viewport .hud-bottom-right-group > #btn-orient-toggle,
     .workout-viewport .hud-bottom-right-group > #btn-toggle-3d {
+        display: block !important;
+        position: absolute !important;
+        bottom: 6px !important;
+        left: 8px !important;
+        z-index: 18 !important;
+        width: auto !important;
+        min-height: 38px !important;
+        padding: 6px 12px !important;
+        font-size: 11px !important;
+        white-space: nowrap;
+    }
+
+    .workout-viewport .hud-bottom-right-group > #btn-toggle-3d {
         display: none !important;
     }
 
