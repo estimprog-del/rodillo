@@ -3018,6 +3018,78 @@ window.toggleMapEngine = async function(btn) {
                 requestAnimationFrame(positionMapNavigationControls);
                 drawRouteOnMap();
 
+                // Ocultar el punto azul nativo de GPS y añadir indicador desplazado a la izquierda
+                try {
+                    // 1. Ocultar el punto azul por defecto (símbolo "point" de la capa locate)
+                    if (state.map.getLayer('point')) {
+                        state.map.setLayoutProperty('point', 'visibility', 'none');
+                    }
+                    if (state.map.getLayer('compass')) {
+                        state.map.setLayoutProperty('compass', 'visibility', 'none');
+                    }
+
+                    // 2. Añadir una fuente y capa con un círculo desplazado a 1/3 de ancho desde la izquierda
+                    //    Usamos coordenadas aproximadas que sitúan el marcador a la izquierda del centro
+                    //    en un mapa zoom 14 centr en el punto de partida.
+                    const leftShiftCoord = [state.routePoints.length > 0 
+                        ? state.routePoints[0].lon - 0.01 
+                        : -1.93,
+                        state.routePoints.length > 0 
+                        ? state.routePoints[0].lat 
+                        : 43.32];
+
+                    if (!state.map.getSource('custom-cyclist')) {
+                        state.map.addSource('custom-cyclist', {
+                            'type': 'geojson',
+                            'data': {
+                                'type': 'FeatureCollection',
+                                'features': [{
+                                    'type': 'Feature',
+                                    'properties': { },
+                                    'geometry': {
+                                        'type': 'Point',
+                                        'coordinates': leftShiftCoord
+                                    }
+                                }]
+                            }
+                        });
+                    }
+
+                    if (!state.map.getLayer('custom-cyclist')) {
+                        state.map.addLayer({
+                            'id': 'custom-cyclist',
+                            'type': 'circle',
+                            'source': 'custom-cyclist',
+                            'paint': {
+                                'circle-color': '#3b82f6',
+                                'circle-radius': 10,
+                                'circle-stroke-color': '#ffffff',
+                                'circle-stroke-width': 3
+                            }
+                        });
+                    }
+
+                    // Actualizar la posición cada vez que el mapa se mueve para mantenerlo desplazado a la izquierda
+                    state.map.on('move', () => {
+                        const center = state.map.getCenter();
+                        // Mover la fuente al centro-izquierda (aprox 1/3 desde el borde izquierdo)
+                        const adjustedLng = center.lng - 0.015; // ajustar según zoom/visibilidad
+                        state.map.getSource('custom-cyclist').setData({
+                            'type': 'FeatureCollection',
+                            'features': [{
+                                'type': 'Feature',
+                                'properties': { },
+                                'geometry': {
+                                    'type': 'Point',
+                                    'coordinates': [adjustedLng, center.lat]
+                                }
+                            }]
+                        });
+                    });
+                } catch (e) {
+                    console.warn('No se pudieron personalizar los indicadores del mapa:', e);
+                }
+
                 // Re-configurar botón de orientación para 3D MapLibre
                 createOrientationToggleButton();
                 if (nextMode === "3D_FPV" && state.routePoints.length > 0) {
